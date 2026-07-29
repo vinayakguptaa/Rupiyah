@@ -3,32 +3,36 @@ package com.krtky.financetracker.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -57,8 +61,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.ui.components.EmptyState
+import com.krtky.financetracker.ui.components.SpendRatioRing
+import com.krtky.financetracker.ui.components.chrome.ScreenHeader
+import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.theme.M3EMotion
+import com.krtky.financetracker.ui.theme.NavContentInsets
 import com.krtky.financetracker.ui.util.inr
+import com.krtky.financetracker.ui.util.inrCompact
 import com.krtky.financetracker.ui.viewmodel.FundsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,6 +76,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun FundsScreen(
     onOpenFund: (Long) -> Unit = {},
+    /** Incremented by the floating nav FAB to open create sheet. */
+    createRequestTick: Int = 0,
     vm: FundsViewModel = hiltViewModel(),
 ) {
     val funds by vm.funds.collectAsStateWithLifecycle()
@@ -84,37 +95,108 @@ fun FundsScreen(
         delay(40)
         ready = true
     }
+    LaunchedEffect(createRequestTick) {
+        if (createRequestTick > 0) {
+            showCreate = true
+        }
+    }
 
-    val headerColors = listOf(
-        scheme.primary to scheme.onPrimary,
-        scheme.tertiary to scheme.onTertiary,
-        scheme.secondary to scheme.onSecondary,
-        scheme.primaryContainer to scheme.onPrimaryContainer,
-        scheme.tertiaryContainer to scheme.onTertiaryContainer,
-    )
+    // Remaining = cash in pots; spent bar = empty portion of fixed limits
+    val totalBudget = funds.sumOf { it.limitPaise() }
+    val totalRemaining = funds.sumOf { it.remainingOfLimitPaise() }
+    val totalSpent = (totalBudget - totalRemaining).coerceAtLeast(0L)
+    val spentRatio = if (totalBudget > 0) {
+        (totalSpent.toFloat() / totalBudget.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = Dimens.ScreenHorizontal),
+            verticalArrangement = Arrangement.spacedBy(Dimens.SectionGap),
+            contentPadding = PaddingValues(bottom = NavContentInsets.bottom),
         ) {
             item {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Funds",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = scheme.onBackground,
+                ScreenHeader(
+                    title = "Funds",
+                    subtitle = "Envelope budgets you can credit and spend from",
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "Envelope balances you can credit and debit",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                )
+            }
+
+            // Hero: shared ring + Total / Spent / Remaining
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = scheme.surfaceContainerHigh,
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        SpendRatioRing(
+                            ratio = spentRatio,
+                            size = 112.dp,
+                            stroke = 12.dp,
+                            progressColor = if (spentRatio >= 1f) scheme.error else scheme.primary,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    "${(spentRatio * 100).toInt()}%",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (spentRatio >= 1f) scheme.error else scheme.onSurface,
+                                )
+                                Text(
+                                    stringResource(R.string.funds_spent),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(Dimens.CardInnerGap),
+                        ) {
+                            FundStatChip(
+                                label = stringResource(R.string.funds_total),
+                                value = totalBudget.inrCompact(),
+                                icon = Icons.Default.AccountBalanceWallet,
+                            )
+                            FundStatChip(
+                                label = stringResource(R.string.funds_spent),
+                                value = totalSpent.inrCompact(),
+                                icon = Icons.Default.CreditCard,
+                            )
+                            FundStatChip(
+                                label = "Remaining",
+                                value = totalRemaining.inrCompact(),
+                                icon = Icons.Default.AccountBalanceWallet,
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${funds.size} fund${if (funds.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
 
             if (funds.isEmpty()) {
@@ -135,7 +217,13 @@ fun FundsScreen(
                     enter = fadeIn(M3EMotion.effectsDefault()) +
                         slideInVertically(M3EMotion.spatialDefault()) { it / 8 },
                 ) {
-                    val colors = headerColors[index % headerColors.size]
+                    val colors = listOf(
+                        scheme.primary to scheme.onPrimary,
+                        scheme.tertiary to scheme.onTertiary,
+                        scheme.secondary to scheme.onSecondary,
+                        scheme.primaryContainer to scheme.onPrimaryContainer,
+                        scheme.tertiaryContainer to scheme.onTertiaryContainer,
+                    )[index % 5]
                     BudgetStyleFundCard(
                         fund = f,
                         headerColor = colors.first,
@@ -144,59 +232,38 @@ fun FundsScreen(
                         onAdjust = {
                             adjustFundId = f.fund.id
                             adjustFundName = f.fund.name
-                            adjustAmount = ""
+                            adjustAmount = if (f.limitPaise() > 0L) {
+                                val r = f.limitPaise() / 100.0
+                                if (r == r.toLong().toDouble()) {
+                                    r.toLong().toString()
+                                } else {
+                                    String.format(java.util.Locale.US, "%.2f", r)
+                                }
+                            } else {
+                                ""
+                            }
                             showAdjust = true
                         },
                     )
                 }
             }
 
-            item {
-                Surface(
-                    onClick = { showCreate = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = Color.Transparent,
-                    border = BorderStroke(1.5.dp, scheme.outlineVariant),
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = stringResource(R.string.cd_add_fund),
-                            tint = scheme.onSurfaceVariant,
-                            modifier = Modifier.size(36.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(88.dp))
-            }
         }
-
-        FloatingActionButton(
-            onClick = { showCreate = true },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp),
-            shape = MaterialTheme.shapes.large,
-            containerColor = scheme.secondaryContainer,
-            contentColor = scheme.onSecondaryContainer,
-        ) {
-            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_add_fund))
-        }
+        // FAB lives beside the floating navbar (MainActivity FloatingBottomNav)
     }
 
     if (showCreate) {
         ModalBottomSheet(
             onDismissRequest = { showCreate = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
             Column(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 28.dp),
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("New fund", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -211,8 +278,8 @@ fun FundsScreen(
                 OutlinedTextField(
                     value = newAmount,
                     onValueChange = { newAmount = it },
-                    label = { Text("Opening amount ₹") },
-                    placeholder = { Text("0") },
+                    label = { Text("Fund amount ₹") },
+                    placeholder = { Text("e.g. 1500") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -244,25 +311,28 @@ fun FundsScreen(
         ModalBottomSheet(
             onDismissRequest = { showAdjust = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
             Column(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 28.dp),
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Adjust $adjustFundName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Edit $adjustFundName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Use + for credit, − for debit (e.g. 500 or -200)",
+                    "Set the fund amount (starting pot). Remaining = this amount + income − expenses on this fund.",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = adjustAmount,
                     onValueChange = { adjustAmount = it },
-                    label = { Text("Amount ₹") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    label = { Text("Fund amount ₹") },
+                    placeholder = { Text("e.g. 1500") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
@@ -278,7 +348,7 @@ fun FundsScreen(
                     enabled = adjustAmount.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
-                ) { Text("Apply") }
+                ) { Text("Save amount") }
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -300,6 +370,33 @@ fun FundsScreen(
 }
 
 @Composable
+private fun FundStatChip(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = scheme.surfaceContainerHighest,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(icon, null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/** Original envelope-style fund card: colored header + remaining + usage bar. */
+@Composable
 private fun BudgetStyleFundCard(
     fund: FundBalance,
     headerColor: Color,
@@ -307,14 +404,14 @@ private fun BudgetStyleFundCard(
     onOpen: () -> Unit,
     onAdjust: () -> Unit,
 ) {
-    val credited = fund.creditedPaise.coerceAtLeast(0L)
-    val debited = fund.debitedPaise.coerceAtLeast(0L)
-    val spentRatio = if (credited > 0) {
-        (debited.toFloat() / credited.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-    val left = credited - debited
+    val limit = fund.limitPaise()
+    val left = fund.remainingOfLimitPaise() // cash in pot
+    val spentRatio = fund.spentRatio() // empty portion of limit
+    val overspent = fund.isOverspent()
     val scheme = MaterialTheme.colorScheme
-    val remaining = (credited - debited).coerceAtLeast(0L)
+    val cardHeader = if (overspent) scheme.error else headerColor
+    val cardOnHeader = if (overspent) scheme.onError else onHeaderColor
+    val progressColor = if (overspent) scheme.error else headerColor
 
     Surface(
         onClick = onOpen,
@@ -326,7 +423,7 @@ private fun BudgetStyleFundCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
-                color = headerColor,
+                color = cardHeader,
             ) {
                 Row(
                     Modifier
@@ -340,22 +437,27 @@ private fun BudgetStyleFundCard(
                             fund.fund.name,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = onHeaderColor,
+                            color = cardOnHeader,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "${left.inr()} remaining",
+                            if (overspent) {
+                                "Over by ${(-fund.balancePaise).coerceAtLeast(0L).inr()} · of ${limit.inr()}"
+                            } else {
+                                "${left.inr()} left of ${limit.inr()}"
+                            },
                             style = MaterialTheme.typography.titleMedium,
-                            color = onHeaderColor.copy(alpha = 0.9f),
+                            color = cardOnHeader.copy(alpha = 0.9f),
                         )
                     }
                     Surface(
                         onClick = onAdjust,
                         shape = CircleShape,
-                        color = onHeaderColor.copy(alpha = 0.18f),
+                        // Soft wash of the header content color so the icon stays legible
+                        color = cardOnHeader.copy(alpha = 0.18f),
                     ) {
                         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Tune, null, tint = onHeaderColor, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Tune, null, tint = cardOnHeader, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -371,22 +473,22 @@ private fun BudgetStyleFundCard(
                         "${(spentRatio * 100).toInt()}%",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = scheme.onSurface,
+                        color = if (overspent) scheme.error else scheme.onSurface,
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { spentRatio },
+                    progress = { spentRatio.coerceAtMost(1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp),
-                    color = headerColor,
+                    color = progressColor,
                     trackColor = scheme.surfaceContainerHighest,
                     strokeCap = StrokeCap.Round,
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Credit ${credited.inr()} · Debit ${debited.inr()}",
+                    "In ${fund.creditedPaise.inr()} · Out ${fund.debitedPaise.inr()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )

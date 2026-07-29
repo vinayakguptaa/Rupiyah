@@ -1,0 +1,53 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+**/build/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/
+.externalNativeBuild/
+
+# Signing secrets — never commit real keystores or passwords
+keystore/*.jks
+keystore/*.keystore
+keystore.properties
+*.jks
+*.keystore
+
+# Environment / local secrets
+.env
+.env.*
+!.env.example
+!.env.example.*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Kotlin / tooling
+.kotlin/
+*.hprof
+
+# Build outputs
+apk/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Logs & temp
+*.log
+*.tmp
+*.swp
+*~
+
+# Grok / editor session artifacts (not product assets)
+.grok_*/
+.grok*
+
+# Optional local notes
+*.local.md

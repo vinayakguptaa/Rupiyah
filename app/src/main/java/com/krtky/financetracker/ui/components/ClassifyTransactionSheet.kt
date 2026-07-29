@@ -1,11 +1,13 @@
 package com.krtky.financetracker.ui.components
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -64,6 +66,7 @@ fun ClassifyTransactionSheet(
     var categoryId by remember { mutableStateOf<Long?>(null) }
     var fundId by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
+    var receiptUri by remember { mutableStateOf<Uri?>(null) }
     var saving by remember { mutableStateOf(false) }
 
     LaunchedEffect(transactionId) {
@@ -71,6 +74,7 @@ fun ClassifyTransactionSheet(
         categoryId = null
         fundId = null
         note = ""
+        receiptUri = null
         saving = false
     }
 
@@ -86,8 +90,9 @@ fun ClassifyTransactionSheet(
         Column(
             Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp)
+                .padding(bottom = 16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -201,6 +206,10 @@ fun ClassifyTransactionSheet(
                 minLines = 2,
                 shape = shapes.large,
             )
+            ReceiptAttachmentField(
+                localUri = receiptUri,
+                onUriChange = { receiptUri = it },
+            )
             Spacer(Modifier.height(4.dp))
             Row(
                 Modifier.fillMaxWidth(),
@@ -215,7 +224,7 @@ fun ClassifyTransactionSheet(
                         if (saving) return@Button
                         scope.launch {
                             saving = true
-                            vm.save(categoryId, fundId, note)
+                            vm.save(categoryId, fundId, note, receiptLocalUri = receiptUri)
                             NotificationManagerCompat.from(context)
                                 .cancel(10_000 + (transactionId.hashCode() and 0xFFFF))
                             onDismiss()

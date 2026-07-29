@@ -31,7 +31,20 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+
+/** ARGB long (with or without high alpha bits) → Compose [Color]. */
+fun categoryColor(argb: Long?): Color? {
+    if (argb == null) return null
+    val withAlpha = if ((argb ushr 24) == 0L) argb or 0xFF000000L else argb
+    return Color(withAlpha)
+}
+
+/** Readable icon tint on a solid category color fill. */
+fun onCategoryColor(color: Color): Color =
+    if (color.luminance() > 0.55f) Color.Black else Color.White
 
 object CategoryIcons {
     data class Entry(val id: String, val label: String, val icon: ImageVector)

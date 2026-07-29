@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#ffffff</color>
+
+    <!-- Widget picker previews (static Material 3–ish samples) -->
+    <color name="widget_preview_surface">#FFFBFE</color>
+    <color name="widget_preview_surface_variant">#E7E0EC</color>
+    <color name="widget_preview_primary_container">#E8DEF8</color>
+    <color name="widget_preview_on_primary_container">#1D192B</color>
+    <color name="widget_preview_on_surface">#1C1B1F</color>
+    <color name="widget_preview_on_surface_variant">#49454F</color>
+    <color name="widget_preview_income">#386A20</color>
+    <color name="widget_preview_expense">#BA1A1A</color>
+    <color name="widget_preview_outline">#79747E</color>
+</resources>

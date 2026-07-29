@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.viewmodel.TimeRange
 import java.text.SimpleDateFormat
 import java.util.Date

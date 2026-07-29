@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rupiyah — User Guide</title>
+<style>
+  @page { margin: 2cm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  h1 { font-size: 28pt; color: #0891b2; margin-bottom: 0; }
+  h2 { font-size: 18pt; color: #0e7490; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; margin-top: 32px; }
+  h3 { font-size: 14pt; color: #155e75; margin-top: 24px; }
+  p, li { color: #334155; }
+  .subtitle { font-size: 12pt; color: #64748b; margin-top: 4px; }
+  .step-box {
+    background: #f0f9ff;
+    border-left: 4px solid #0891b2;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .warning-box {
+    background: #fef2f2;
+    border-left: 4px solid #dc2626;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .tip-box {
+    background: #f0fdf4;
+    border-left: 4px solid #16a34a;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  ol, ul { padding-left: 24px; }
+  li { margin-bottom: 6px; }
+  code {
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11pt;
+  }
+  strong { color: #0f172a; }
+  .screenshot-placeholder {
+    background: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    color: #94a3b8;
+    font-style: italic;
+    margin: 12px 0;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th, td { padding: 8px 12px; text-align: left; border: 1px solid #e2e8f0; }
+  th { background: #f1f5f9; font-weight: 600; }
+  .toc { background: #f8fafc; border-radius: 8px; padding: 16px 24px; margin: 20px 0; }
+  .toc ul { list-style: none; padding: 0; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: #0891b2; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .page-break { page-break-before: always; }
+  @media print {
+    body { padding: 0; }
+    .page-break { page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Rupiyah</h1>
+<p class="subtitle">The complete idiot-proof guide to setting up your finance tracker</p>
+
+<div class="toc">
+<h3>What's inside</h3>
+<ul>
+  <li><a href="#permissions">1. Granting app permissions</a></li>
+  <li><a href="#gmail">2. Gmail IMAP setup (auto-read bank emails)</a></li>
+  <li><a href="#sms">3. SMS transaction setup</a></li>
+  <li><a href="#location">4. Location tracking</a></li>
+  <li><a href="#llm">5. LLM / AI setup (optional but recommended)</a></li>
+  <li><a href="#trusted">6. Adding trusted senders</a></li>
+  <li><a href="#first">7. Your first transaction</a></li>
+  <li><a href="#faq">8. Common problems &amp; fixes</a></li>
+</ul>
+</div>
+
+<!-- ============== PERMISSIONS ============== -->
+<h2 id="permissions">1. Granting app permissions</h2>
+
+<p>Rupiyah needs a few permissions to work. Don't worry — they're all used for specific features you can turn on/off.</p>
+
+<div class="step-box">
+<strong>When you first open the app:</strong>
+<ol>
+  <li>Tap <strong>"Allow"</strong> if your phone asks about <strong>Notifications</strong>. This lets Rupiyah buzz you when a new transaction is found.</li>
+  <li>That's it for now! The rest you'll turn on when you need them.</li>
+</ol>
+</div>
+
+<h3>Notifications permission</h3>
+<p>Required for: <em>alerting you when new transactions are detected</em></p>
+<ul>
+  <li><strong>Android 13+</strong>: The app will ask you automatically. Tap <strong>Allow</strong>.</li>
+  <li><strong>Older Android</strong>: Notifications are on by default. If they're off, go to <strong>Settings → Apps → Rupiyah → Notifications</strong> and turn them on.</li>
+</ul>
+
+<h3>SMS permission</h3>
+<p>Required for: <em>reading bank SMS messages</em></p>
+<ol>
+  <li>In Rupiyah, go to <strong>Settings → SMS</strong>.</li>
+  <li>Toggle <strong>"Enable SMS monitoring"</strong> ON.</li>
+  <li>Your phone will pop up a permission request — tap <strong>Allow</strong>.</li>
+  <li>If you accidentally deny it, go to <strong>Phone Settings → Apps → Rupiyah → Permissions → SMS</strong> and set it to <strong>Allow</strong>.</li>
+</ol>
+
+<h3>Location permission</h3>
+<p>Required for: <em>tagging transactions with where you made them</em></p>
+<ol>
+  <li>In Rupiyah, go to <strong>Settings → Location</strong>.</li>
+  <li>Toggle <strong>"Enable location tracking"</strong> ON.</li>
+  <li>Your phone will ask for permission — choose <strong>"Allow all the time"</strong> (needed for background tracking).</li>
+  <li>If you pick "Only while using the app", location will only work when Rupiyah is open.</li>
+</ol>
+
+<h3>Ignore battery optimization</h3>
+<p>Required for: <em>keeping the email monitor running in the background</em></p>
+<ol>
+  <li>In Rupiyah, go to <strong>Settings → Email</strong>.</li>
+  <li>Toggle <strong>"Live email monitor"</strong> ON.</li>
+  <li>The app will ask you to disable battery optimization — tap <strong>"Allow"</strong>.</li>
+  <li>If you skip this, your phone might kill the email service to save battery, and you'll miss transactions.</li>
+</ol>
+
+<h3>Picture-in-picture / overlay permission</h3>
+<p>Required for: <em>quickly categorizing transactions without leaving other apps</em></p>
+<ol>
+  <li>Your first time classifying a transaction, Rupiyah will ask for <strong>"Display over other apps"</strong> permission.</li>
+  <li>Tap <strong>Allow</strong> to let the classification pop-up work.</li>
+</ol>
+
+<!-- ============== GMAIL ============== -->
+<div class="page-break"></div>
+<h2 id="gmail">2. Gmail IMAP setup (auto-read bank emails)</h2>
+
+<p>This is how Rupiyah reads your bank / wallet emails automatically. You'll need a <strong>Gmail App Password</strong> — think of it like a special spare key for the app only.</p>
+
+<h3>Step 1: Turn on 2-Step Verification (one time)</h3>
+<ol>
+  <li>Go to <a href="https://myaccount.google.com/">myaccount.google.com</a> on any browser.</li>
+  <li>Click <strong>Security</strong> on the left.</li>
+  <li>Under <strong>"How you sign in to Google"</strong>, find <strong>2-Step Verification</strong>.</li>
+  <li>Click <strong>Turn on</strong> and follow the steps. (You only do this once, and it makes your account much safer.)</li>
+</ol>
+
+<div class="warning-box">
+<strong>Important:</strong> App Passwords only work AFTER you turn on 2-Step Verification. Do this step first.
+</div>
+
+<h3>Step 2: Generate an App Password</h3>
+<ol>
+  <li>Go to <a href="https://myaccount.google.com/apppasswords">myaccount.google.com/apppasswords</a>.</li>
+  <li>Sign in again if Google asks.</li>
+  <li>Under <strong>"Select app"</strong>, choose <strong>Mail</strong>.</li>
+  <li>Under <strong>"Select device"</strong>, choose <strong>Other (Custom name)</strong>.</li>
+  <li>Type <strong>Rupiyah</strong> and click <strong>Generate</strong>.</li>
+  <li>A yellow box will appear with a 16-character password (looks like <code>abcd efgh ijkl mnop</code>).</li>
+  <li>Copy it! You won't see it again.</li>
+</ol>
+
+<div class="tip-box">
+💡 <strong>Tip:</strong> The spaces don't matter. Rupiyah strips them automatically.
+</div>
+
+<h3>Step 3: Enter it in Rupiyah</h3>
+<ol>
+  <li>Open Rupiyah and go to <strong>Settings → Email</strong>.</li>
+  <li>Tap <strong>Gmail IMAP</strong>.</li>
+  <li>Enter your full Gmail address (e.g., <code>yourname@gmail.com</code>).</li>
+  <li>Paste the 16-character App Password.</li>
+  <li>Tap <strong>Save</strong>.</li>
+  <li>Tap <strong>Test Connection</strong> to make sure it works. You should see a green checkmark.</li>
+  <li>If you want the app to check emails in the background, toggle <strong>"Live email monitor"</strong> ON.</li>
+</ol>
+
+<h3>Step 4: Wait for bank emails</h3>
+<p>Rupiyah checks for new emails every 15 minutes. When it finds a transaction email from one of your <strong>trusted senders</strong> (you set those up later), it'll show up in the app.</p>
+
+<div class="warning-box">
+<strong>Not working?</strong> See the <a href="#faq">Common problems</a> section at the end.
+</div>
+
+<!-- ============== SMS ============== -->
+<div class="page-break"></div>
+<h2 id="sms">3. SMS transaction setup</h2>
+
+<p>If your bank sends SMS alerts, Rupiyah can read those too. Works great alongside email.</p>
+
+<h3>Step 1: Find your bank's SMS sender ID</h3>
+<p>Open your SMS app and look for a message from your bank. The <strong>sender name</strong> is at the top — it might be something like:</p>
+<ul>
+  <li><code>HDFCBK</code> for HDFC Bank</li>
+  <li><code>SBIBANK</code> for SBI</li>
+  <li><code>ICICIBK</code> for ICICI</li>
+  <li><code>Paytm</code> or <code>PhonePe</code> for wallets</li>
+  <li>etc.</li>
+</ul>
+
+<h3>Step 2: Enable SMS in the app</h3>
+<ol>
+  <li>Open Rupiyah and go to <strong>Settings → SMS</strong>.</li>
+  <li>Toggle <strong>"Enable SMS monitoring"</strong> ON.</li>
+  <li>Grant the SMS permission when your phone asks.</li>
+  <li>Under <strong>"Trusted SMS senders"</strong>, tap <strong>Add</strong>.</li>
+  <li>Type the sender ID you found (e.g., <code>HDFCBK</code>).</li>
+  <li>Tap <strong>Save</strong>.</li>
+</ol>
+
+<p>Done! Any SMS from those senders will be picked up automatically.</p>
+
+<div class="tip-box">
+💡 <strong>Tip:</strong> You can add multiple senders. Add one for each bank or wallet you use.
+</div>
+
+<!-- ============== LOCATION ============== -->
+<h2 id="location">4. Location tracking</h2>
+
+<p>Rupiyah can remember <strong>where</strong> you made each transaction. Handy for seeing "oh, I spent ₹500 at that shop near the office again".</p>
+
+<h3>Turn it on</h3>
+<ol>
+  <li>Open Rupiyah and go to <strong>Settings → Location</strong>.</li>
+  <li>Toggle <strong>"Enable location tracking"</strong> ON.</li>
+  <li>Choose <strong>"Allow all the time"</strong> for the best experience (the app logs location every 15 minutes in the background).</li>
+</ol>
+
+<h3>How it works</h3>
+<ul>
+  <li>The app records your location every 15 minutes (only when you're moving).</li>
+  <li>When a transaction comes in around that time, the nearest location is attached to it.</li>
+  <li>You can see the location on the transaction detail screen.</li>
+  <li>Location history is stored <strong>only on your phone</strong> and is never sent anywhere.</li>
+</ul>
+
+<h3>To turn it off</h3>
+<p>Just go back to <strong>Settings → Location</strong> and toggle it OFF. All your saved locations stay in the app unless you clear the data.</p>
+
+<!-- ============== LLM ============== -->
+<div class="page-break"></div>
+<h2 id="llm">5. LLM / AI setup (optional but recommended)</h2>
+
+<p>Rupiyah uses AI to understand messy bank emails. For example, if your bank sends "Trf to XYZ Rs 500" vs "UPI/DBT/1234 ABC", the AI figures out the amount, who it went to, and what category. Without AI, the app uses rule-based matching which works for most standard formats.</p>
+
+<h3>Option A: Groq (free, recommended)</h3>
+<ol>
+  <li>Go to <a href="https://console.groq.com/">console.groq.com</a> and create an account.</li>
+  <li>Click <strong>API Keys</strong> on the left, then <strong>Create API Key</strong>.</li>
+  <li>Give it a name like "Rupiyah" and copy the key.</li>
+  <li>Open Rupiyah → <strong>Settings → Intelligence → LLM Providers</strong>.</li>
+  <li>Enter:
+    <ul>
+      <li><strong>Base URL:</strong> <code>https://api.groq.com/openai/v1</code></li>
+      <li><strong>Model:</strong> <code>llama-3.3-70b-versatile</code></li>
+      <li><strong>API key:</strong> (paste the key you copied)</li>
+    </ul>
+  </li>
+  <li>Tap <strong>Save</strong>.</li>
+</ol>
+
+<h3>Option B: OpenAI (paid)</h3>
+<ol>
+  <li>Go to <a href="https://platform.openai.com/">platform.openai.com</a> and create an account.</li>
+  <li>Add billing (you'll need a credit card).</li>
+  <li>Go to <a href="https://platform.openai.com/api-keys">API keys</a> and click <strong>Create new secret key</strong>.</li>
+  <li>Copy the key (starts with <code>sk-...</code>).</li>
+  <li>In Rupiyah:
+    <ul>
+      <li><strong>Base URL:</strong> <code>https://api.openai.com/v1</code></li>
+      <li><strong>Model:</strong> <code>gpt-4o-mini</code> (cheapest, works great)</li>
+      <li><strong>API key:</strong> (paste the key)</li>
+    </ul>
+  </li>
+  <li>Tap <strong>Save</strong>.</li>
+</ol>
+
+<div class="tip-box">
+💡 <strong>Costs are tiny.</strong> Processing hundreds of transactions costs a few cents per month. Groq's free tier is usually enough.
+</div>
+
+<h3>What is the AI used for?</h3>
+<ul>
+  <li>Extracting amount, merchant, and category from bank emails/SMS</li>
+  <li>When the AI is unsure, it sends you a <strong>notification</strong> asking you to confirm</li>
+  <li>You can always edit transactions manually</li>
+</ul>
+
+<!-- ============== TRUSTED SENDERS ============== -->
+<h2 id="trusted">6. Adding trusted senders</h2>
+
+<p>Rupiyah only reads emails from people/banks you trust. This keeps your inbox private.</p>
+
+<ol>
+  <li>Open Rupiyah → <strong>Settings → Email → Trusted senders</strong>.</li>
+  <li>Tap the <strong>+</strong> icon.</li>
+  <li>Type an email address or pattern. Examples:
+    <ul>
+      <li><code>alerts@hdfcbank.com</code></li>
+      <li><code>noreply@paytm.com</code></li>
+      <li><code>@icicibank.com</code> (caters all emails from ICICI)</li>
+      <li><code>@famapp.in</code> (FamPay)</li>
+    </ul>
+  </li>
+  <li>Tap <strong>Save</strong>.</li>
+</ol>
+
+<div class="tip-box">
+💡 <strong>Tip:</strong> Check your Gmail inbox for transaction emails and use those sender addresses.
+</div>
+
+<!-- ============== FIRST TRANSACTION ============== -->
+<div class="page-break"></div>
+<h2 id="first">7. Your first transaction</h2>
+
+<p>Once everything above is set up, here's what happens:</p>
+
+<ol>
+  <li>Make a payment with your card, UPI, or cash.</li>
+  <li>Your bank sends you an email or SMS (give it a minute).</li>
+  <li>Rupiyah picks it up on the next check (within 15 minutes, or instantly with Live Monitor).</li>
+  <li>If AI is set up, it auto-classifies the transaction. You'll get a notification.</li>
+  <li>If AI isn't set up or is unsure, you'll get a notification asking you to categorize it.</li>
+  <li>Open the app → the <strong>Home</strong> screen shows your balance and recent transactions.</li>
+  <li>Tap any transaction to see details, edit the amount, change the category, or add notes.</li>
+</ol>
+
+<h3>Adding a manual transaction</h3>
+<p>For cash payments or anything the app didn't catch:</p>
+<ol>
+  <li>From the Home screen, tap the <strong>+</strong> button.</li>
+  <li>Enter the amount, description, and category.</li>
+  <li>Choose <strong>Cash</strong> or a specific bank account.</li>
+  <li>Tap <strong>Save</strong>.</li>
+</ol>
+
+<h3>Understanding categories &amp; envelope funds</h3>
+<ul>
+  <li><strong>Categories</strong> are labels like "Food", "Transport", "Shopping" — you can add/edit/delete them in Settings.</li>
+  <li><strong>Envelope funds</strong> let you set monthly budgets. For example, create a "Food" fund of ₹6000 and track how much you've spent against it.</li>
+  <li>When a transaction comes in, you can assign it to a fund. The fund balance updates automatically.</li>
+</ul>
+
+<!-- ============== FAQ ============== -->
+<div class="page-break"></div>
+<h2 id="faq">8. Common problems &amp; fixes</h2>
+
+<table>
+  <tr>
+    <th>Problem</th>
+    <th>Fix</th>
+  </tr>
+  <tr>
+    <td>"Login failed" when testing Gmail connection</td>
+    <td>You used your regular Gmail password, not a 16-character <strong>App Password</strong>. Go back to <a href="#gmail">Step 2</a> and generate one.</td>
+  </tr>
+  <tr>
+    <td>"Web login required" error</td>
+    <td>Google wants you to prove it's you. Open <strong>myaccount.google.com</strong> in Chrome, sign in, and do any security challenge. Then try again.</td>
+  </tr>
+  <tr>
+    <td>No transactions showing up</td>
+    <td>
+      • Wait 15 minutes — the app checks periodically.<br>
+      • Make sure you <a href="#trusted">added the sender</a> as a <strong>trusted sender</strong>.<br>
+      • Make sure the bank email went to your <strong>Primary</strong> inbox (not Spam or Promotions).<br>
+      • Go to Settings → Email and tap <strong>Test Connection</strong>.
+    </td>
+  </tr>
+  <tr>
+    <td>SMS not being picked up</td>
+    <td>
+      • Did you <a href="#sms">enable SMS</a> in Settings?<br>
+      • Did you grant the SMS permission? (Check Phone Settings → Apps → Rupiyah → Permissions)<br>
+      • Did you add the SMS sender ID (like <code>HDFCBK</code>) under Trusted SMS senders?
+    </td>
+  </tr>
+  <tr>
+    <td>Location not showing on transactions</td>
+    <td>
+      • Make sure location is <strong>enabled</strong> in Settings → Location.<br>
+      • Make sure you granted "Allow all the time" permission.<br>
+      • Location is logged every 15 minutes — the transaction needs to happen near that time.
+    </td>
+  </tr>
+  <tr>
+    <td>App is draining battery</td>
+    <td>
+      • Turn off <strong>Live email monitor</strong> if you don't need instant checking.<br>
+      • Turn off <strong>Location tracking</strong> if you don't need it.<br>
+      • Set the email poll interval to 30+ minutes (advanced settings).
+    </td>
+  </tr>
+  <tr>
+    <td>"IMAP error" or "Provider packing" error</td>
+    <td>This is a rare app bug. Make sure you're on the latest version. If it persists, reach out to the developer.</td>
+  </tr>
+  <tr>
+    <td>AI isn't classifying transactions</td>
+    <td>
+      • Did you <a href="#llm">add an API key</a>?<br>
+      • Check the model name — is it typed exactly?<br>
+      • Check your Groq/OpenAI account — do you have credits?<br>
+      • Go to Settings → Intelligence and tap <strong>Test API</strong>.
+    </td>
+  </tr>
+  <tr>
+    <td>How do I delete my data?</td>
+    <td>Go to <strong>Settings → Data → Clear all data</strong>. Or uninstall the app (but backup first if you want to keep your data).</td>
+  </tr>
+</table>
+
+<h3>Still stuck?</h3>
+<ul>
+  <li>Check the <strong>docs/</strong> folder in the app's source for more detailed guides</li>
+  <li>Open an issue on the GitHub repository describing your problem</li>
+  <li>Include the app version (found at the bottom of the Settings screen)</li>
+</ul>
+
+<hr>
+<p style="text-align:center; color:#94a3b8; font-size:10pt;">
+  Rupiyah — Finance Tracker · Apache 2.0 License
+</p>
+
+</body>
+</html>

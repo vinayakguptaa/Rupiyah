@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_initial_layout"
+    android:minWidth="180dp"
+    android:minHeight="180dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="3"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    android:label="@string/widget_funds_label"
+    android:previewLayout="@layout/widget_funds_preview"
+    android:description="@string/widget_funds_description" />

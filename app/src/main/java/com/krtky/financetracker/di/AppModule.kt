@@ -1,0 +1,31 @@
+package com.krtky.financetracker.di
+
+import android.content.Context
+import androidx.room.Room
+import com.krtky.financetracker.data.local.db.AppDatabase
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideDb(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, "finance_tracker.db")
+            .addMigrations(
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6,
+            )
+            // If a newer build raised the version and an older APK is installed later,
+            // wipe rather than crash with "migration from X to Y was required".
+            .fallbackToDestructiveMigrationOnDowngrade()
+            .build()
+}
