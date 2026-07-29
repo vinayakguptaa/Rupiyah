@@ -1,83 +1,59 @@
-<p align="center">
-  <img src="docs/images/app-icon.png" width="96" alt="Rupiyah app icon" />
-</p>
+# Rupiyah
 
-<h1 align="center">Rupiyah</h1>
+**Android app that keeps a personal ledger of your money in ₹.**  
+Open source · offline-first · no bank login · [Apache 2.0](LICENSE)
 
-<p align="center">
-  <strong>Your money, on your phone — open source, INR-first, no bank login required</strong><br/>
-  Auto-import UPI &amp; bank alerts · envelope budgets · smart classify · Material&nbsp;3
-</p>
-
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/Android-8.0%2B-3ddc84" alt="Android 8+" />
-  <img src="https://img.shields.io/badge/Kotlin-2.0-blueviolet" alt="Kotlin" />
-  <img src="https://img.shields.io/badge/Compose-Material%203-7F52FF" alt="Compose" />
-  <img src="https://img.shields.io/badge/version-1.4.1-informational" alt="Version" />
-  <img src="https://img.shields.io/badge/offline--first-yes-success" alt="Offline first" />
-</p>
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+![Android 8+](https://img.shields.io/badge/Android-8.0%2B-3ddc84)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0-blueviolet)
+![version](https://img.shields.io/badge/version-1.4.1-informational)
 
 <p align="center">
-  <img src="docs/images/screenshot-home.png" alt="Rupiyah home dashboard" width="280" />
+  <img src="docs/images/app-icon.png" width="72" alt="Rupiyah app icon" />
 </p>
 
 ---
 
-## Why Rupiyah?
+## What this app does
 
-Bank apps show *their* ledger. Spreadsheets rot. Most “money apps” want your net banking password or a cloud subscription.
+Rupiyah is a **personal expense and income tracker** for day-to-day money in India. It answers: *what did I spend, where, from which wallet, and how does that fit my budget?*
 
-**Rupiyah is different:**
+It does **not** connect to your bank account or UPI app as a client. It does **not** move money. It only records and organises spends/income you already made.
 
-- **No bank login** — reads the **emails and SMS you already get** (UPI, cards, wallets)
-- **Data stays on device** — Room database + encrypted prefs; you export when *you* want
-- **Built for India** — ₹ formatting, UPI/cash split, wallet labels, trusted bank senders
-- **Open source** — Apache 2.0; audit the parser, the LLM calls, the backup format
+### How money gets into the app
 
----
+1. **Auto from bank alerts (main path)**  
+   When you pay with UPI/card/wallet, your bank or app usually emails or SMS’s you. Rupiyah can watch those messages (Gmail / IMAP and optional SMS), keep only senders you trust, then **parse amount + merchant** into a transaction. Parsing uses local rules first; messy texts need an **AI (LLM) API key** — email/SMS auto-import requires that AI to be set up.
 
-## Features
+2. **Manual entry**  
+   Tap **+**, enter an amount on the numpad, pick expense or income, category, fund, account, notes, optional receipt. Works with **no** email, SMS, or AI.
 
-### Capture every rupee — automatically
+3. **Restore**  
+   Import a previous JSON backup (includes transactions and settings).
 
-| Feature | What you get |
+### What you can do once data is in
+
+| Area | What it is for |
 | --- | --- |
-| **Gmail import** | Google Sign-In (`gmail.readonly`) *or* IMAP + App Password |
-| **Live mail watch** | Foreground monitor + IMAP IDLE / Gmail history so new alerts show up without constant manual sync |
-| **Trusted senders** | Only mail from banks/wallets you allow becomes a transaction |
-| **SMS ingest** | Optional bank SMS (sender IDs + keywords) |
-| **Rules + LLM** | Deterministic amount/merchant parse first; optional **OpenAI-compatible** LLM (Groq, OpenAI, local) for messy texts |
-| **Manual log** | Fast cash/UPI entry with numpad, categories, funds, notes, receipts |
+| **Home** | Month net balance, income vs expense, shortcuts to funds/accounts/categories, spending ring chart |
+| **Activity** | Full list of transactions — search, filters (expense/income, etc.), export |
+| **Funds** | Envelope-style budgets (e.g. Needs / Wants / goals); assign spends; transfer between funds |
+| **Categories** | Tag spends (Food, Travel, …); see totals and % for the period |
+| **Accounts** | Cash vs digital; named banks/wallets; default digital account for new spends |
+| **Classify** | New imports often need a category/fund — notification or in-app prompt so you can assign quickly |
+| **Backup / Sheets** | Export CSV or full JSON backup; optional one-way sync to Google Sheets |
+| **Widgets** | Home-screen glance + quick-add |
 
-### Understand spending — at a glance
+### What stays on your phone
 
-| Feature | What you get |
-| --- | --- |
-| **Home dashboard** | Balance snapshot, time ranges, recent activity, pending classify |
-| **Activity feed** | Search, filters, sort, month grouping |
-| **Envelope funds** | Allocate into Needs / Wants / goals; ring chart + ledger; transfer between funds |
-| **Categories** | Full icon set, colors, edit/delete; category drill-down |
-| **Accounts** | Cash vs digital, named banks/wallets, default payment method |
-| **Home widgets** | Overview, spending, funds, recent txns, quick-add |
+Transactions live in a local **Room** database. API keys, mail passwords, and tokens sit in **EncryptedSharedPreferences**. Nothing is required to live on a Rupiyah server (there isn’t one). You choose when to export.
 
-### Stay in control — privacy by design
+### What it is *not*
 
-| Feature | What you get |
-| --- | --- |
-| **On-device storage** | Transactions live in Room; secrets in **EncryptedSharedPreferences** |
-| **Classify notifications** | Tap a category or fund from the notification / overlay |
-| **Optional location** | Match a spend to where you were (off by default) |
-| **Google Sheets** | One-way export workbook (Dashboard, categories, merchants…) |
-| **CSV + JSON backup** | Export/restore including setup (treat backups as secrets) |
-| **Theme** | Material You, presets, custom primary/secondary/tertiary, dark mode |
-| **Onboarding** | Guided setup: permissions, email, SMS, LLM — skippable |
-
-### Developer-friendly extras
-
-- **Dev menu** — tap version 7× for system prompt, classify delay, status helpers  
-- **Paste-test inbox** — debug parsers without waiting for real mail  
-- **R8 release builds** — minify + shrink  
+- Not a bank, wallet, or UPI app  
+- Not tax software or investment tracking  
+- Not a cloud finance SaaS — no account with us to sign up for  
+- Auto-parse quality depends on your bank’s message format and (for messy text) your LLM key  
 
 ---
 
@@ -93,36 +69,74 @@ Bank apps show *their* ledger. Spreadsheets rot. Most “money apps” want your
   <img src="docs/images/screenshot-accounts.png" alt="Accounts" width="200" />
 </p>
 
-<p align="center"><em>Home · Activity · Categories · Accounts (device screenshots)</em></p>
+<p align="center"><em>Home · Activity · Categories · Accounts</em></p>
 
 ---
 
-## Feature map (where things live)
+## Requirements for optional auto-import
+
+| Feature | Needs |
+| --- | --- |
+| Manual transactions | Nothing extra |
+| Email bank alerts | Gmail Sign-In *or* IMAP + App Password; **trusted senders**; **AI helper** (API key) on |
+| SMS bank alerts | SMS permission; sender IDs/keywords; **AI helper** on |
+| Google Sheets export | Google Sign-In + spreadsheet id |
+| LLM parse | OpenAI-compatible endpoint (Groq, OpenAI, local, etc.) — key stored on device |
+
+Setup notes: [docs/OPENAI_API_KEY.md](docs/OPENAI_API_KEY.md) · [docs/GMAIL_IMAP.md](docs/GMAIL_IMAP.md)
+
+---
+
+## App map
 
 ```
-Home          → balances, charts, pending, shortcuts
+Home          → month summary, charts, shortcuts
 Activity      → all transactions, search & filters
 Funds         → envelopes, transfers, fund detail
 + (FAB)       → log cash / digital spend or income
-Settings      → email, SMS, LLM, sheets, theme, backup, accounts, categories
+Settings      → email, SMS, AI, sheets, theme, backup, accounts, categories
 Widgets       → home-screen glance + quick add
 ```
 
 ---
 
-## Quick start (users)
+## Quick start
 
 1. Install a [release APK](https://github.com/krtky/finance-tracker/releases) or [build from source](#build-from-source).
-2. Open **Settings → Profile** and set your display name.
-3. **Settings → Intelligence → LLM Providers** — paste an API key  
-   → [docs/OPENAI_API_KEY.md](docs/OPENAI_API_KEY.md)
-4. **Settings → Email** — Google Sign-In *or* IMAP App Password  
-   → [docs/GMAIL_IMAP.md](docs/GMAIL_IMAP.md)
-5. Add **Trusted senders** for your banks and wallets.
-6. Optionally enable **SMS transactions** and list sender IDs.
-7. Add **Bank accounts** under Money for clear labels on each spend.
+2. Open the app — you can **skip** setup and only log spends manually.
+3. For auto-import: set **AI (LLM) API key** → connect **email** and/or **SMS** → add **trusted bank senders**.
+4. Optionally add **accounts** (wallets/banks) and **funds** for budgets.
+5. Backup from **Settings** when you want a portable copy.
 
-Longer walkthrough: [docs/Rupiyah User Guide.pdf](docs/Rupiyah%20User%20Guide.pdf)
+User guide: [docs/Rupiyah User Guide.pdf](docs/Rupiyah%20User%20Guide.pdf)
+
+---
+
+## Feature list (detail)
+
+**Ingest**
+
+- Gmail (`gmail.readonly`) or IMAP + App Password; live watch where supported  
+- Trusted-sender allowlist only  
+- Optional SMS by sender ID / keywords  
+- Rules parser + LLM for messy messages  
+- Manual numpad entry (amount, type, category, fund, account, receipt)
+
+**Organise & review**
+
+- Home dashboard (net, income/expense, category ring)  
+- Activity feed with filters and CSV export  
+- Envelope funds + transfers  
+- Categories and payment accounts (cash / digital)  
+- Classify notifications / overlay  
+- Optional location stamp on spends  
+- Theme: Material You, presets, custom colours, dark mode  
+- JSON backup/restore; Google Sheets one-way export  
+
+**Dev extras**
+
+- Tap version **7×** on Settings for system prompt, classify delay, status tools  
+- Paste-test path for parsers without waiting for real mail
 
 ---
 
