@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero-banner.jpg" alt="Rupiyah — personal finance tracker" width="100%" />
+  <img src="docs/images/screenshot-home.png" alt="Rupiyah home dashboard" width="280" />
 </p>
 
 ---
@@ -84,14 +84,16 @@ Bank apps show *their* ledger. Spreadsheets rot. Most “money apps” want your
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/screenshot-home.jpg" alt="Home dashboard" width="260" />
+  <img src="docs/images/screenshot-home.png" alt="Home dashboard" width="200" />
   &nbsp;
-  <img src="docs/images/screenshot-funds.jpg" alt="Envelope funds" width="260" />
+  <img src="docs/images/screenshot-activity.png" alt="Activity feed" width="200" />
   &nbsp;
-  <img src="docs/images/screenshot-transactions.jpg" alt="Transactions" width="260" />
+  <img src="docs/images/screenshot-categories.png" alt="Categories" width="200" />
+  &nbsp;
+  <img src="docs/images/screenshot-accounts.png" alt="Accounts" width="200" />
 </p>
 
-<p align="center"><em>Marketing previews — UI styling may differ slightly from your build. Replace with real device shots when you ship.</em></p>
+<p align="center"><em>Home · Activity · Categories · Accounts (device screenshots)</em></p>
 
 ---
 
