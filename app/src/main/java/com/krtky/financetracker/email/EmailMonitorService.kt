@@ -23,6 +23,7 @@ import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.email.EmailSource
 import com.krtky.financetracker.data.email.GmailApiClient
 import com.krtky.financetracker.data.email.ImapEmailClient
+import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.TrustedSenderRepository
 import com.krtky.financetracker.ui.MainActivity
@@ -43,6 +44,7 @@ import javax.inject.Inject
  * Foreground mail watcher.
  * - IMAP: continuous IDLE + backup poll of the full inbox path
  * - Gmail OAuth: mailbox history watch — only process new trusted-sender mail
+ * Requires AI helper ready ([SecureStore.isLlmReady]) to parse mail into spends.
  */
 @AndroidEntryPoint
 class EmailMonitorService : Service() {
@@ -51,6 +53,7 @@ class EmailMonitorService : Service() {
     @Inject lateinit var gmailApi: GmailApiClient
     @Inject lateinit var ingest: EmailIngestService
     @Inject lateinit var userPreferences: UserPreferences
+    @Inject lateinit var secureStore: SecureStore
     @Inject lateinit var trustedSenderRepository: TrustedSenderRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -114,6 +117,11 @@ class EmailMonitorService : Service() {
                 if (!enabled || !mailConfigured()) {
                     updateStatus("Paused — enable in Settings")
                     delay(20_000)
+                    continue
+                }
+                if (!secureStore.isLlmReady()) {
+                    updateStatus("Paused — set up AI helper")
+                    delay(30_000)
                     continue
                 }
                 if (trustedSenderRepository.getEnabled().isEmpty()) {

@@ -5,8 +5,8 @@
 <h1 align="center">Rupiyah</h1>
 
 <p align="center">
-  <strong>Open-source personal finance tracker for Android (INR)</strong><br/>
-  Auto-import bank &amp; wallet mail · envelope funds · categories · optional LLM extraction
+  <strong>Your money, on your phone — open source, INR-first, no bank login required</strong><br/>
+  Auto-import UPI &amp; bank alerts · envelope budgets · smart classify · Material&nbsp;3
 </p>
 
 <p align="center">
@@ -15,11 +15,69 @@
   <img src="https://img.shields.io/badge/Kotlin-2.0-blueviolet" alt="Kotlin" />
   <img src="https://img.shields.io/badge/Compose-Material%203-7F52FF" alt="Compose" />
   <img src="https://img.shields.io/badge/version-1.4.1-informational" alt="Version" />
+  <img src="https://img.shields.io/badge/offline--first-yes-success" alt="Offline first" />
 </p>
 
 <p align="center">
   <img src="docs/images/hero-banner.jpg" alt="Rupiyah — personal finance tracker" width="100%" />
 </p>
+
+---
+
+## Why Rupiyah?
+
+Bank apps show *their* ledger. Spreadsheets rot. Most “money apps” want your net banking password or a cloud subscription.
+
+**Rupiyah is different:**
+
+- **No bank login** — reads the **emails and SMS you already get** (UPI, cards, wallets)
+- **Data stays on device** — Room database + encrypted prefs; you export when *you* want
+- **Built for India** — ₹ formatting, UPI/cash split, wallet labels, trusted bank senders
+- **Open source** — Apache 2.0; audit the parser, the LLM calls, the backup format
+
+---
+
+## Features
+
+### Capture every rupee — automatically
+
+| Feature | What you get |
+| --- | --- |
+| **Gmail import** | Google Sign-In (`gmail.readonly`) *or* IMAP + App Password |
+| **Live mail watch** | Foreground monitor + IMAP IDLE / Gmail history so new alerts show up without constant manual sync |
+| **Trusted senders** | Only mail from banks/wallets you allow becomes a transaction |
+| **SMS ingest** | Optional bank SMS (sender IDs + keywords) |
+| **Rules + LLM** | Deterministic amount/merchant parse first; optional **OpenAI-compatible** LLM (Groq, OpenAI, local) for messy texts |
+| **Manual log** | Fast cash/UPI entry with numpad, categories, funds, notes, receipts |
+
+### Understand spending — at a glance
+
+| Feature | What you get |
+| --- | --- |
+| **Home dashboard** | Balance snapshot, time ranges, recent activity, pending classify |
+| **Activity feed** | Search, filters, sort, month grouping |
+| **Envelope funds** | Allocate into Needs / Wants / goals; ring chart + ledger; transfer between funds |
+| **Categories** | Full icon set, colors, edit/delete; category drill-down |
+| **Accounts** | Cash vs digital, named banks/wallets, default payment method |
+| **Home widgets** | Overview, spending, funds, recent txns, quick-add |
+
+### Stay in control — privacy by design
+
+| Feature | What you get |
+| --- | --- |
+| **On-device storage** | Transactions live in Room; secrets in **EncryptedSharedPreferences** |
+| **Classify notifications** | Tap a category or fund from the notification / overlay |
+| **Optional location** | Match a spend to where you were (off by default) |
+| **Google Sheets** | One-way export workbook (Dashboard, categories, merchants…) |
+| **CSV + JSON backup** | Export/restore including setup (treat backups as secrets) |
+| **Theme** | Material You, presets, custom primary/secondary/tertiary, dark mode |
+| **Onboarding** | Guided setup: permissions, email, SMS, LLM — skippable |
+
+### Developer-friendly extras
+
+- **Dev menu** — tap version 7× for system prompt, classify delay, status helpers  
+- **Paste-test inbox** — debug parsers without waiting for real mail  
+- **R8 release builds** — minify + shrink  
 
 ---
 
@@ -33,26 +91,20 @@
   <img src="docs/images/screenshot-transactions.jpg" alt="Transactions" width="260" />
 </p>
 
-<p align="center"><em>Marketing previews — UI styling may differ slightly from your build.</em></p>
+<p align="center"><em>Marketing previews — UI styling may differ slightly from your build. Replace with real device shots when you ship.</em></p>
 
 ---
 
-## Why Rupiyah?
+## Feature map (where things live)
 
-Most money apps lock your data in the cloud. **Rupiyah keeps finance data on your device**, pulls transactions from mail/SMS you already receive, and stays open source so you can audit every line.
-
-| | |
-| --- | --- |
-| 📬 **Email ingest** | Gmail via Google Sign-In (`gmail.readonly`) **or** IMAP App Password |
-| 💬 **SMS** | Optional bank/wallet SMS monitoring |
-| 🧠 **Smart parse** | Rules-first extraction + optional OpenAI-compatible LLM (Groq, OpenAI, local) |
-| 🏦 **Accounts** | Cash, UPI, and custom bank balances |
-| 🏷️ **Categories** | Editable icons and labels |
-| 봉투 **Envelope funds** | Allocate spending with a fund ledger |
-| 🔔 **Classify fast** | Notifications + quick actions |
-| 📍 **Location** (optional) | Match spends to places |
-| 📊 **Sheets export** | One-way Google Sheets workbook |
-| 💾 **Backup** | JSON export / restore |
+```
+Home          → balances, charts, pending, shortcuts
+Activity      → all transactions, search & filters
+Funds         → envelopes, transfers, fund detail
++ (FAB)       → log cash / digital spend or income
+Settings      → email, SMS, LLM, sheets, theme, backup, accounts, categories
+Widgets       → home-screen glance + quick add
+```
 
 ---
 
@@ -109,28 +161,19 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Signed release
 
-Secrets stay **out of git**. Choose one approach:
+You **cannot** produce a release-signed APK without *a* keystore — but you use **your own**, not one from the repo (none is published). Never share your `.jks` or passwords.
 
-**A. `keystore.properties` (recommended)**
-
-```bash
-cp keystore.properties.example keystore.properties
-# edit storeFile, storePassword, keyAlias, keyPassword
-# place your .jks under keystore/ (already gitignored)
-```
+Full walkthrough: **[docs/SIGNING.md](docs/SIGNING.md)**
 
 ```powershell
+# 1) Create keystore once
+keytool -genkeypair -v -keystore keystore/my-release.jks -alias rupiyah -keyalg RSA -keysize 2048 -validity 10000
+
+# 2) Copy template and fill passwords (gitignored)
+copy keystore.properties.example keystore.properties
+
+# 3) Build
 .\gradlew.bat :app:assembleRelease
-```
-
-**B. Gradle properties / CLI**
-
-```powershell
-.\gradlew.bat :app:assembleRelease `
-  -PRELEASE_STORE_FILE="keystore/your-release.jks" `
-  -PRELEASE_STORE_PASSWORD="***" `
-  -PRELEASE_KEY_ALIAS="***" `
-  -PRELEASE_KEY_PASSWORD="***"
 ```
 
 Output: `app/build/outputs/apk/release/app-release.apk`

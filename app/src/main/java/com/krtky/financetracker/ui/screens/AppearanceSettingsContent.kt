@@ -96,22 +96,27 @@ fun AppearanceSettingsContent(
             }
         }
 
-        Text("Theme", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
+        Text("Light or dark", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
         AppearancePanel {
             SegmentedRow {
-                AppearanceSegment("System", Icons.Filled.BrightnessAuto, state.darkModePref == DarkModePref.SYSTEM) { onDarkModeChange(DarkModePref.SYSTEM) }
+                AppearanceSegment("Phone", Icons.Filled.BrightnessAuto, state.darkModePref == DarkModePref.SYSTEM) { onDarkModeChange(DarkModePref.SYSTEM) }
                 AppearanceSegment("Light", Icons.Filled.LightMode, state.darkModePref == DarkModePref.LIGHT) { onDarkModeChange(DarkModePref.LIGHT) }
                 AppearanceSegment("Dark", Icons.Filled.DarkMode, state.darkModePref == DarkModePref.DARK) { onDarkModeChange(DarkModePref.DARK) }
             }
-            Text("Contrast", style = MaterialTheme.typography.titleMedium)
+            Text("Easier to read", style = MaterialTheme.typography.titleMedium)
             SegmentedRow {
-                AppearanceSegment("Low", selected = state.contrastLevel == ContrastLevel.LOW) { onContrastChange(ContrastLevel.LOW) }
-                AppearanceSegment("Medium", selected = state.contrastLevel == ContrastLevel.MEDIUM) { onContrastChange(ContrastLevel.MEDIUM) }
-                AppearanceSegment("High", selected = state.contrastLevel == ContrastLevel.HIGH) { onContrastChange(ContrastLevel.HIGH) }
+                AppearanceSegment("Soft", selected = state.contrastLevel == ContrastLevel.LOW) { onContrastChange(ContrastLevel.LOW) }
+                AppearanceSegment("Normal", selected = state.contrastLevel == ContrastLevel.MEDIUM) { onContrastChange(ContrastLevel.MEDIUM) }
+                AppearanceSegment("Strong", selected = state.contrastLevel == ContrastLevel.HIGH) { onContrastChange(ContrastLevel.HIGH) }
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Palette, null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(30.dp))
-                Text("Use wallpaper colors to apply a\ndynamic app theme", Modifier.weight(1f).padding(horizontal = 14.dp), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                Text(
+                    "Match phone wallpaper colors",
+                    Modifier.weight(1f).padding(horizontal = 14.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
                 Switch(
                     checked = dynamic,
                     onCheckedChange = { onThemeModeChange(if (it) ThemeMode.MATERIAL_YOU else ThemeMode.PRESET) },
@@ -119,13 +124,18 @@ fun AppearanceSettingsContent(
             }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.BrightnessAuto, null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(30.dp))
-                Text("OLED mode", Modifier.weight(1f).padding(horizontal = 14.dp), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                Text(
+                    "True black (saves battery on some screens)",
+                    Modifier.weight(1f).padding(horizontal = 14.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
                 Switch(
                     checked = state.oledMode,
                     onCheckedChange = onOledModeChange,
                 )
             }
-            Text("App Color Scheme", style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant)
+            Text("App colors", style = MaterialTheme.typography.titleSmall, color = scheme.onSurfaceVariant)
             ColorSchemeRow(
                 state = state,
                 dynamic = dynamic,
@@ -152,13 +162,13 @@ fun AppearanceSettingsContent(
             }
         }
 
-        Text("Typography", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
+        Text("Text style", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
         AppearancePanel {
             SegmentedRow {
-                AppearanceSegment("Condensed", selected = state.typographyMode == TypographyMode.CONDENSED) { onTypographyModeChange(TypographyMode.CONDENSED) }
-                AppearanceSegment("Expressive", selected = state.typographyMode == TypographyMode.EXPRESSIVE) { onTypographyModeChange(TypographyMode.EXPRESSIVE) }
+                AppearanceSegment("Compact", selected = state.typographyMode == TypographyMode.CONDENSED) { onTypographyModeChange(TypographyMode.CONDENSED) }
+                AppearanceSegment("Friendly", selected = state.typographyMode == TypographyMode.EXPRESSIVE) { onTypographyModeChange(TypographyMode.EXPRESSIVE) }
             }
-            AppearanceOption("System", selected = state.typographyMode == TypographyMode.SYSTEM) { onTypographyModeChange(TypographyMode.SYSTEM) }
+            AppearanceOption("Phone default", selected = state.typographyMode == TypographyMode.SYSTEM) { onTypographyModeChange(TypographyMode.SYSTEM) }
         }
 
         Spacer(Modifier.height(8.dp))

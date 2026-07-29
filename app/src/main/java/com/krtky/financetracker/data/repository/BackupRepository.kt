@@ -46,6 +46,7 @@ class BackupRepository @Inject constructor(
                     put("version", 1)
                     put("secure_store", buildJsonObject {
                         put("llm_api_key", secureStore.llmApiKey.orEmpty())
+                        put("llm_enabled", secureStore.llmEnabled)
                         put("llm_base_url", secureStore.llmBaseUrl)
                         put("llm_model", secureStore.llmModel)
                         put("gmail_address", secureStore.gmailAddress.orEmpty())
@@ -190,6 +191,7 @@ class BackupRepository @Inject constructor(
                 val secure = jsonObj["secure_store"]?.jsonObject
                 if (secure != null) {
                     secure["llm_api_key"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmApiKey = it }
+                    secure["llm_enabled"]?.jsonPrimitive?.boolean?.let { secureStore.llmEnabled = it }
                     secure["llm_base_url"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmBaseUrl = it }
                     secure["llm_model"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmModel = it }
                     secure["gmail_address"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.gmailAddress = it }

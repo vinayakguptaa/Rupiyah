@@ -1,7 +1,10 @@
-# Android / Gradle
+# =============================================================================
+# Rupiyah — Git ignore rules
+# =============================================================================
+
+# --- Android / Gradle ---
 .gradle/
 build/
-app/build/
 **/build/
 local.properties
 *.iml
@@ -9,45 +12,75 @@ local.properties
 .cxx/
 captures/
 .externalNativeBuild/
+.navigation/
+outputs/
 
-# Signing secrets — never commit real keystores or passwords
+# --- Signing secrets (never commit) ---
 keystore/*.jks
 keystore/*.keystore
 keystore.properties
 *.jks
 *.keystore
+*.p12
+*.pem
 
-# Environment / local secrets
+# --- Environment / local secrets ---
 .env
 .env.*
 !.env.example
 !.env.example.*
+secrets.properties
+google-services.json
 
-# OS
+# --- OS ---
 .DS_Store
+.DS_Store?
 Thumbs.db
-desktop.ini
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Kotlin / tooling
+# --- Kotlin / JVM / tooling ---
 .kotlin/
 *.hprof
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.ear
 
-# Build outputs
+# --- Build outputs ---
 apk/
 *.apk
 *.aab
 *.ap_
 *.dex
+*.so
+bin/
+gen/
+out/
 
-# Logs & temp
+# --- Logs & temp ---
 *.log
 *.tmp
 *.swp
 *~
+*.bak
 
-# Grok / editor session artifacts (not product assets)
+# --- Editors / misc ---
+*.sublime-workspace
+*.code-workspace
+.vscode/
+!.vscode/extensions.json
+.fleet/
+
+# --- Grok / session artifacts ---
 .grok_*/
 .grok*
 
-# Optional local notes
+# --- Local trash (moved unused files; keep off git) ---
+trashed/
+_trashed/
+
+# --- Optional local notes ---
 *.local.md

@@ -38,7 +38,8 @@ class LlmClient @Inject constructor(
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    fun isConfigured(): Boolean = !secureStore.llmApiKey.isNullOrBlank()
+    /** True only when AI is on and an API key is saved (required for email/SMS auto-import). */
+    fun isConfigured(): Boolean = secureStore.isLlmReady()
 
     suspend fun extractTransaction(
         redactedEmailBody: String,
@@ -47,6 +48,7 @@ class LlmClient @Inject constructor(
         categories: List<String> = emptyList(),
         banks: List<String> = emptyList(),
     ): ExtractedTransaction? {
+        if (!secureStore.isLlmReady()) return null
         val apiKey = secureStore.llmApiKey ?: return null
         val base = secureStore.llmBaseUrl.trimEnd('/')
         val model = secureStore.llmModel

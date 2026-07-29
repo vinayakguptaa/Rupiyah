@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.Telephony
 import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.email.TransactionParser
+import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.notification.ClassificationNotifier
@@ -21,6 +22,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class SmsReceiver : BroadcastReceiver() {
     @Inject lateinit var preferences: UserPreferences
+    @Inject lateinit var secureStore: SecureStore
     @Inject lateinit var parser: TransactionParser
     @Inject lateinit var emailIngestService: EmailIngestService
     @Inject lateinit var transactionRepository: TransactionRepository
@@ -33,6 +35,8 @@ class SmsReceiver : BroadcastReceiver() {
         scope.launch {
             try {
                 if (!preferences.smsEnabled.first()) return@launch
+                // Bank SMS auto-import requires a ready AI helper.
+                if (!secureStore.isLlmReady()) return@launch
                 val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
                 if (messages.isNullOrEmpty()) return@launch
                 val sender = messages.firstOrNull()?.originatingAddress.orEmpty()

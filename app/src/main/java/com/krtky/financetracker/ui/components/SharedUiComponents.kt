@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -42,6 +48,42 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.RupiyahTheme
+
+/**
+ * Colors for secondary / tonal actions: very light accent wash (low opacity),
+ * accent-colored label. Prefer [AppSecondaryButton] over raw [FilledTonalButton].
+ */
+@Composable
+fun appSecondaryButtonColors(): ButtonColors {
+    val scheme = MaterialTheme.colorScheme
+    return ButtonDefaults.filledTonalButtonColors(
+        containerColor = scheme.secondaryContainer,
+        contentColor = scheme.onSecondaryContainer,
+        disabledContainerColor = scheme.surfaceContainerHighest,
+        disabledContentColor = scheme.onSurfaceVariant.copy(alpha = 0.5f),
+    )
+}
+
+/** Secondary action button — soft accent fill, not a solid primary slab. */
+@Composable
+fun AppSecondaryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = MaterialTheme.shapes.large,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    content: @Composable RowScope.() -> Unit,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        colors = appSecondaryButtonColors(),
+        contentPadding = contentPadding,
+        content = content,
+    )
+}
 
 @Composable
 fun TransactionCard(
@@ -199,7 +241,7 @@ fun EmptyState(
         )
         if (actionLabel != null && onAction != null) {
             Spacer(Modifier.height(4.dp))
-            androidx.compose.material3.FilledTonalButton(
+            AppSecondaryButton(
                 onClick = onAction,
                 shape = MaterialTheme.shapes.large,
             ) { Text(actionLabel) }
@@ -271,29 +313,29 @@ fun SettingsGroupRow(
                     indication = null,
                     onClick = onClick,
                 )
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(40.dp).background(iconContainer, CircleShape),
+                Modifier.size(44.dp).background(iconContainer, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, tint = iconTint, modifier = Modifier.size(20.dp))
+                Icon(icon, null, tint = iconTint, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 if (subtitle.isNotBlank()) {
                     Text(
                         subtitle,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -312,7 +354,7 @@ fun SettingsGroupRow(
 fun SettingsSectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
-        modifier = modifier.padding(top = 8.dp, bottom = 4.dp),
+        modifier = modifier.padding(top = 14.dp, bottom = 6.dp),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,

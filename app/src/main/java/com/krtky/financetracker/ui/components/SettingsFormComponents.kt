@@ -34,11 +34,28 @@ fun SettingsPanel(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            // Keep field stacks readable; button stacks use [SettingsButtonStack] for tighter gaps.
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             content = content,
         )
     }
+}
+
+/**
+ * Full-width primary / tonal / outline button stack.
+ * Tighter than panel default so Save / Cancel / Remove do not feel sparse.
+ */
+@Composable
+fun SettingsButtonStack(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
 }
 
 /** Title + optional help icon above a [SettingsPanel]. */
@@ -50,7 +67,7 @@ fun SettingsBlock(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsTitleWithHelp(
             title = title,
             helpTitle = helpTitle,

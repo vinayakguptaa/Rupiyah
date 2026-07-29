@@ -544,6 +544,26 @@ private fun ColorScheme.withBrightAccentChrome(darkTheme: Boolean): ColorScheme 
     )
 }
 
+/**
+ * Secondary / tonal buttons (FilledTonalButton) use [ColorScheme.secondaryContainer].
+ * Keep that fill a very light, low-opacity accent wash — never a near-solid accent slab.
+ */
+private fun softSecondaryContainer(darkTheme: Boolean, accent: Color, under: Color): Color =
+    if (darkTheme) {
+        accent.copy(alpha = 0.14f).compositeOver(under)
+    } else {
+        accent.copy(alpha = 0.08f).compositeOverWhite()
+    }
+
+/** Apply soft secondary containers for Material You / any base scheme. */
+private fun ColorScheme.withSoftSecondaryChrome(darkTheme: Boolean): ColorScheme {
+    val secondaryContainer = softSecondaryContainer(darkTheme, secondary, surfaceContainer)
+    return copy(
+        secondaryContainer = secondaryContainer,
+        onSecondaryContainer = contentOnContainer(secondaryContainer, secondary),
+    )
+}
+
 private fun themedScheme(darkTheme: Boolean, colors: ThemeColors): ColorScheme {
     val base = baseScheme(darkTheme).withDeeperDarkSurfaces(darkTheme)
     // Hero / selected chrome use primaryContainer; the rest of the UI stays neutral.
@@ -554,15 +574,12 @@ private fun themedScheme(darkTheme: Boolean, colors: ThemeColors): ColorScheme {
     } else {
         colors.primary.copy(alpha = 0.18f).compositeOverWhite()
     }
-    val secondaryContainer = if (darkTheme) {
-        colors.secondary.copy(alpha = 0.88f).compositeOver(base.surfaceContainer)
-    } else {
-        colors.secondary.copy(alpha = 0.16f).compositeOverWhite()
-    }
+    // Secondary / tonal buttons: light wash only (see withSoftSecondaryChrome).
+    val secondaryContainer = softSecondaryContainer(darkTheme, colors.secondary, base.surfaceContainer)
     val tertiaryContainer = if (darkTheme) {
-        colors.tertiary.copy(alpha = 0.88f).compositeOver(base.surfaceContainer)
+        colors.tertiary.copy(alpha = 0.16f).compositeOver(base.surfaceContainer)
     } else {
-        colors.tertiary.copy(alpha = 0.16f).compositeOverWhite()
+        colors.tertiary.copy(alpha = 0.10f).compositeOverWhite()
     }
     return base.copy(
         primary = colors.primary,
@@ -907,7 +924,9 @@ fun RupiyahTheme(
     val colorScheme = when {
         themeMode == ThemeMode.MATERIAL_YOU && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dyn = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            dyn.withDeeperDarkSurfaces(darkTheme).withBrightAccentChrome(darkTheme)
+            dyn.withDeeperDarkSurfaces(darkTheme)
+                .withBrightAccentChrome(darkTheme)
+                .withSoftSecondaryChrome(darkTheme)
         }
         themeMode == ThemeMode.CUSTOM -> themedScheme(darkTheme, customColors)
         else -> {

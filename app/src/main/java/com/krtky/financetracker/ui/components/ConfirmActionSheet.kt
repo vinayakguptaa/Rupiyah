@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -62,7 +61,7 @@ fun ConfirmActionSheet(
                     ),
                 ) { Text(primaryLabel) }
                 if (secondaryLabel != null && onSecondary != null) {
-                    FilledTonalButton(
+                    AppSecondaryButton(
                         onClick = onSecondary,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.extraLarge,
@@ -80,7 +79,7 @@ fun ConfirmActionSheet(
                     shape = MaterialTheme.shapes.extraLarge,
                 ) { Text(primaryLabel) }
                 if (secondaryLabel != null && onSecondary != null) {
-                    FilledTonalButton(
+                    AppSecondaryButton(
                         onClick = onSecondary,
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.extraLarge,

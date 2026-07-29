@@ -2,6 +2,7 @@ package com.krtky.financetracker.data.email
 
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.EmailIngestLogEntity
+import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.data.repository.TrustedSenderRepository
@@ -21,6 +22,7 @@ class EmailIngestService @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val trustedSenderRepository: TrustedSenderRepository,
     private val userPreferences: UserPreferences,
+    private val secureStore: SecureStore,
     private val locationRepository: LocationRepository,
     private val db: AppDatabase,
     private val notifier: ClassificationNotifier,
@@ -32,6 +34,13 @@ class EmailIngestService @Inject constructor(
         }
 
     suspend fun ingest(force: Boolean = false, sinceHours: Long = 24): IngestResult {
+        if (!secureStore.isLlmReady()) {
+            return IngestResult(
+                0,
+                0,
+                "AI helper not set up — Settings → AI helper (required for bank emails)",
+            )
+        }
         val source = userPreferences.emailSource.first()
         val configured = when (source) {
             EmailSource.GMAIL_OAUTH -> gmailApi.isConfigured()
@@ -43,7 +52,7 @@ class EmailIngestService @Inject constructor(
                 0,
                 when (source) {
                     EmailSource.GMAIL_OAUTH ->
-                        "Gmail OAuth not connected — Settings → Email → Connect with Google"
+                        "Gmail OAuth not connected — Settings → Bank emails → Connect with Google"
                     EmailSource.IMAP ->
                         "Gmail IMAP not configured — save email + App Password"
                 },
@@ -74,6 +83,9 @@ class EmailIngestService @Inject constructor(
     /** Process emails already fetched (e.g. IMAP IDLE push). */
     suspend fun ingestRaw(emails: List<RawEmail>): IngestResult {
         if (emails.isEmpty()) return IngestResult(0, 0, null)
+        if (!secureStore.isLlmReady()) {
+            return IngestResult(0, 0, "AI helper not set up — required to parse bank emails")
+        }
         val trusted = trustedSenderRepository.getEnabled()
         if (trusted.isEmpty()) return IngestResult(0, 0, "No trusted senders configured")
         return processEmails(emails, trusted)
@@ -132,6 +144,7 @@ class EmailIngestService @Inject constructor(
     }
 
     suspend fun processPastedEmail(sender: String, subject: String, body: String): String? {
+        if (!secureStore.isLlmReady()) return null
         val trusted = trustedSenderRepository.getEnabled()
         val match = trustedSenderRepository.matches(sender, trusted)
             ?: trusted.firstOrNull()

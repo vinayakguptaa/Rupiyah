@@ -46,7 +46,6 @@ import androidx.compose.material.icons.filled.WavingHand
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -79,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
+import com.krtky.financetracker.ui.components.AppSecondaryButton
 import com.krtky.financetracker.ui.components.GroupedCard
 import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.viewmodel.OnboardingViewModel
@@ -412,7 +412,7 @@ private fun ImportBackupPage(onImport: () -> Unit, onNext: () -> Unit, imported:
         )
         Spacer(Modifier.height(32.dp))
         if (!imported) {
-            FilledTonalButton(
+            AppSecondaryButton(
                 onClick = onImport,
                 modifier = Modifier.fillMaxWidth(),
                 shape = shapes.large,
@@ -616,7 +616,7 @@ private fun LocationPage(granted: Boolean, onRequest: () -> Unit) {
                 Text("Location granted", color = scheme.primary, style = MaterialTheme.typography.bodyLarge)
             }
         } else {
-            FilledTonalButton(
+            AppSecondaryButton(
                 onClick = onRequest,
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -678,7 +678,7 @@ private fun NotificationPage(granted: Boolean, onRequest: () -> Unit) {
                 Text("Notifications granted", color = scheme.primary, style = MaterialTheme.typography.bodyLarge)
             }
         } else {
-            FilledTonalButton(
+            AppSecondaryButton(
                 onClick = onRequest,
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -732,7 +732,7 @@ private fun SmsPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Optional — Rupiyah can parse bank transaction SMS messages to auto-log expenses.",
+            "Reads bank SMS on this phone. Needs AI helper set up (next page) before monitoring can turn on.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,
@@ -823,14 +823,14 @@ private fun LlmPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Optional — connect an OpenAI-compatible API (Groq, OpenAI, Ollama) to auto-classify transactions.",
+            "Required to import bank emails and SMS. Without it you can still add spends by hand. Use Groq (free tier) or OpenAI.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            stringResource(R.string.onboarding_optional_later),
+            "You can set this up now or later in Settings → AI helper",
             style = MaterialTheme.typography.labelLarge,
             textAlign = TextAlign.Center,
             color = scheme.primary,

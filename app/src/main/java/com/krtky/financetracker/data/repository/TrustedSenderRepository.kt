@@ -1,7 +1,6 @@
 package com.krtky.financetracker.data.repository
 
 import com.krtky.financetracker.data.local.db.AppDatabase
-import com.krtky.financetracker.data.local.db.TrustedSenderEntity
 import com.krtky.financetracker.data.local.db.toDomain
 import com.krtky.financetracker.data.local.db.toEntity
 import com.krtky.financetracker.domain.model.TrustedSender
@@ -24,20 +23,6 @@ class TrustedSenderRepository @Inject constructor(
 
     suspend fun delete(id: Long) = dao.delete(id)
 
-    suspend fun seedFamPayDefaults() {
-        val defaults = listOf(
-            "noreply@fampay.in",
-            "alerts@fampay.in",
-            "no-reply@fampay.in",
-            "fampay.in", // domain match for any *@fampay.in
-        )
-        defaults.forEach { email ->
-            dao.upsert(
-                TrustedSenderEntity(emailPattern = email, walletLabel = "FamPay", enabled = true)
-            )
-        }
-    }
-
     fun matches(senderEmail: String, patterns: List<TrustedSender>): TrustedSender? {
         val normalized = senderEmail.lowercase().trim()
         val enabled = patterns.filter { it.enabled }
@@ -46,7 +31,7 @@ class TrustedSenderRepository @Inject constructor(
             when {
                 p.isBlank() -> false
                 normalized == p -> true
-                // domain-only pattern: fampay.in
+                // domain-only pattern: e.g. bank.com matches alerts@bank.com
                 !p.contains("@") && normalized.endsWith("@$p") -> true
                 // full email or substring
                 normalized.contains(p) -> true

@@ -40,6 +40,24 @@ class SecureStore @Inject constructor(
         get() = getString(KEY_LLM_API)
         set(v) = putString(KEY_LLM_API, v)
 
+    /**
+     * Master switch for AI parsing.
+     * Bank email / SMS auto-import requires [isLlmReady] (this flag + API key).
+     * Default: on only if an API key was already saved (existing installs); otherwise off.
+     */
+    var llmEnabled: Boolean
+        get() = if (prefs.contains(KEY_LLM_ENABLED)) {
+            prefs.getBoolean(KEY_LLM_ENABLED, false)
+        } else {
+            !llmApiKey.isNullOrBlank()
+        }
+        set(v) {
+            prefs.edit().putBoolean(KEY_LLM_ENABLED, v).apply()
+        }
+
+    /** True when AI is turned on and an API key is saved — required for email/SMS auto-import. */
+    fun isLlmReady(): Boolean = llmEnabled && !llmApiKey.isNullOrBlank()
+
     var llmBaseUrl: String
         get() = getString(KEY_LLM_BASE) ?: DEFAULT_LLM_BASE
         set(v) = putString(KEY_LLM_BASE, v)
@@ -109,6 +127,7 @@ class SecureStore @Inject constructor(
 
     companion object {
         const val KEY_LLM_API = "llm_api_key"
+        const val KEY_LLM_ENABLED = "llm_enabled"
         const val KEY_LLM_BASE = "llm_base_url"
         const val KEY_LLM_MODEL = "llm_model"
         const val KEY_LLM_SYSTEM = "llm_system_prompt"

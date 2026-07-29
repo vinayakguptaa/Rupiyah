@@ -3,22 +3,24 @@ package com.krtky.financetracker.ui.navigation
 /**
  * Typed Settings detail sections — prefer these over raw route strings.
  * Route remains `settings/{route}` for NavHost compatibility.
+ *
+ * [title] is shown in the detail top bar — keep plain language.
  */
 enum class SettingsSection(val route: String, val title: String) {
-    PROFILE("profile", "Profile"),
-    APPEARANCE("appearance", "Appearance"),
+    PROFILE("profile", "Your profile"),
+    APPEARANCE("appearance", "Colors & theme"),
     BACKUP("backup", "Backup & restore"),
-    LLM("llm", "LLM Providers"),
-    GMAIL("gmail", "Email IMAP"),
-    EMAIL("email", "Email settings"),
-    SENDERS("senders", "Trusted senders"),
-    PASTE("paste", "Paste email"),
-    SMS("sms", "SMS transactions"),
-    LOCATION("location", "Location"),
-    SHEETS("sheets", "Google Sheets"),
-    GOOGLE_AUTH("google_auth", "Google Auth"),
+    LLM("llm", "AI helper"),
+    GMAIL("gmail", "Bank emails"),
+    EMAIL("email", "Bank emails"),
+    SENDERS("senders", "Trusted banks"),
+    PASTE("paste", "Test email"),
+    SMS("sms", "Bank text messages"),
+    LOCATION("location", "Place tags"),
+    SHEETS("sheets", "Google Spreadsheet"),
+    GOOGLE_AUTH("google_auth", "Google sign-in setup"),
     CATEGORIES("categories", "Categories"),
-    BANKS("banks", "Accounts"),
+    BANKS("banks", "Bank accounts"),
     DEV("dev", "Developer"),
     ;
 

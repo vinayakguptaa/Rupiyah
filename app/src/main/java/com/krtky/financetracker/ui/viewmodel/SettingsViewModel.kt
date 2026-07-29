@@ -34,6 +34,7 @@ import com.krtky.financetracker.ui.theme.ThemeMode
 import com.krtky.financetracker.ui.theme.ThemePreset
 import com.krtky.financetracker.ui.theme.TypographyMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,6 +49,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val secureStore: SecureStore,
     private val userPreferences: UserPreferences,
     private val trustedSenderRepository: TrustedSenderRepository,
@@ -179,6 +181,7 @@ class SettingsViewModel @Inject constructor(
     /** Secure-store fields only (synchronous); DataStore prefs arrive via collectors. */
     private fun secureSnapshot(): SettingsUiState = SettingsUiState(
         llmApiKeySet = !secureStore.llmApiKey.isNullOrBlank(),
+        llmEnabled = secureStore.llmEnabled,
         llmBaseUrl = secureStore.llmBaseUrl,
         llmModel = secureStore.llmModel,
         gmail = secureStore.gmailAddress.orEmpty(),
@@ -195,6 +198,7 @@ class SettingsViewModel @Inject constructor(
         val s = secureSnapshot()
         _state.value = _state.value.copy(
             llmApiKeySet = s.llmApiKeySet,
+            llmEnabled = s.llmEnabled,
             llmBaseUrl = s.llmBaseUrl,
             llmModel = s.llmModel,
             gmail = s.gmail,
@@ -218,7 +222,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setSmsEnabled(enabled: Boolean) = viewModelScope.launch {
+        if (enabled && !secureStore.isLlmReady()) {
+            notifySaved("Set up AI helper first — required to read bank SMS")
+            return@launch
+        }
         userPreferences.setSmsEnabled(enabled)
+        if (enabled) notifySaved("Bank SMS reading on")
+        else notifySaved("Bank SMS reading off")
     }
 
     fun saveSmsRules(senders: String, keywords: String) = viewModelScope.launch {
@@ -258,12 +268,63 @@ class SettingsViewModel @Inject constructor(
         userPreferences.setOledMode(enabled)
     }
 
+    fun setLlmEnabled(enabled: Boolean) {
+        secureStore.llmEnabled = enabled
+        if (!enabled || secureStore.llmApiKey.isNullOrBlank()) {
+            // Auto-import cannot run without a ready AI helper.
+            viewModelScope.launch { disableAutoImportForMissingAi() }
+        }
+        refreshSecureFields()
+        notifySaved(
+            when {
+                enabled && !secureStore.llmApiKey.isNullOrBlank() ->
+                    "AI helper on — you can use bank email & SMS import"
+                enabled ->
+                    "AI helper on — paste your API key to finish"
+                else ->
+                    "AI helper off — bank email & SMS auto-import turned off"
+            },
+        )
+    }
+
     fun saveLlm(base: String, model: String, key: String?) {
         secureStore.llmBaseUrl = base.ifBlank { SecureStore.DEFAULT_LLM_BASE }
         secureStore.llmModel = model.ifBlank { SecureStore.DEFAULT_LLM_MODEL }
-        if (key != null) secureStore.llmApiKey = key
+        if (key != null) {
+            secureStore.llmApiKey = key
+            // Saving a key implies the user wants AI on.
+            if (key.isNotBlank()) secureStore.llmEnabled = true
+        }
+        if (!secureStore.isLlmReady()) {
+            viewModelScope.launch { disableAutoImportForMissingAi() }
+        }
         refreshSecureFields()
-        notifySaved("LLM settings saved")
+        notifySaved(
+            if (secureStore.isLlmReady()) {
+                "AI helper ready — bank email & SMS import unlocked"
+            } else {
+                "AI helper saved — add a key to unlock email & SMS import"
+            },
+        )
+    }
+
+    fun clearLlmKey() {
+        secureStore.llmApiKey = null
+        secureStore.llmEnabled = false
+        viewModelScope.launch { disableAutoImportForMissingAi() }
+        refreshSecureFields()
+        notifySaved("AI key removed — bank email & SMS auto-import turned off")
+    }
+
+    /** Stops email watch + SMS import when AI is no longer ready. */
+    private suspend fun disableAutoImportForMissingAi() {
+        userPreferences.setSmsEnabled(false)
+        if (userPreferences.emailPollEnabled.first()) {
+            userPreferences.setEmailPollEnabled(false)
+            EmailMonitorService.stop(appContext)
+        }
+        // Reflect prefs in UI (collectors may lag a frame).
+        _state.value = _state.value.copy(smsEnabled = false, emailPoll = false)
     }
 
     fun setEmailSource(source: EmailSource) = viewModelScope.launch {
@@ -397,6 +458,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setEmailPoll(context: Context, v: Boolean) = viewModelScope.launch {
+        if (v && !secureStore.isLlmReady()) {
+            notifySaved("Set up AI helper first — required to watch bank emails")
+            return@launch
+        }
         userPreferences.setEmailPollEnabled(v)
         if (v) {
             EmailMonitorService.start(context)
@@ -512,6 +577,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     suspend fun pollNow() {
+        if (!secureStore.isLlmReady()) {
+            val msg = "Set up AI helper first — required to parse bank emails"
+            _status.value = msg
+            uiMessenger.show(msg)
+            return
+        }
         _status.value = "Polling…"
         val r = emailIngestService.ingest(force = true)
         val msg = r.error ?: "Created ${r.created}, skipped ${r.skipped}"
@@ -520,6 +591,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     suspend fun processPaste(sender: String, subject: String, body: String) {
+        if (!secureStore.isLlmReady()) {
+            val msg = "Set up AI helper first — required to parse emails"
+            _status.value = msg
+            uiMessenger.show(msg)
+            return
+        }
         _status.value = "Processing…"
         val id = emailIngestService.processPastedEmail(sender, subject, body)
         _status.value = if (id != null) "Transaction created" else "Could not parse / duplicate / not trusted"

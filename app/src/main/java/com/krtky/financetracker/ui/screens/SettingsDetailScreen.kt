@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -70,8 +69,10 @@ import com.krtky.financetracker.data.email.EmailSource
 import com.krtky.financetracker.data.prefs.SecureStore
 import androidx.compose.ui.res.stringResource
 import com.krtky.financetracker.R
+import com.krtky.financetracker.ui.components.AppSecondaryButton
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.SettingsBlock
+import com.krtky.financetracker.ui.components.SettingsButtonStack
 import com.krtky.financetracker.ui.components.SettingsPanelLabel
 import com.krtky.financetracker.ui.components.SettingsSegment
 import com.krtky.financetracker.ui.components.SettingsSegmentedRow
@@ -121,8 +122,8 @@ fun SettingsDetailScreen(
     var themeSecondary by remember { mutableStateOf(state.themeCustomSecondary) }
     var themeTertiary by remember { mutableStateOf(state.themeCustomTertiary) }
     var senderEmail by remember { mutableStateOf("") }
-    var senderLabel by remember { mutableStateOf("FamPay") }
-    var pasteSender by remember { mutableStateOf("noreply@fampay.in") }
+    var senderLabel by remember { mutableStateOf("") }
+    var pasteSender by remember { mutableStateOf("") }
     var pasteSubject by remember { mutableStateOf("") }
     var pasteBody by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
@@ -216,14 +217,15 @@ fun SettingsDetailScreen(
 
     val title = sectionEnum?.title ?: "Settings"
 
-    val listSections = section == "categories" || section == "banks" || section == "senders" || section == "email"
+    val listSections = section == "categories" || section == "banks" ||
+        section == "senders" || section == "email" || section == "gmail"
     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
     Column(
         Modifier
             .fillMaxSize()
             .padding(horizontal = 20.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Spacer(Modifier.height(4.dp))
         StackTopBar(title = title, onBack = onBack)
@@ -235,13 +237,14 @@ fun SettingsDetailScreen(
         when (section) {
             "profile" -> SettingsBlock(
                 title = "About you",
-                helpTitle = "Profile",
-                helpMessage = "Optional display details for you. They stay on this device and are included in JSON backups.",
+                helpTitle = "Your profile",
+                helpMessage = "Optional. Used for greetings and backups. Stays on this phone only.",
             ) {
                 OutlinedTextField(
                     profileName,
                     { profileName = it },
-                    label = { Text("Display name") },
+                    label = { Text("Your name") },
+                    placeholder = { Text("How should we greet you?") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = shapes.medium,
@@ -249,7 +252,8 @@ fun SettingsDetailScreen(
                 OutlinedTextField(
                     profileEmail,
                     { profileEmail = it },
-                    label = { Text("Email") },
+                    label = { Text("Your email (optional)") },
+                    placeholder = { Text("Not used for bank login") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = shapes.medium,
@@ -257,7 +261,8 @@ fun SettingsDetailScreen(
                 OutlinedTextField(
                     profilePhone,
                     { profilePhone = it },
-                    label = { Text("Phone") },
+                    label = { Text("Phone (optional)") },
+                    placeholder = { Text("Optional") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = shapes.medium,
@@ -266,7 +271,7 @@ fun SettingsDetailScreen(
                     onClick = { vm.saveProfile(profileName, profileEmail, profilePhone) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.large,
-                ) { Text("Save profile") }
+                ) { Text("Save") }
             }
 
             "appearance" -> AppearanceSettingsContent(
@@ -290,151 +295,220 @@ fun SettingsDetailScreen(
             )
 
             "backup" -> SettingsBlock(
-                title = "Data",
+                title = "Save or restore your data",
                 helpTitle = "Backup & restore",
-                helpMessage = "Export credentials, preferences, categories, funds, and transactions as a JSON file. Import restores from a previous export. Keep backups somewhere safe — they can include API keys.",
+                helpMessage = "Export creates a file with your transactions, categories, funds, and settings. Keep it somewhere safe (like Google Drive). Import puts that data back. The file may include API keys if you saved any.",
             ) {
-                FilledTonalButton(
-                    onClick = {
-                        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
-                        exportLauncher.launch("finance-tracker-backup-$stamp.json")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.large,
-                ) { Text("Export") }
-                OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.large,
-                ) { Text("Import") }
+                Text(
+                    "Use Export to make a safety copy. Use Import only when you want to restore an old copy.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+                SettingsButtonStack {
+                    AppSecondaryButton(
+                        onClick = {
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+                            exportLauncher.launch("rupiyah-backup-$stamp.json")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text("Save backup file") }
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text("Restore from backup file") }
+                }
             }
 
             "llm" -> {
                 SettingsBlock(
-                    title = "Provider",
-                    helpTitle = "LLM provider",
-                    helpMessage = "Any OpenAI-compatible endpoint works (OpenAI, Groq, local proxies). Save base URL, model, and API key. See docs/OPENAI_API_KEY.md in the project repo for setup notes.",
+                    title = "Required for bank email & SMS",
+                    helpTitle = "AI helper",
+                    helpMessage = "Bank emails and SMS need AI to read amounts and merchants. You can still add spends by hand without AI. Keys stay on this phone.",
                 ) {
-                    OutlinedTextField(llmBase, { llmBase = it }, label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                    OutlinedTextField(llmModel, { llmModel = it }, label = { Text("Model") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                    OutlinedTextField(
-                        llmKey,
-                        { llmKey = it },
-                        label = { Text(if (state.llmApiKeySet) "API key (saved — enter to replace)" else "API key") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.medium,
+                    SettingsToggleRow(
+                        title = "Use AI helper",
+                        subtitle = when {
+                            state.llmReady -> "On · bank email & SMS import unlocked"
+                            state.llmEnabled -> "On — paste an API key below to finish"
+                            else -> "Off · turn on to import bank emails & SMS"
+                        },
+                        checked = state.llmEnabled,
+                        onCheckedChange = { vm.setLlmEnabled(it) },
                     )
-                    Button(
-                        onClick = { vm.saveLlm(llmBase, llmModel, llmKey.ifBlank { null }) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.large,
-                    ) { Text("Save provider") }
-                }
-                SettingsBlock(title = "Presets") {
-                    SettingsSegmentedRow {
-                        SettingsSegment(
-                            label = "Groq",
-                            selected = llmBase.contains("groq", ignoreCase = true),
-                            onClick = {
-                                llmBase = "https://api.groq.com/openai/v1"
-                                llmModel = "llama-3.3-70b-versatile"
-                            },
-                        )
-                        SettingsSegment(
-                            label = "OpenAI",
-                            selected = llmBase.contains("openai.com", ignoreCase = true),
-                            onClick = {
-                                llmBase = "https://api.openai.com/v1"
-                                llmModel = "gpt-4o-mini"
-                            },
-                        )
-                    }
                     SettingsStatusText(
-                        text = if (state.llmApiKeySet) "Key saved · ${state.llmModel}" else "No API key yet",
-                        positive = state.llmApiKeySet,
+                        text = when {
+                            state.llmReady -> "Ready · ${state.llmModel}"
+                            state.llmEnabled -> "Almost done — add your API key"
+                            else -> "Not ready — bank auto-import is locked"
+                        },
+                        positive = state.llmReady,
                     )
+                }
+                if (state.llmEnabled) {
+                    SettingsBlock(
+                        title = "API key",
+                        helpTitle = "API key",
+                        helpMessage = "Pick Groq (often free tier) or OpenAI, paste your key, then Save. Without a key, bank email and SMS import stay off.",
+                    ) {
+                        Text(
+                            "Pick a service, paste your key, then Save.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        SettingsSegmentedRow {
+                            SettingsSegment(
+                                label = "Groq (easy)",
+                                selected = llmBase.contains("groq", ignoreCase = true),
+                                onClick = {
+                                    llmBase = "https://api.groq.com/openai/v1"
+                                    llmModel = "llama-3.3-70b-versatile"
+                                },
+                            )
+                            SettingsSegment(
+                                label = "OpenAI",
+                                selected = llmBase.contains("openai.com", ignoreCase = true),
+                                onClick = {
+                                    llmBase = "https://api.openai.com/v1"
+                                    llmModel = "gpt-4o-mini"
+                                },
+                            )
+                        }
+                        OutlinedTextField(
+                            llmKey,
+                            { llmKey = it },
+                            label = { Text(if (state.llmApiKeySet) "API key (saved — type to replace)" else "Paste your API key") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = shapes.medium,
+                        )
+                        OutlinedTextField(
+                            llmModel,
+                            { llmModel = it },
+                            label = { Text("Model name") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = shapes.medium,
+                        )
+                        OutlinedTextField(
+                            llmBase,
+                            { llmBase = it },
+                            label = { Text("Service address (advanced)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = shapes.medium,
+                        )
+                        SettingsButtonStack {
+                            Button(
+                                onClick = { vm.saveLlm(llmBase, llmModel, llmKey.ifBlank { null }) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Save") }
+                            if (state.llmApiKeySet) {
+                                OutlinedButton(
+                                    onClick = { vm.clearLlmKey() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = shapes.large,
+                                ) { Text("Turn off and remove key") }
+                            }
+                        }
+                    }
                 }
             }
 
             "email", "gmail" -> {
                 SettingsBlock(
-                    title = "Connection",
-                    helpTitle = "Email connection",
-                    helpMessage = "Google Sign-In uses Gmail.readonly and does not store your password. IMAP uses a Gmail App Password (2-Step Verification required). Live monitor only processes mail from Trusted senders.",
+                    title = "Step 1 · How to connect",
+                    helpTitle = "Bank emails",
+                    helpMessage = "Recommended: Connect with Google (no password stored). Advanced: use a Gmail App Password. Only mail from your trusted bank list is read.",
                 ) {
+                    Text(
+                        "Recommended for most people: Google",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
                     SettingsSegmentedRow {
                         SettingsSegment(
-                            label = "Google",
+                            label = "Google (easy)",
                             selected = state.emailSource == EmailSource.GMAIL_OAUTH,
                             onClick = { vm.setEmailSource(EmailSource.GMAIL_OAUTH) },
                         )
                         SettingsSegment(
-                            label = "IMAP",
+                            label = "Password",
                             selected = state.emailSource == EmailSource.IMAP,
                             onClick = { vm.setEmailSource(EmailSource.IMAP) },
                         )
                     }
                     SettingsToggleRow(
-                        title = "Live email monitor",
-                        subtitle = if (state.emailSource == EmailSource.GMAIL_OAUTH) {
-                            "Gmail history · trusted senders only"
-                        } else {
-                            "IMAP IDLE + poll"
+                        title = "Watch for new bank emails",
+                        subtitle = when {
+                            !state.llmReady ->
+                                "Needs AI helper first (Settings → AI helper)"
+                            state.emailPoll ->
+                                "On · checks in the background"
+                            else ->
+                                "Off · turn on after AI is ready"
                         },
-                        checked = state.emailPoll,
-                        onCheckedChange = { vm.setEmailPoll(context, it) },
+                        checked = state.emailPoll && state.llmReady,
+                        onCheckedChange = { on ->
+                            if (on && !state.llmReady) {
+                                vm.setEmailPoll(context, true) // shows “set up AI” message
+                            } else {
+                                vm.setEmailPoll(context, on)
+                            }
+                        },
                     )
                 }
                 if (state.emailSource == EmailSource.GMAIL_OAUTH) {
                     SettingsBlock(
-                        title = "Gmail",
-                        helpTitle = "Gmail via Google Sign-In",
-                        helpMessage = "Uses Gmail API gmail.readonly. Live monitor watches mailbox history, then only opens messages from Trusted senders — it does not re-download the whole inbox. Set up the Web Client ID under Google Auth if sign-in fails.",
+                        title = "Step 2 · Sign in to Gmail",
+                        helpTitle = "Connect with Google",
+                        helpMessage = "The app only reads mail (not send or delete). If sign-in fails, open Settings → More options → Google sign-in setup.",
                     ) {
                         SettingsStatusText(
                             text = if (state.gmailOAuthConnected) {
                                 "Connected as ${state.gmailOAuthEmail.ifBlank { "Google account" }}"
                             } else {
-                                "Not connected"
+                                "Not connected yet"
                             },
                             positive = state.gmailOAuthConnected,
                         )
-                        if (state.gmailOAuthConnected) {
-                            OutlinedButton(
-                                onClick = { vm.disconnectGmailOAuth() },
+                        SettingsButtonStack {
+                            Button(
+                                onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = shapes.large,
-                            ) { Text("Disconnect Google") }
+                            ) {
+                                Text(if (state.gmailOAuthConnected) "Connect a different account" else "Connect with Google")
+                            }
+                            if (state.gmailOAuthConnected) {
+                                OutlinedButton(
+                                    onClick = { vm.disconnectGmailOAuth() },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = shapes.large,
+                                ) { Text("Disconnect") }
+                            }
+                            AppSecondaryButton(
+                                onClick = { scope.launch { vm.testGmail() } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Test connection") }
+                            OutlinedButton(
+                                onClick = { scope.launch { vm.pollNow() } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Check for new mail now") }
                         }
-                        Button(
-                            onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) {
-                            Text(if (state.gmailOAuthConnected) "Reconnect Google" else "Connect with Google")
-                        }
-                        FilledTonalButton(
-                            onClick = { scope.launch { vm.testGmail() } },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) { Text("Test connection") }
-                        OutlinedButton(
-                            onClick = { scope.launch { vm.pollNow() } },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) { Text("Poll now") }
                     }
                 } else {
                     SettingsBlock(
-                        title = "Gmail IMAP",
-                        helpTitle = "Gmail App Password",
-                        helpMessage = "Turn on 2-Step Verification in Google Account, create an App Password for Mail, then enter it here. Your normal Gmail password will not work.",
+                        title = "Step 2 · Gmail app password",
+                        helpTitle = "App password",
+                        helpMessage = "1. Open your Google Account on the web\n2. Turn on 2-Step Verification\n3. Create an App Password for Mail\n4. Paste it below (your normal Gmail password will not work)",
                     ) {
                         OutlinedTextField(
                             gmail,
                             { gmail = it },
-                            label = { Text("Gmail address") },
+                            label = { Text("Your Gmail address") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = shapes.medium,
@@ -442,85 +516,54 @@ fun SettingsDetailScreen(
                         OutlinedTextField(
                             gmailPass,
                             { gmailPass = it },
-                            label = { Text(if (state.gmailPassSet) "App password (saved)" else "App password") },
+                            label = { Text(if (state.gmailPassSet) "App password (saved — type to replace)" else "App password from Google") },
                             visualTransformation = PasswordVisualTransformation(),
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = shapes.medium,
                         )
-                        Button(
-                            onClick = { vm.saveGmail(gmail, gmailPass.ifBlank { null }) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) { Text("Save Gmail") }
-                        FilledTonalButton(
-                            onClick = { scope.launch { vm.testGmail() } },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) { Text("Test connection") }
-                        OutlinedButton(
-                            onClick = { scope.launch { vm.pollNow() } },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) { Text("Poll now") }
-                    }
-                }
-                if (section == "email") {
-                    SettingsBlock(
-                        title = "Trusted senders",
-                        helpTitle = "Trusted senders",
-                        helpMessage = "Only messages from these addresses or patterns are processed. Tap + to add a sender pattern and wallet label.",
-                    ) {
-                        if (senders.isEmpty()) {
-                            Text("No trusted senders yet.", color = scheme.onSurfaceVariant)
-                        }
-                        senders.forEachIndexed { index, s ->
-                            if (index > 0) HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(40.dp)
-                                        .background(scheme.secondaryContainer, CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Default.Mail, null, tint = scheme.onSecondaryContainer)
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(s.emailPattern, fontWeight = FontWeight.SemiBold)
-                                    Text(s.walletLabel, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                                }
-                                IconButton(onClick = { senderPendingDelete = s.id }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = scheme.error)
-                                }
-                            }
+                        SettingsButtonStack {
+                            Button(
+                                onClick = { vm.saveGmail(gmail, gmailPass.ifBlank { null }) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Save") }
+                            AppSecondaryButton(
+                                onClick = { scope.launch { vm.testGmail() } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Test connection") }
+                            OutlinedButton(
+                                onClick = { scope.launch { vm.pollNow() } },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Check for new mail now") }
                         }
                     }
                 }
-            }
-
-            "senders" -> {
                 SettingsBlock(
-                    title = "Senders",
-                    helpTitle = "Trusted senders",
-                    helpMessage = "Only mail matching these patterns is parsed into transactions. Use + to add an address or pattern and a wallet label (e.g. FamPay).",
+                    title = "Step 3 · Which banks to trust",
+                    helpTitle = "Trusted banks",
+                    helpMessage = "Only emails from these addresses are turned into spends. Tap + (bottom right) to add a bank or wallet email pattern.",
                 ) {
                     if (senders.isEmpty()) {
-                        Text("No trusted senders yet.", color = scheme.onSurfaceVariant)
+                        Text(
+                            "None yet. Tap the + button and add your bank or UPI app (e.g. HDFC, PhonePe).",
+                            color = scheme.onSurfaceVariant,
+                        )
                     }
                     senders.forEachIndexed { index, s ->
                         if (index > 0) HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(
-                                Modifier.size(40.dp).background(scheme.secondaryContainer, CircleShape),
+                                Modifier
+                                    .size(44.dp)
+                                    .background(scheme.secondaryContainer, CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(Icons.Default.Mail, null, tint = scheme.onSecondaryContainer)
@@ -536,23 +579,105 @@ fun SettingsDetailScreen(
                         }
                     }
                 }
+            }
+
+            "senders" -> {
+                // Kept for deep links; hub now uses Bank emails for the same list.
                 SettingsBlock(
-                    title = "SMS rules",
-                    helpTitle = "SMS filtering",
-                    helpMessage = "Allowed senders are comma-separated IDs (e.g. HDFCBK, AX-ICICIB). Keywords let a message through even if the sender is unknown.",
+                    title = "Trusted banks",
+                    helpTitle = "Trusted banks",
+                    helpMessage = "Only mail matching these patterns becomes a transaction. Tap + to add an address and a short label (e.g. HDFC, PhonePe).",
                 ) {
+                    if (senders.isEmpty()) {
+                        Text(
+                            "None yet. Tap + to add a bank or wallet email.",
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    senders.forEachIndexed { index, s ->
+                        if (index > 0) HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(44.dp).background(scheme.secondaryContainer, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Default.Mail, null, tint = scheme.onSecondaryContainer)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(s.emailPattern, fontWeight = FontWeight.SemiBold)
+                                Text(s.walletLabel, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = { senderPendingDelete = s.id }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = scheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+
+            "paste" -> SettingsBlock(
+                title = "Try a sample email",
+                helpTitle = "Test email",
+                helpMessage = "Paste a bank or wallet email to see if the app can read the amount and merchant.",
+            ) {
+                OutlinedTextField(pasteSender, { pasteSender = it }, label = { Text("From") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
+                OutlinedTextField(pasteSubject, { pasteSubject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
+                OutlinedTextField(pasteBody, { pasteBody = it }, label = { Text("Message body") }, modifier = Modifier.fillMaxWidth(), minLines = 4, shape = shapes.medium)
+                Button(
+                    onClick = { scope.launch { vm.processPaste(pasteSender, pasteSubject, pasteBody) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = shapes.large,
+                ) { Text("Try this email") }
+            }
+
+            "sms" -> {
+                SettingsBlock(
+                    title = "Read bank SMS",
+                    helpTitle = "Bank text messages",
+                    helpMessage = "Needs AI helper first. When on, bank SMS on this phone can become draft spends. Only messages from the senders and keywords you list below are used.",
+                ) {
+                    if (!state.llmReady) {
+                        Text(
+                            "Set up AI helper first (Settings → Smarter reading → AI helper). Bank SMS cannot be read without it.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
                     SettingsToggleRow(
-                        title = "Enable SMS monitoring",
-                        checked = state.smsEnabled,
+                        title = "Read bank text messages",
+                        subtitle = when {
+                            !state.llmReady -> "Needs AI helper first"
+                            state.smsEnabled -> "On"
+                            else -> "Off"
+                        },
+                        checked = state.smsEnabled && state.llmReady,
                         onCheckedChange = { enabled ->
-                            if (enabled) smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                            else vm.setSmsEnabled(false)
+                            if (enabled) {
+                                if (!state.llmReady) {
+                                    vm.setSmsEnabled(true) // shows “set up AI” message
+                                } else {
+                                    smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                                }
+                            } else {
+                                vm.setSmsEnabled(false)
+                            }
                         },
                     )
+                }
+                SettingsBlock(
+                    title = "Which SMS to allow",
+                    helpTitle = "SMS filters",
+                    helpMessage = "Allowed senders are short IDs from SMS (e.g. HDFCBK, AX-ICICIB). Keywords are words that mean “this is a payment” (e.g. debited, spent, UPI).",
+                ) {
                     OutlinedTextField(
                         smsSenders,
                         { smsSenders = it },
-                        label = { Text("SMS allowed senders") },
+                        label = { Text("Allowed senders (comma-separated)") },
+                        placeholder = { Text("HDFCBK, AX-ICICIB, VK-PhonePe") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                         shape = shapes.medium,
@@ -560,7 +685,8 @@ fun SettingsDetailScreen(
                     OutlinedTextField(
                         smsKeywords,
                         { smsKeywords = it },
-                        label = { Text("SMS transaction keywords") },
+                        label = { Text("Keywords (comma-separated)") },
+                        placeholder = { Text("debited, spent, UPI, credited") },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
                         shape = shapes.medium,
@@ -569,49 +695,18 @@ fun SettingsDetailScreen(
                         onClick = { vm.saveSmsRules(smsSenders, smsKeywords) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
-                    ) { Text("Save SMS rules") }
+                    ) { Text("Save") }
                 }
             }
 
-            "paste" -> SettingsBlock(
-                title = "Test parser",
-                helpTitle = "Paste email",
-                helpMessage = "Paste a sample bank or wallet email to test LLM extraction without waiting for live poll.",
-            ) {
-                OutlinedTextField(pasteSender, { pasteSender = it }, label = { Text("From") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                OutlinedTextField(pasteSubject, { pasteSubject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                OutlinedTextField(pasteBody, { pasteBody = it }, label = { Text("Body") }, modifier = Modifier.fillMaxWidth(), minLines = 4, shape = shapes.medium)
-                Button(
-                    onClick = { scope.launch { vm.processPaste(pasteSender, pasteSubject, pasteBody) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.large,
-                ) { Text("Process email") }
-            }
-
-            "sms" -> SettingsBlock(
-                title = "SMS",
-                helpTitle = "SMS transactions",
-                helpMessage = "When enabled, bank SMS can create draft transactions. Configure allowed senders and keywords under Trusted senders.",
-            ) {
-                SettingsToggleRow(
-                    title = "Enable SMS monitoring",
-                    subtitle = if (state.smsEnabled) "Listening for bank SMS" else "Off",
-                    checked = state.smsEnabled,
-                    onCheckedChange = { enabled ->
-                        if (enabled) smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                        else vm.setSmsEnabled(false)
-                    },
-                )
-            }
-
             "location" -> SettingsBlock(
-                title = "Tracking",
-                helpTitle = "Location",
-                helpMessage = "Optional background samples are matched to transaction times so you can see where a spend likely happened. Data stays on device.",
+                title = "Remember where you spent",
+                helpTitle = "Place tags",
+                helpMessage = "Optional. The app may note a rough place when a spend happens so you can recall it later. Location stays on this phone.",
             ) {
                 SettingsToggleRow(
-                    title = "Background location",
-                    subtitle = if (state.location) "Sampling on" else "Off",
+                    title = "Use location for place tags",
+                    subtitle = if (state.location) "On" else "Off",
                     checked = state.location,
                     onCheckedChange = { enabled ->
                         if (enabled) {
@@ -636,61 +731,74 @@ fun SettingsDetailScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
-                    ) { Text("App permissions") }
+                    ) { Text("Open phone permission settings") }
                 }
             }
 
             "sheets" -> SettingsBlock(
-                title = "Sync",
-                helpTitle = "Google Sheets",
-                helpMessage = "One-way export to a spreadsheet on your Google account. Connect via Google Sign-In (or paste an OAuth token), optionally create a workbook, then enable sync. Tabs include Transactions, Dashboard, Monthly, Categories, Accounts, Funds, and Merchants.",
+                title = "Copy to a spreadsheet",
+                helpTitle = "Google Spreadsheet",
+                helpMessage = "Optional. Connect Google, create or pick a sheet, then turn sync on. The app copies transactions one way into Google Sheets — it does not delete them from your phone.",
             ) {
                 SettingsStatusText(
-                    text = if (state.sheetTokenSet) "Google connected" else "Not connected",
+                    text = if (state.sheetTokenSet) "Google connected" else "Not connected yet",
                     positive = state.sheetTokenSet,
                 )
-                OutlinedTextField(sheetId, { sheetId = it }, label = { Text("Spreadsheet ID") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
+                SettingsToggleRow(
+                    title = "Keep spreadsheet up to date",
+                    subtitle = if (state.sheetsSync) "Sync is on" else "Sync is off",
+                    checked = state.sheetsSync,
+                    onCheckedChange = { vm.setSheets(it) },
+                )
+                OutlinedTextField(
+                    sheetId,
+                    { sheetId = it },
+                    label = { Text("Spreadsheet ID (from the sheet link)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = shapes.medium,
+                )
                 OutlinedTextField(
                     sheetToken,
                     { sheetToken = it },
-                    label = { Text(if (state.sheetTokenSet) "OAuth access token (saved)" else "OAuth access token") },
+                    label = { Text(if (state.sheetTokenSet) "Access token (saved — advanced)" else "Access token (advanced, optional)") },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.medium,
                 )
-                FilledTonalButton(
-                    onClick = { googleSignInLauncher.launch(vm.googleSignInIntent(context)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.large,
-                ) { Text(if (state.sheetTokenSet) "Reconnect Google" else "Login with Google") }
-                SettingsToggleRow(
-                    title = "Enable sync",
-                    checked = state.sheetsSync,
-                    onCheckedChange = { vm.setSheets(it) },
-                )
-                Button(onClick = { vm.saveSheets(sheetId, sheetToken.ifBlank { null }) }, modifier = Modifier.fillMaxWidth(), shape = shapes.large) {
-                    Text("Save")
-                }
-                FilledTonalButton(onClick = { scope.launch { vm.createSheetsSpreadsheet("Rupiyah") } }, modifier = Modifier.fillMaxWidth(), shape = shapes.large) {
-                    Text("Create spreadsheet")
-                }
-                FilledTonalButton(onClick = { scope.launch { vm.syncSheetsNow() } }, modifier = Modifier.fillMaxWidth(), shape = shapes.large) {
-                    Text("Sync now")
+                SettingsButtonStack {
+                    AppSecondaryButton(
+                        onClick = { googleSignInLauncher.launch(vm.googleSignInIntent(context)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text(if (state.sheetTokenSet) "Connect a different Google account" else "Connect with Google") }
+                    Button(
+                        onClick = { vm.saveSheets(sheetId, sheetToken.ifBlank { null }) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text("Save") }
+                    AppSecondaryButton(
+                        onClick = { scope.launch { vm.createSheetsSpreadsheet("Rupiyah") } },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text("Create a new spreadsheet for me") }
+                    AppSecondaryButton(
+                        onClick = { scope.launch { vm.syncSheetsNow() } },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.large,
+                    ) { Text("Sync now") }
                 }
             }
 
             "google_auth" -> {
                 SettingsBlock(
-                    title = "Web Client ID",
-                    helpTitle = "How to get a Client ID",
-                    helpMessage = "1. Go to console.cloud.google.com\n" +
-                        "2. Create or select a project\n" +
+                    title = "Only if Google sign-in fails",
+                    helpTitle = "Google sign-in setup",
+                    helpMessage = "Most people never need this. If “Connect with Google” fails, a developer may need to paste a Web Client ID from Google Cloud Console.\n\n" +
+                        "1. Open console.cloud.google.com\n" +
+                        "2. Create or pick a project\n" +
                         "3. Enable Gmail API and Sheets API\n" +
-                        "4. Credentials → Create Credentials → OAuth client ID\n" +
-                        "5. Application type: Web application (not Android)\n" +
-                        "6. Copy the Client ID (ends with .apps.googleusercontent.com)\n\n" +
-                        "Required for Google Sign-In. If empty, the app falls back to google-services.json when present. Tokens are stored in EncryptedSharedPreferences.\n\n" +
-                        "Scopes used:\n• Gmail: gmail.readonly (read only)\n• Sheets: spreadsheets (create & update)",
+                        "4. Credentials → OAuth client ID → Web application\n" +
+                        "5. Paste the Client ID below (ends with .apps.googleusercontent.com)",
                 ) {
                     OutlinedTextField(
                         googleClientId,
@@ -704,13 +812,13 @@ fun SettingsDetailScreen(
                         onClick = { vm.saveGoogleClientId(googleClientId) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
-                    ) { Text("Save Client ID") }
+                    ) { Text("Save") }
                 }
 
                 SettingsBlock(
-                    title = "Gmail",
-                    helpTitle = "Gmail OAuth",
-                    helpMessage = "Scope: gmail.readonly. Reads mail from trusted senders only to auto-detect transactions. Watches mailbox history changes — not full-inbox sync.",
+                    title = "Gmail connection status",
+                    helpTitle = "Gmail",
+                    helpMessage = "Read-only access. Only mail from trusted banks is used.",
                 ) {
                     SettingsStatusText(
                         text = if (state.gmailOAuthConnected) {
@@ -720,26 +828,28 @@ fun SettingsDetailScreen(
                         },
                         positive = state.gmailOAuthConnected,
                     )
-                    if (state.gmailOAuthConnected) {
-                        OutlinedButton(
-                            onClick = { vm.disconnectGmailOAuth() },
+                    SettingsButtonStack {
+                        if (state.gmailOAuthConnected) {
+                            OutlinedButton(
+                                onClick = { vm.disconnectGmailOAuth() },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = shapes.large,
+                            ) { Text("Disconnect Gmail") }
+                        }
+                        Button(
+                            onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
                             modifier = Modifier.fillMaxWidth(),
                             shape = shapes.large,
-                        ) { Text("Disconnect") }
-                    }
-                    Button(
-                        onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.large,
-                    ) {
-                        Text(if (state.gmailOAuthConnected) "Reconnect" else "Connect Gmail")
+                        ) {
+                            Text(if (state.gmailOAuthConnected) "Reconnect Gmail" else "Connect Gmail")
+                        }
                     }
                 }
 
                 SettingsBlock(
-                    title = "Sheets",
-                    helpTitle = "Google Sheets OAuth",
-                    helpMessage = "Scope: spreadsheets. One-way sync from the app to a Google Spreadsheet with Transactions, Dashboard, Monthly, Categories, Accounts, Funds, and Merchants tabs.",
+                    title = "Sheets connection status",
+                    helpTitle = "Google Sheets",
+                    helpMessage = "Used only for optional spreadsheet export.",
                 ) {
                     SettingsStatusText(
                         text = if (state.sheetTokenSet) "Connected" else "Not connected",
@@ -750,15 +860,15 @@ fun SettingsDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
                     ) {
-                        Text(if (state.sheetTokenSet) "Reconnect" else "Connect Sheets")
+                        Text(if (state.sheetTokenSet) "Reconnect Sheets" else "Connect Sheets")
                     }
                 }
             }
 
             "categories" -> SettingsBlock(
-                title = "Your categories",
+                title = "Spending categories",
                 helpTitle = "Categories",
-                helpMessage = "Tap a row to edit name, icon, or color. Use + to add. Seeded system categories can be customized; delete only removes categories you no longer need.",
+                helpMessage = "Tap a row to change name, icon, or color. Tap + to add. Delete only if you no longer use that category.",
             ) {
                 if (categories.isEmpty()) {
                     Text("No categories yet.", color = scheme.onSurfaceVariant)
@@ -814,9 +924,9 @@ fun SettingsDetailScreen(
 
             "banks" -> {
                 SettingsBlock(
-                    title = "Payment modes",
-                    helpTitle = "Cash & Digital",
-                    helpMessage = "Cash and Digital are payment modes. Named banks and UPI wallets live under Digital and are summed into the Digital total.",
+                    title = "Cash and digital",
+                    helpTitle = "Payment modes",
+                    helpMessage = "Cash is physical money. Digital is the total of your bank and UPI accounts listed below.",
                 ) {
                     AccountBalanceRow(
                         name = "Cash",
@@ -838,15 +948,15 @@ fun SettingsDetailScreen(
                     )
                 }
                 SettingsBlock(
-                    title = "Digital accounts",
-                    helpTitle = "Banks & wallets",
-                    helpMessage = "Add HDFC, ICICI, PhonePe, etc. AI matches these from email/SMS when possible. Tap + to add.",
+                    title = "Your banks and UPI apps",
+                    helpTitle = "Accounts",
+                    helpMessage = "Add names like HDFC, ICICI, PhonePe, or GPay. Tap + to add. The app tries to match these in bank emails and SMS.",
                 ) {
                     if (bankList.isEmpty()) {
                         Text(
-                            "No digital accounts yet — tap + to add",
+                            "None yet — tap the + button to add a bank or UPI app",
                             color = scheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                     bankList.forEachIndexed { index, bank ->
@@ -879,11 +989,11 @@ fun SettingsDetailScreen(
                         }
                 }
                 SettingsBlock(
-                    title = "Defaults",
-                    helpTitle = "Default payment",
-                    helpMessage = "Default payment mode is pre-selected when you add a transaction manually. Default digital account is used when payment is Digital and AI cannot detect which bank or wallet was used.",
+                    title = "Defaults when you add a spend",
+                    helpTitle = "Defaults",
+                    helpMessage = "Payment type is pre-selected when you add a spend by hand. Default bank is used for Digital when the app cannot tell which account.",
                 ) {
-                    SettingsPanelLabel("Payment mode")
+                    SettingsPanelLabel("Usually pay with")
                     SettingsSegmentedRow {
                         listOf("Cash", "Digital").forEach { method ->
                             SettingsSegment(
@@ -897,7 +1007,7 @@ fun SettingsDetailScreen(
                             )
                         }
                     }
-                    SettingsPanelLabel("Digital account")
+                    SettingsPanelLabel("Default bank / UPI app")
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -908,7 +1018,7 @@ fun SettingsDetailScreen(
                                 defaultDigital = ""
                                 vm.saveDefaultDigitalAccount("")
                             },
-                            label = { Text("Auto") },
+                            label = { Text("Let app choose") },
                             shape = shapes.medium,
                         )
                         bankList.forEach { bank ->
@@ -925,7 +1035,7 @@ fun SettingsDetailScreen(
                     }
                     if (bankList.isEmpty()) {
                         Text(
-                            "Add a digital account to set a default bank.",
+                            "Add a bank or UPI app above first.",
                             style = MaterialTheme.typography.bodySmall,
                             color = scheme.onSurfaceVariant,
                         )
@@ -947,19 +1057,21 @@ fun SettingsDetailScreen(
                         minLines = 8,
                         shape = shapes.medium,
                     )
-                    Button(
-                        onClick = { vm.saveSystemPrompt(systemPrompt) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.large,
-                    ) { Text("Save system prompt") }
-                    OutlinedButton(
-                        onClick = {
-                            vm.resetSystemPrompt()
-                            systemPrompt = SecureStore.DEFAULT_LLM_SYSTEM
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.large,
-                    ) { Text("Reset to default") }
+                    SettingsButtonStack {
+                        Button(
+                            onClick = { vm.saveSystemPrompt(systemPrompt) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = shapes.large,
+                        ) { Text("Save system prompt") }
+                        OutlinedButton(
+                            onClick = {
+                                vm.resetSystemPrompt()
+                                systemPrompt = SecureStore.DEFAULT_LLM_SYSTEM
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = shapes.large,
+                        ) { Text("Reset to default") }
+                    }
                 }
                 SettingsBlock(
                     title = "Classification",
@@ -974,7 +1086,7 @@ fun SettingsDetailScreen(
                         singleLine = true,
                         shape = shapes.medium,
                     )
-                    FilledTonalButton(
+                    AppSecondaryButton(
                         onClick = { vm.setClassificationDelay(classDelay.toLongOrNull() ?: 15L) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
@@ -1030,8 +1142,8 @@ fun SettingsDetailScreen(
                 .navigationBarsPadding()
                 .padding(end = 20.dp, bottom = 20.dp),
             shape = shapes.large,
-            containerColor = scheme.secondaryContainer,
-            contentColor = scheme.onSecondaryContainer,
+            containerColor = scheme.primaryContainer,
+            contentColor = scheme.onPrimaryContainer,
         ) { Icon(Icons.Default.Add, contentDescription = "Add category") }
     }
     if (section == "banks") {
@@ -1045,15 +1157,15 @@ fun SettingsDetailScreen(
                 .navigationBarsPadding()
                 .padding(end = 20.dp, bottom = 20.dp),
             shape = shapes.large,
-            containerColor = scheme.secondaryContainer,
-            contentColor = scheme.onSecondaryContainer,
+            containerColor = scheme.primaryContainer,
+            contentColor = scheme.onPrimaryContainer,
         ) { Icon(Icons.Default.Add, contentDescription = "Add bank") }
     }
-    if (section == "senders" || section == "email") {
+    if (section == "senders" || section == "email" || section == "gmail") {
         FloatingActionButton(
             onClick = {
                 senderEmail = ""
-                senderLabel = "FamPay"
+                senderLabel = ""
                 showSenderSheet = true
             },
             modifier = Modifier
@@ -1061,9 +1173,9 @@ fun SettingsDetailScreen(
                 .navigationBarsPadding()
                 .padding(end = 20.dp, bottom = 20.dp),
             shape = shapes.large,
-            containerColor = scheme.secondaryContainer,
-            contentColor = scheme.onSecondaryContainer,
-        ) { Icon(Icons.Default.Add, contentDescription = "Add sender") }
+            containerColor = scheme.primaryContainer,
+            contentColor = scheme.onPrimaryContainer,
+        ) { Icon(Icons.Default.Add, contentDescription = "Add trusted bank") }
     }
     }
 
@@ -1185,26 +1297,28 @@ fun SettingsDetailScreen(
                         }
                     }
                 }
-                Button(
-                    onClick = {
-                        val id = editCategoryId
-                        if (id == null) vm.addCategory(newCategory, newCategoryIcon, newCategoryColor, true)
-                        else vm.updateCategory(id, newCategory, newCategoryIcon, newCategoryColor, true)
-                        newCategory = ""
-                        newCategoryIcon = "category"
-                        newCategoryColor = 0xFF0B6E4FL
-                        editCategoryId = null
-                        showCategorySheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                    enabled = newCategory.isNotBlank(),
-                ) { Text(if (editCategoryId == null) "Add category" else "Save changes") }
-                OutlinedButton(
-                    onClick = { showCategorySheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                ) { Text("Cancel") }
+                SettingsButtonStack {
+                    Button(
+                        onClick = {
+                            val id = editCategoryId
+                            if (id == null) vm.addCategory(newCategory, newCategoryIcon, newCategoryColor, true)
+                            else vm.updateCategory(id, newCategory, newCategoryIcon, newCategoryColor, true)
+                            newCategory = ""
+                            newCategoryIcon = "category"
+                            newCategoryColor = 0xFF0B6E4FL
+                            editCategoryId = null
+                            showCategorySheet = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                        enabled = newCategory.isNotBlank(),
+                    ) { Text(if (editCategoryId == null) "Add category" else "Save changes") }
+                    OutlinedButton(
+                        onClick = { showCategorySheet = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                    ) { Text("Cancel") }
+                }
             }
         }
     }
@@ -1222,39 +1336,41 @@ fun SettingsDetailScreen(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Add account", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Add bank or UPI app", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Bank, UPI app, or wallet name. AI matches these labels in emails and SMS.",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Type a short name you recognize — for example HDFC, Axis, PhonePe, or GPay.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     newBankName,
                     { newBankName = it },
-                    label = { Text("Account name") },
+                    label = { Text("Name") },
                     placeholder = { Text("e.g. HDFC, PhonePe, Axis") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = shapes.medium,
                 )
-                Button(
-                    onClick = {
-                        val name = newBankName.trim()
-                        if (name.isNotEmpty() && bankList.none { it.equals(name, true) }) {
-                            persistBanks(bankList + name)
-                        }
-                        newBankName = ""
-                        showBankSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                    enabled = newBankName.isNotBlank(),
-                ) { Text("Add account") }
-                OutlinedButton(
-                    onClick = { showBankSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                ) { Text("Cancel") }
+                SettingsButtonStack {
+                    Button(
+                        onClick = {
+                            val name = newBankName.trim()
+                            if (name.isNotEmpty() && bankList.none { it.equals(name, true) }) {
+                                persistBanks(bankList + name)
+                            }
+                            newBankName = ""
+                            showBankSheet = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                        enabled = newBankName.isNotBlank(),
+                    ) { Text("Add") }
+                    OutlinedButton(
+                        onClick = { showBankSheet = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                    ) { Text("Cancel") }
+                }
             }
         }
     }
@@ -1272,36 +1388,46 @@ fun SettingsDetailScreen(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Add trusted sender", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Add a trusted bank email", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "Only emails from this address (or containing this text) will be turned into spends.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     senderEmail,
                     { senderEmail = it },
-                    label = { Text("Sender email or pattern") },
+                    label = { Text("Email address or part of it") },
+                    placeholder = { Text("alerts@hdfcbank.net or hdfcbank") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.medium,
                 )
                 OutlinedTextField(
                     senderLabel,
                     { senderLabel = it },
-                    label = { Text("Bank / wallet label") },
+                    label = { Text("Short name for this bank") },
+                    placeholder = { Text("e.g. HDFC, PhonePe") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.medium,
                 )
-                Button(
-                    onClick = {
-                        vm.addSender(senderEmail, senderLabel)
-                        senderEmail = ""
-                        showSenderSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                    enabled = senderEmail.isNotBlank(),
-                ) { Text("Add sender") }
-                OutlinedButton(
-                    onClick = { showSenderSheet = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.extraLarge,
-                ) { Text("Cancel") }
+                SettingsButtonStack {
+                    Button(
+                        onClick = {
+                            vm.addSender(senderEmail, senderLabel)
+                            senderEmail = ""
+                            senderLabel = ""
+                            showSenderSheet = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                        enabled = senderEmail.isNotBlank(),
+                    ) { Text("Add") }
+                    OutlinedButton(
+                        onClick = { showSenderSheet = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = shapes.extraLarge,
+                    ) { Text("Cancel") }
+                }
             }
         }
     }
