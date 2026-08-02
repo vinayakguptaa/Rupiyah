@@ -72,7 +72,7 @@ fun FloatingBottomNav(
     val items = listOf(
         Triple("home", "Home", Icons.Default.Home),
         Triple("transactions", "Activity", Icons.AutoMirrored.Filled.List),
-        Triple("funds", "Funds", Icons.Default.AccountBalanceWallet),
+        Triple("funds", "Tabs", Icons.Default.AccountBalanceWallet),
         Triple("settings", "Settings", Icons.Default.Settings),
     )
     val scheme = MaterialTheme.colorScheme

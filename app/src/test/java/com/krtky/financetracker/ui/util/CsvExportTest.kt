@@ -12,8 +12,8 @@ class CsvExportTest {
     @Test
     fun `csvSummaryLine summarizes correctly`() {
         val txns = listOf(
-            Transaction(id = "1", type = TransactionType.INCOME, amountPaise = 1_00_00_00L, occurredAt = 1L, source = TransactionSource.MANUAL, classificationStatus = ClassificationStatus.CLASSIFIED),
-            Transaction(id = "2", type = TransactionType.EXPENSE, amountPaise = 50_00_00L, occurredAt = 2L, source = TransactionSource.MANUAL, classificationStatus = ClassificationStatus.CLASSIFIED),
+            Transaction(id = "1", type = TransactionType.CREDIT, amountPaise = 1_00_00_00L, occurredAt = 1L, source = TransactionSource.MANUAL, classificationStatus = ClassificationStatus.CLASSIFIED),
+            Transaction(id = "2", type = TransactionType.DEBIT, amountPaise = 50_00_00L, occurredAt = 2L, source = TransactionSource.MANUAL, classificationStatus = ClassificationStatus.CLASSIFIED),
         )
         val summary = csvSummaryLine(txns)
         assertThat(summary).contains("2 txns")

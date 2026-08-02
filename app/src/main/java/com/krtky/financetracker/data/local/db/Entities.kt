@@ -15,6 +15,18 @@ data class CategoryEntity(
     val isQuickAction: Boolean = false,
 )
 
+@Entity(tableName = "accounts")
+data class AccountEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kind: String = "BANK",
+    val currency: String = "INR",
+    val openingBalancePaise: Long = 0L,
+    val archived: Boolean = false,
+    val sortOrder: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 @Entity(tableName = "funds")
 data class FundEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -34,11 +46,14 @@ data class FundEntity(
         Index(value = ["occurredAt"]),
         Index(value = ["categoryId"]),
         Index(value = ["fundId"]),
+        Index(value = ["accountId"]),
+        Index(value = ["transferGroupId"]),
         Index(value = ["deletedAt"]),
     ]
 )
 data class TransactionEntity(
     @PrimaryKey val id: String,
+    /** DEBIT | CREDIT (legacy rows migrated from EXPENSE | INCOME). */
     val type: String,
     val amountPaise: Long,
     val currency: String = "INR",
@@ -48,11 +63,17 @@ data class TransactionEntity(
     val counterparty: String? = null,
     val categoryId: Long? = null,
     val fundId: Long? = null,
+    val accountId: Long? = null,
     val paymentMethod: String? = null,
     val source: String,
     val note: String? = null,
     val isCash: Boolean = false,
     val classificationStatus: String = "PENDING",
+    val isSkipped: Boolean = false,
+    /** NORMAL | SELF_TRANSFER | TAB_TRANSFER */
+    val kind: String = "NORMAL",
+    val transferGroupId: String? = null,
+    val rawDescription: String? = null,
     val classificationNotifiedAt: Long? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
@@ -80,6 +101,26 @@ data class FundLedgerEntity(
     val balanceAfterPaise: Long,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+)
+
+/** Allocations under a parent transaction (Phase 3 splits). */
+@Entity(
+    tableName = "transaction_splits",
+    indices = [
+        Index(value = ["transactionId"]),
+        Index(value = ["categoryId"]),
+        Index(value = ["fundId"]),
+    ],
+)
+data class TransactionSplitEntity(
+    @PrimaryKey val id: String,
+    val transactionId: String,
+    val amountPaise: Long,
+    val categoryId: Long? = null,
+    val counterparty: String? = null,
+    val fundId: Long? = null,
+    val note: String? = null,
+    val sortOrder: Int = 0,
 )
 
 @Entity(

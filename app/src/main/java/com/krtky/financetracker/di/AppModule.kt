@@ -23,6 +23,8 @@ object AppModule {
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,
                 AppDatabase.MIGRATION_5_6,
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8,
             )
             // If a newer build raised the version and an older APK is installed later,
             // wipe rather than crash with "migration from X to Y was required".

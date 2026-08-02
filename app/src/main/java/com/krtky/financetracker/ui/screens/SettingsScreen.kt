@@ -120,8 +120,7 @@ fun SettingsScreen(
     val bankCount = state.bankAccounts.split(',', '\n')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
-        .size
-
+        .size // mirrored from active accounts; archived not counted
     val emailSubtitle = when {
         !state.llmReady -> "Set up AI helper first, then connect Gmail"
         state.gmailOAuthConnected -> {
@@ -244,20 +243,7 @@ fun SettingsScreen(
         if (showImport) {
             SettingsSectionLabel("Import spends automatically")
             GroupedCard {
-                if (matches(
-                        "email", "gmail", "bank", "import", "inbox", "imap",
-                        "sender", "trusted", "poll", "monitor", "message",
-                    )
-                ) {
-                    SettingsGroupRow(
-                        title = "Bank emails",
-                        subtitle = emailSubtitle,
-                        icon = Icons.Default.Email,
-                        onClick = { onOpenSection(SettingsSection.EMAIL) },
-                        iconContainer = scheme.primaryContainer,
-                        iconTint = scheme.onPrimaryContainer,
-                    )
-                }
+                // Email ingest removed — capture is SMS + CSV + manual only.
                 if (matches("sms", "text", "message", "import", "bank")) {
                     SettingsGroupRow(
                         title = "Bank text messages (SMS)",
@@ -270,7 +256,7 @@ fun SettingsScreen(
                         onClick = { onOpenSection(SettingsSection.SMS) },
                         iconContainer = scheme.primaryContainer,
                         iconTint = scheme.onPrimaryContainer,
-                        showDivider = true,
+                        showDivider = false,
                     )
                 }
             }

@@ -136,11 +136,6 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
-        <service
-            android:name=".email.EmailMonitorService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"

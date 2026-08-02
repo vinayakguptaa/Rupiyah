@@ -33,7 +33,7 @@ class TransactionDaoTest {
     @Test
     fun insertAndGetById() = runBlocking {
         val txn = TransactionEntity(
-            id = "txn-1", type = "EXPENSE", amountPaise = 5_00_00L,
+            id = "txn-1", type = "DEBIT", amountPaise = 5_00_00L,
             occurredAt = 1000L, recordedAt = 1000L, source = "MANUAL",
             classificationStatus = "PENDING", updatedAt = 1000L,
         )
@@ -46,7 +46,7 @@ class TransactionDaoTest {
     @Test
     fun insert_ignoresDuplicateId() = runBlocking {
         val txn = TransactionEntity(
-            id = "dup", type = "EXPENSE", amountPaise = 100L,
+            id = "dup", type = "DEBIT", amountPaise = 100L,
             occurredAt = 1L, recordedAt = 1L, source = "MANUAL",
             classificationStatus = "PENDING", updatedAt = 1L,
         )
@@ -61,10 +61,10 @@ class TransactionDaoTest {
     @Test
     fun observeAll_returnsOnlyNonDeleted() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "a", type = "EXPENSE", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L)
+            TransactionEntity(id = "a", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L)
         )
         dao.insert(
-            TransactionEntity(id = "b", type = "EXPENSE", amountPaise = 200L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 2L)
+            TransactionEntity(id = "b", type = "DEBIT", amountPaise = 200L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 2L)
         )
         dao.softDelete("b")
         val all = dao.observeAll().first()
@@ -75,13 +75,13 @@ class TransactionDaoTest {
     @Test
     fun update_modifiesTransaction() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "u1", type = "EXPENSE", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L)
+            TransactionEntity(id = "u1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L)
         )
         dao.update(
-            TransactionEntity(id = "u1", type = "INCOME", amountPaise = 999L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 2L)
+            TransactionEntity(id = "u1", type = "CREDIT", amountPaise = 999L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 2L)
         )
         val loaded = dao.getById("u1")
-        assertThat(loaded!!.type).isEqualTo("INCOME")
+        assertThat(loaded!!.type).isEqualTo("CREDIT")
         assertThat(loaded.amountPaise).isEqualTo(999L)
     }
 
@@ -89,16 +89,16 @@ class TransactionDaoTest {
     fun sumByType_aggregatesCorrectly() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insert(
-            TransactionEntity(id = "s1", type = "INCOME", amountPaise = 10_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
+            TransactionEntity(id = "s1", type = "CREDIT", amountPaise = 10_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
         )
         dao.insert(
-            TransactionEntity(id = "s2", type = "EXPENSE", amountPaise = 4_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
+            TransactionEntity(id = "s2", type = "DEBIT", amountPaise = 4_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
         )
         dao.insert(
-            TransactionEntity(id = "s3", type = "EXPENSE", amountPaise = 1_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
+            TransactionEntity(id = "s3", type = "DEBIT", amountPaise = 1_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now)
         )
-        val income = dao.sumByType("INCOME", 0L, now + 1)
-        val expense = dao.sumByType("EXPENSE", 0L, now + 1)
+        val income = dao.sumByType("CREDIT", 0L, now + 1)
+        val expense = dao.sumByType("DEBIT", 0L, now + 1)
         assertThat(income).isEqualTo(10_00_00L)
         assertThat(expense).isEqualTo(5_00_00L)
     }
@@ -106,7 +106,7 @@ class TransactionDaoTest {
     @Test
     fun findByEmailMessageId() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "e1", type = "EXPENSE", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "EMAIL", classificationStatus = "PENDING", updatedAt = 1L, emailMessageId = "msg-1")
+            TransactionEntity(id = "e1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "EMAIL", classificationStatus = "PENDING", updatedAt = 1L, emailMessageId = "msg-1")
         )
         val found = dao.findByEmailMessageId("msg-1")
         assertThat(found).isNotNull()
@@ -116,7 +116,7 @@ class TransactionDaoTest {
     @Test
     fun findByContentHash() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "h1", type = "EXPENSE", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L, contentHash = "abc123")
+            TransactionEntity(id = "h1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "PENDING", updatedAt = 1L, contentHash = "abc123")
         )
         val found = dao.findByContentHash("abc123")
         assertThat(found).isNotNull()
@@ -126,13 +126,13 @@ class TransactionDaoTest {
     fun categorySpend_returnsAggregatedData() = runBlocking {
         val now = System.currentTimeMillis()
         dao.insert(
-            TransactionEntity(id = "c1", type = "EXPENSE", amountPaise = 3_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 1L)
+            TransactionEntity(id = "c1", type = "DEBIT", amountPaise = 3_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 1L)
         )
         dao.insert(
-            TransactionEntity(id = "c2", type = "EXPENSE", amountPaise = 2_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 1L)
+            TransactionEntity(id = "c2", type = "DEBIT", amountPaise = 2_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 1L)
         )
         dao.insert(
-            TransactionEntity(id = "c3", type = "EXPENSE", amountPaise = 1_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 2L)
+            TransactionEntity(id = "c3", type = "DEBIT", amountPaise = 1_00_00L, occurredAt = now, recordedAt = now, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now, categoryId = 2L)
         )
         val spend = dao.categorySpend(0L, now + 1)
         assertThat(spend).hasSize(2)
@@ -142,10 +142,10 @@ class TransactionDaoTest {
     @Test
     fun getUnsynced_returnsOnlyNonDeletedUnsynced() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "x1", type = "EXPENSE", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 1L, sheetsSynced = false)
+            TransactionEntity(id = "x1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 1L, sheetsSynced = false)
         )
         dao.insert(
-            TransactionEntity(id = "x2", type = "EXPENSE", amountPaise = 100L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 2L, sheetsSynced = true)
+            TransactionEntity(id = "x2", type = "DEBIT", amountPaise = 100L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = 2L, sheetsSynced = true)
         )
         val unsynced = dao.getUnsynced()
         assertThat(unsynced).hasSize(1)

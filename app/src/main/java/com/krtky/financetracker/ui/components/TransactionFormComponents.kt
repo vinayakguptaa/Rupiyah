@@ -94,8 +94,8 @@ private fun FormTypeSegmentPreview() {
             Modifier.padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FormTypeSegment(label = "Expense", selected = true, onClick = {}, modifier = Modifier.weight(1f))
-            FormTypeSegment(label = "Income", selected = false, onClick = {}, modifier = Modifier.weight(1f))
+            FormTypeSegment(label = "Debit", selected = true, onClick = {}, modifier = Modifier.weight(1f))
+            FormTypeSegment(label = "Credit", selected = false, onClick = {}, modifier = Modifier.weight(1f))
         }
     }
 }

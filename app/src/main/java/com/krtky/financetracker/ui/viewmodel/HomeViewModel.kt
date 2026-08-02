@@ -2,11 +2,11 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.data.repository.TrustedSenderRepository
+import com.krtky.financetracker.domain.model.CashflowMetrics
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
@@ -29,8 +29,8 @@ import javax.inject.Inject
 
 data class SetupChecklistState(
     val visible: Boolean = false,
-    val gmailDone: Boolean = false,
-    val sendersDone: Boolean = false,
+    val gmailDone: Boolean = false, // kept for UI compatibility → means AI ready
+    val sendersDone: Boolean = false, // kept → means banks configured
     val firstTxnDone: Boolean = false,
 )
 
@@ -38,11 +38,10 @@ data class SetupChecklistState(
 class HomeViewModel @Inject constructor(
     @ApplicationContext private val context: android.content.Context,
     private val transactionRepository: TransactionRepository,
-    private val emailIngest: EmailIngestService,
+    private val accountRepository: AccountRepository,
     private val uiMessenger: UiMessenger,
     private val userPreferences: UserPreferences,
     private val secureStore: SecureStore,
-    trustedSenderRepository: TrustedSenderRepository,
 ) : ViewModel() {
     private val refresh = MutableStateFlow(0)
     private val _isRefreshing = MutableStateFlow(false)
@@ -55,7 +54,21 @@ class HomeViewModel @Inject constructor(
         transactionRepository.monthlySummary()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MonthlySummary(0, 0))
 
+    /** Lifestyle / credits / investment for the current month. */
+    val cashflow: StateFlow<CashflowMetrics> = refresh.map {
+        transactionRepository.cashflowMetrics()
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        CashflowMetrics(0, 0, 0, 0),
+    )
+
     val funds: StateFlow<List<FundBalance>> = transactionRepository.observeFunds()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Open tabs only (non-zero balance), for Home strip. */
+    val openTabs: StateFlow<List<FundBalance>> = funds
+        .map { list -> list.filter { it.balancePaise != 0L } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val recent: StateFlow<List<Transaction>> = transactionRepository.observeTransactions()
@@ -92,17 +105,18 @@ class HomeViewModel @Inject constructor(
     val setupChecklist: StateFlow<SetupChecklistState> = combine(
         userPreferences.setupChecklistDismissed,
         transactionRepository.observeTransactions(),
-        trustedSenderRepository.observeAll(),
-    ) { dismissed, txns, senders ->
-        val gmailDone = !secureStore.gmailAddress.isNullOrBlank() ||
-            !secureStore.gmailOAuthEmail.isNullOrBlank()
-        val sendersDone = senders.isNotEmpty()
+        accountRepository.observeActive(),
+        userPreferences.smsEnabled,
+    ) { dismissed, txns, accounts, smsOn ->
+        val aiReady = secureStore.isLlmReady()
+        val banksDone = accounts.any { !it.name.equals("Cash", true) }
         val firstTxnDone = txns.isNotEmpty()
-        val allDone = gmailDone && sendersDone && firstTxnDone
+        // Lightweight onboarding: AI (for SMS) + a bank + first txn (or SMS on is enough progress)
+        val allDone = (aiReady || smsOn || firstTxnDone) && banksDone && firstTxnDone
         SetupChecklistState(
             visible = !dismissed && !allDone,
-            gmailDone = gmailDone,
-            sendersDone = sendersDone,
+            gmailDone = aiReady,
+            sendersDone = banksDone,
             firstTxnDone = firstTxnDone,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SetupChecklistState())
@@ -185,26 +199,11 @@ class HomeViewModel @Inject constructor(
             _isRefreshing.value = true
             try {
                 refresh.value++
-                val result = runCatching { emailIngest.ingest(force = true) }.getOrElse { e ->
-                    uiMessenger.show(e.message?.take(80) ?: "Couldn't reach Gmail")
-                    null
-                }
-                if (result != null && result.error != null) {
-                    val msg = result.error
-                    if (!msg.contains("not configured", ignoreCase = true) &&
-                        !msg.contains("No trusted", ignoreCase = true)
-                    ) {
-                        uiMessenger.show(msg.take(80))
-                    }
-                } else if (result != null && result.created > 0) {
-                    uiMessenger.show(
-                        if (result.created == 1) "1 new from Gmail"
-                        else "${result.created} new from Gmail",
-                    )
-                }
+                WidgetUpdater.refreshAll(context)
             } finally {
                 _isRefreshing.value = false
             }
         }
     }
 }
+

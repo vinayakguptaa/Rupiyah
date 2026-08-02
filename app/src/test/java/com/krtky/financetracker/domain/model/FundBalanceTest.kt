@@ -51,12 +51,30 @@ class FundBalanceTest {
     }
 
     @Test
-    fun `isOverspent when spent all`() {
-        assertThat(FundBalance(fund = fund, balancePaise = 0L, creditedPaise = 0L, debitedPaise = 10_00_00L, openingPaise = 10_00_00L).isOverspent()).isTrue()
+    fun `settled tab is not overspent`() {
+        assertThat(
+            FundBalance(
+                fund = fund,
+                balancePaise = 0L,
+                creditedPaise = 10_00_00L,
+                debitedPaise = 10_00_00L,
+                openingPaise = 0L,
+            ).isOverspent(),
+        ).isFalse()
+        assertThat(
+            FundBalance(
+                fund = fund,
+                balancePaise = 0L,
+                creditedPaise = 0L,
+                debitedPaise = 0L,
+                openingPaise = 0L,
+            ).isSettled(),
+        ).isTrue()
     }
 
     @Test
-    fun `isOverspent false when within limit`() {
+    fun `isOverspent false when they owe you`() {
         assertThat(fb(balancePaise = 3_00_00L).isOverspent()).isFalse()
+        assertThat(fb(balancePaise = 3_00_00L).theyOweYou()).isTrue()
     }
 }

@@ -1,10 +1,20 @@
 package com.krtky.financetracker.domain.model
 
-enum class TransactionType { INCOME, EXPENSE }
+/** Ledger direction — Debit out / Credit in. Forms use these labels (not Expense/Income). */
+enum class TransactionType { DEBIT, CREDIT }
 
 enum class TransactionSource { EMAIL, SMS, MANUAL, IMPORT }
 
 enum class ClassificationStatus { PENDING, CLASSIFIED, SKIPPED }
+
+/**
+ * NORMAL — ordinary cashflow.
+ * SELF_TRANSFER — linked legs between owned accounts (excluded from lifestyle/credit metrics).
+ * TAB_TRANSFER — move open balance between tabs (affects tab balances only; excluded from cashflow).
+ */
+enum class TransactionKind { NORMAL, SELF_TRANSFER, TAB_TRANSFER }
+
+enum class AccountKind { BANK, CARD, CASH, WALLET }
 
 enum class FundEntryType { CREDIT, DEBIT, ADJUSTMENT }
 
@@ -41,6 +51,24 @@ data class Category(
     val isQuickAction: Boolean = false,
 )
 
+/** Owned ledger (bank / card / cash / wallet). Balance = opening + credits − debits. */
+data class Account(
+    val id: Long = 0,
+    val name: String,
+    val kind: AccountKind = AccountKind.BANK,
+    val currency: String = "INR",
+    val openingBalancePaise: Long = 0L,
+    val archived: Boolean = false,
+    val sortOrder: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+data class AccountBalance(
+    val account: Account,
+    val balancePaise: Long,
+    val txnCount: Long = 0,
+)
+
 data class Fund(
     val id: Long = 0,
     val name: String,
@@ -51,32 +79,30 @@ data class Fund(
 )
 
 /**
- * Fund pot math (simple, always):
+ * Open Tab balance (was Fund envelope).
  *
- *   remaining = fundAmount + income − expenses
- *   display   = remaining out of fundAmount
+ * Spec: positive → they owe you; negative → you owe them.
+ *   balance = opening + debits − credits
+ * (money you advanced / spent on their behalf vs settlements).
  *
- * Example: set amount ₹1500, txn −100, txn +50 → ₹1450 left of ₹1500.
- *
- * [fund.budgetPaise] is the amount you set (create / edit). Transactions
- * with this fundId are the only other inputs — no stacked ledger noise.
+ * [fund.budgetPaise] is optional opening / starting open balance.
  */
 data class FundBalance(
     val fund: Fund,
-    /** Cash left: amount + income − expenses. */
+    /** Open balance: + they owe you, − you owe them. */
     val balancePaise: Long,
-    /** Income transactions assigned to this fund. */
+    /** Credits (settlements / repayments) on this tab. */
     val creditedPaise: Long,
-    /** Expense transactions assigned to this fund. */
+    /** Debits (advances / spends) on this tab. */
     val debitedPaise: Long,
-    /** Same as the amount you set (limit / starting pot). */
+    /** Optional opening balance you set. */
     val openingPaise: Long = 0L,
 ) {
-    /** Envelope size you configured (never “all credits ever”). */
+    /** Magnitude for display bars (never zero for ratio math). */
     fun limitPaise(): Long = when {
         fund.budgetPaise > 0L -> fund.budgetPaise
         openingPaise > 0L -> openingPaise
-        else -> maxOf(balancePaise.coerceAtLeast(0L), 1L)
+        else -> maxOf(kotlin.math.abs(balancePaise), debitedPaise + creditedPaise, 1L)
     }
 
     fun remainingOfLimitPaise(): Long = balancePaise.coerceAtLeast(0L)
@@ -89,8 +115,84 @@ data class FundBalance(
 
     fun spentRatio(): Float = (1f - remainingRatio()).coerceIn(0f, 1f)
 
-    /** Over limit or negative cash left in the pot. */
-    fun isOverspent(): Boolean = balancePaise < 0L || spentRatio() >= 1f
+    fun isOverspent(): Boolean = balancePaise < 0L
+
+    fun theyOweYou(): Boolean = balancePaise > 0L
+    fun youOweThem(): Boolean = balancePaise < 0L
+    fun isSettled(): Boolean = balancePaise == 0L
+}
+
+/** Lifestyle / investment home metrics for a period. */
+data class CashflowMetrics(
+    val lifestyleSpendPaise: Long,
+    val creditPaise: Long,
+    val investedPaise: Long,
+    val redeemedPaise: Long,
+    val lifestyleByCategory: List<CategorySpend> = emptyList(),
+    val investmentByName: List<NamedAmount> = emptyList(),
+) {
+    val netInvestedPaise: Long get() = investedPaise - redeemedPaise
+}
+
+data class NamedAmount(
+    val name: String,
+    val debitPaise: Long = 0L,
+    val creditPaise: Long = 0L,
+) {
+    val netPaise: Long get() = debitPaise - creditPaise
+}
+
+/**
+ * Allocation under a parent transaction. Parent stays bank truth (amount, account, date).
+ * Sum of split amounts must equal parent amount. Reports use splits when present.
+ */
+data class TransactionSplit(
+    val id: String = "",
+    val transactionId: String = "",
+    val amountPaise: Long,
+    val categoryId: Long? = null,
+    val counterparty: String? = null,
+    val fundId: Long? = null,
+    val note: String? = null,
+    val sortOrder: Int = 0,
+    val categoryName: String? = null,
+    val fundName: String? = null,
+)
+
+/**
+ * One report row: either a split line or the unsplit parent.
+ * Never use parent + splits together.
+ */
+data class EffectiveAllocation(
+    val transactionId: String,
+    val type: TransactionType,
+    val amountPaise: Long,
+    val categoryId: Long?,
+    val counterparty: String?,
+    val fundId: Long?,
+    val occurredAt: Long,
+    val kind: TransactionKind,
+    val isSplit: Boolean = false,
+    val splitId: String? = null,
+    val note: String? = null,
+)
+
+/** Validation helpers for split editor (pure; unit-testable). */
+object SplitRules {
+    /** Null if valid; otherwise a short user-facing reason. */
+    fun validateSum(parentAmountPaise: Long, splitAmounts: List<Long>): String? {
+        if (splitAmounts.isEmpty()) return null
+        if (parentAmountPaise <= 0L) return "Parent amount must be greater than zero"
+        if (splitAmounts.any { it <= 0L }) return "Each split must be greater than zero"
+        val sum = splitAmounts.sum()
+        if (sum != parentAmountPaise) {
+            return "Splits must sum to parent amount"
+        }
+        return null
+    }
+
+    fun remainingPaise(parentAmountPaise: Long, splitAmounts: List<Long>): Long =
+        parentAmountPaise - splitAmounts.sum()
 }
 
 data class Transaction(
@@ -100,16 +202,23 @@ data class Transaction(
     val currency: String = "INR",
     val occurredAt: Long,
     val recordedAt: Long = System.currentTimeMillis(),
+    /** Legacy; prefer [counterparty]. Kept for SMS/email raw party text. */
     val merchant: String? = null,
-    /** Person/merchant paid to (expense) or received from (income). */
+    /** UI label: Name — merchant, person, venue. */
     val counterparty: String? = null,
     val categoryId: Long? = null,
     val fundId: Long? = null,
+    val accountId: Long? = null,
+    /** Legacy free-text account label; prefer [accountId]. */
     val paymentMethod: String? = null,
     val source: TransactionSource = TransactionSource.MANUAL,
     val note: String? = null,
     val isCash: Boolean = false,
     val classificationStatus: ClassificationStatus = ClassificationStatus.PENDING,
+    val isSkipped: Boolean = false,
+    val kind: TransactionKind = TransactionKind.NORMAL,
+    val transferGroupId: String? = null,
+    val rawDescription: String? = null,
     val classificationNotifiedAt: Long? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
@@ -129,9 +238,39 @@ data class Transaction(
     /** ARGB category color; null if uncategorized. */
     val categoryColor: Long? = null,
     val fundName: String? = null,
+    val accountName: String? = null,
     /** Relative path under app files (`receipts/…`) or content URI string. */
     val receiptUri: String? = null,
-)
+    /** True when this parent has one or more split lines. */
+    val hasSplits: Boolean = false,
+    /** Split line count (0 if unsplit). */
+    val splitCount: Int = 0,
+) {
+    /** Display name for party / merchant. */
+    fun displayName(): String? =
+        counterparty?.takeIf { it.isNotBlank() }
+            ?: merchant?.takeIf { it.isNotBlank() }
+
+    /**
+     * True when the parent still needs a category.
+     * Split parents are stamped [ClassificationStatus.CLASSIFIED] when any line has a
+     * category ([TransactionRepository.setSplits]); clear-splits re-opens PENDING if needed.
+     */
+    fun needsClassification(): Boolean =
+        categoryId == null &&
+            !isSkipped &&
+            classificationStatus != ClassificationStatus.SKIPPED &&
+            classificationStatus != ClassificationStatus.CLASSIFIED &&
+            kind != TransactionKind.SELF_TRANSFER &&
+            kind != TransactionKind.TAB_TRANSFER
+
+    fun isSelfTransfer(): Boolean = kind == TransactionKind.SELF_TRANSFER
+
+    fun isTabTransfer(): Boolean = kind == TransactionKind.TAB_TRANSFER
+
+    /** Parent amount is bank truth and locked while splits exist. */
+    fun amountLocked(): Boolean = hasSplits || splitCount > 0
+}
 
 data class TrustedSender(
     val id: Long = 0,
@@ -145,6 +284,10 @@ data class MonthlySummary(
     val expensePaise: Long,
 ) {
     val netPaise: Long get() = incomePaise - expensePaise
+    /** Alias: credits (money in). */
+    val creditPaise: Long get() = incomePaise
+    /** Alias: debits (money out), before lifestyle exclusions. */
+    val debitPaise: Long get() = expensePaise
 }
 
 data class CategorySpend(
@@ -160,10 +303,3 @@ data class MonthlyTrend(
 ) {
     val netPaise: Long get() = incomePaise - expensePaise
 }
-
-/** Named payment account (bank/wallet/cash) with running net balance. */
-data class AccountBalance(
-    val name: String,
-    val balancePaise: Long,
-    val txnCount: Long = 0,
-)

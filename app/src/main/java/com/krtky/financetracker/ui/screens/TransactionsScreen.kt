@@ -149,8 +149,8 @@ fun TransactionsScreen(
 
     val filterSummary = remember(items) {
         val count = items.size
-        val expense = items.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amountPaise }
-        val income = items.filter { it.type == TransactionType.INCOME }.sumOf { it.amountPaise }
+        val expense = items.filter { it.type == TransactionType.DEBIT }.sumOf { it.amountPaise }
+        val income = items.filter { it.type == TransactionType.CREDIT }.sumOf { it.amountPaise }
         Triple(count, expense, income)
     }
 
@@ -320,7 +320,7 @@ fun TransactionsScreen(
                 grouped.forEach { (monthKey, monthItems) ->
                     item(key = "hdr_$monthKey") {
                         val monthTotal = monthItems.sumOf {
-                            if (it.type == TransactionType.INCOME) it.amountPaise else -it.amountPaise
+                            if (it.type == TransactionType.CREDIT) it.amountPaise else -it.amountPaise
                         }
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -357,7 +357,7 @@ fun TransactionsScreen(
                     }
                     items(monthItems, key = { it.id }) { t ->
                         val party = t.counterparty ?: t.merchant ?: t.note ?: "Transaction"
-                        val sign = if (t.type == TransactionType.EXPENSE) "-" else "+"
+                        val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
                         val catColor = categoryColor(t.categoryColor)
                         TransactionCard(
                             title = party,
@@ -369,7 +369,7 @@ fun TransactionsScreen(
                                 t.paymentMethod,
                             ).joinToString(" · "),
                             amount = "$sign${t.amountPaise.inr()}",
-                            amountColor = if (t.type == TransactionType.EXPENSE)
+                            amountColor = if (t.type == TransactionType.DEBIT)
                                 scheme.error
                             else scheme.primary,
                             icon = CategoryIcons.iconFor(t.categoryIcon, t.categoryName),

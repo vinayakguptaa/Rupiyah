@@ -27,8 +27,8 @@ class TransactionFilterStateTest {
 
     @Test
     fun `setType updates type`() {
-        state.setType(TransactionType.INCOME)
-        assertThat(state.type.value).isEqualTo(TransactionType.INCOME)
+        state.setType(TransactionType.CREDIT)
+        assertThat(state.type.value).isEqualTo(TransactionType.CREDIT)
     }
 
     @Test
@@ -71,7 +71,7 @@ class TransactionFilterStateTest {
 
     @Test
     fun `clear resets filters`() {
-        state.setType(TransactionType.EXPENSE)
+        state.setType(TransactionType.DEBIT)
         state.setPayment("ICICI")
         state.setCategory(1L)
         state.setFund(2L)

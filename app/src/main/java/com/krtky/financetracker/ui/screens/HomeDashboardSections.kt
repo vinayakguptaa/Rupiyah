@@ -53,6 +53,7 @@ import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.MonthlyTrend
+import com.krtky.financetracker.domain.model.NamedAmount
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.BalanceHeroCard
@@ -92,7 +93,12 @@ internal data class HomeDashboardData(
     val monthlyTrend: List<MonthlyTrend>,
     val filtered: List<Transaction>,
     val selectedCategoryFilter: CategorySpend?,
-)
+    val investedPaise: Long = 0L,
+    val redeemedPaise: Long = 0L,
+    val investmentByName: List<NamedAmount> = emptyList(),
+) {
+    val netInvested: Long get() = investedPaise - redeemedPaise
+}
 
 internal fun LazyListScope.homeDashboardSections(
     layout: List<HomeSectionConfig>,
@@ -314,7 +320,7 @@ private fun LazyListScope.recentActivityItems(
         ) { _, t ->
             val scheme = MaterialTheme.colorScheme
             val party = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Transaction"
-            val sign = if (t.type == TransactionType.EXPENSE) "-" else "+"
+            val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
             val catColor = categoryColor(t.categoryColor)
             TransactionCard(
                 title = party,
@@ -325,7 +331,7 @@ private fun LazyListScope.recentActivityItems(
                     t.paymentMethod,
                 ).joinToString(" · "),
                 amount = "$sign${t.amountPaise.inr()}",
-                amountColor = if (t.type == TransactionType.EXPENSE) scheme.error else scheme.primary,
+                amountColor = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,
                 icon = CategoryIcons.iconFor(t.categoryIcon, t.categoryName),
                 onClick = { onOpenTxn(t.id) },
                 visible = true,
@@ -459,10 +465,10 @@ private fun HomeSectionBody(
                 BalanceHeroCard(
                     title = stringResource(R.string.home_net_this_month),
                     balance = data.net.inr(),
-                    monthLabel = "Income − expenses · ${data.monthLabel}",
-                    incomeLabel = "Income",
+                    monthLabel = "Credits − lifestyle · ${data.monthLabel}",
+                    incomeLabel = "Credits",
                     incomeValue = data.income.inr(),
-                    expenseLabel = "Expense",
+                    expenseLabel = "Lifestyle",
                     expenseValue = data.spent.inr(),
                     hidden = data.isNetHidden,
                     incomeChangePct = data.mom.incomePct,
@@ -490,7 +496,7 @@ private fun HomeSectionBody(
                     // Stacked compact tiles for half-width cell
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OverviewTile(
-                            title = "Funds",
+                            title = "Open Tabs",
                             value = if (data.isNetHidden) "••••" else "${data.funds.size}",
                             subtitle = if (data.isNetHidden) "₹ ••••" else data.fundBalance.inr(),
                             icon = Icons.Default.Savings,
@@ -499,16 +505,29 @@ private fun HomeSectionBody(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         OverviewTile(
+                            title = "Invested",
+                            value = if (data.isNetHidden) "••••" else data.netInvested.inr(),
+                            subtitle = if (data.isNetHidden) {
+                                "Net this month"
+                            } else {
+                                "In ${data.investedPaise.inr()} · out ${data.redeemedPaise.inr()}"
+                            },
+                            icon = Icons.Default.Savings,
+                            onClick = onOpenExpenseActivity,
+                            accent = scheme.tertiary,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OverviewTile(
                             title = "Accounts",
                             value = if (data.isNetHidden) "••••" else data.accountsTotal.inr(),
-                            subtitle = if (data.isNetHidden) "Cash · Digital" else "Cash ${data.cashBal.inr()}",
+                            subtitle = if (data.isNetHidden) "Cash · banks" else "Cash ${data.cashBal.inr()}",
                             icon = Icons.Default.Payments,
                             onClick = onOpenAccounts,
                             accent = scheme.primary,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         OverviewTile(
-                            title = "Spending",
+                            title = "Lifestyle",
                             value = if (data.isNetHidden) "••••" else data.spent.inr(),
                             subtitle = data.monthLabel,
                             icon = Icons.Default.ShoppingBag,
@@ -523,12 +542,12 @@ private fun HomeSectionBody(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         OverviewTile(
-                            title = "Funds",
+                            title = "Open Tabs",
                             value = if (data.isNetHidden) "••••" else "${data.funds.size}",
                             subtitle = if (data.isNetHidden) {
                                 "₹ ••••"
                             } else {
-                                data.fundBalance.inr() + if (data.funds.isEmpty()) " · empty" else " total"
+                                data.fundBalance.inr() + if (data.funds.isEmpty()) " · none open" else " net open"
                             },
                             icon = Icons.Default.Savings,
                             onClick = onOpenFunds,
@@ -573,9 +592,9 @@ private fun HomeSectionBody(
                             modifier = Modifier.weight(1f),
                         )
                         OverviewTile(
-                            title = "Spending",
+                            title = "Lifestyle",
                             value = if (data.isNetHidden) "••••" else data.spent.inr(),
-                            subtitle = "${data.monthLabel} expenses",
+                            subtitle = "${data.monthLabel} · excl. invest",
                             icon = Icons.Default.ShoppingBag,
                             onClick = onOpenExpenseActivity,
                             accent = scheme.primary,

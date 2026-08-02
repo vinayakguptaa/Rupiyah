@@ -218,14 +218,14 @@ fun FundDetailScreen(
             ) {
                 items(txns, key = { it.id }) { t ->
                     val party = t.counterparty ?: t.merchant ?: t.note ?: "Transaction"
-                    val sign = if (t.type == TransactionType.EXPENSE) "-" else "+"
+                    val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
                     val catColor = categoryColor(t.categoryColor)
                     TransactionCard(
                         title = party,
                         subtitle = listOfNotNull(t.occurredAt.formatDateTime(), t.categoryName, t.paymentMethod)
                             .joinToString(" · "),
                         amount = "$sign${t.amountPaise.inr()}",
-                        amountColor = if (t.type == TransactionType.EXPENSE) scheme.error else scheme.primary,
+                        amountColor = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,
                         icon = CategoryIcons.iconFor(t.categoryIcon, t.categoryName),
                         onClick = { onOpenTxn(t.id) },
                         iconContainerColor = catColor,

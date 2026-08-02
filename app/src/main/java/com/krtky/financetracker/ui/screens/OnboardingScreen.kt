@@ -129,14 +129,14 @@ fun OnboardingScreen(
         if (granted) vm.setSmsEnabled(true)
     }
 
-    // Dynamic page list: after backup import, skip credential pages
+    // Page ids: 0 welcome, 1 import, 2 AI, 3 SMS, 4 location, 5 notifications, 6 done
+    // AI comes before SMS so monitoring can be turned on with a provider ready.
+    // Gmail removed from product path (SMS + CSV + manual).
     val pages: List<Int> = remember(state.backupImported) {
         if (state.backupImported) {
-            // Only permission pages after import
-            listOf(0, 3, 4, 7)
+            listOf(0, 4, 5, 6)
         } else {
-            // Full flow
-            listOf(0, 1, 2, 3, 4, 5, 6, 7)
+            listOf(0, 1, 2, 3, 4, 5, 6)
         }
     }
     val totalPages = pages.size
@@ -179,34 +179,15 @@ fun OnboardingScreen(
                         imported = state.backupImported,
                         status = state.status,
                     )
-                    2 -> GmailPage(
-                        gmail = state.gmail,
-                        onGmailChange = vm::setGmail,
-                        gmailPassSet = state.gmailPassSet,
-                        onSaveGmail = vm::saveGmail,
+                    2 -> LlmPage(
+                        baseUrl = state.llmBaseUrl,
+                        model = state.llmModel,
+                        apiKeySet = state.llmApiKeySet,
+                        onBaseUrlChange = vm::setLlmBaseUrl,
+                        onModelChange = vm::setLlmModel,
+                        onSave = vm::saveLlm,
                     )
-                    3 -> LocationPage(
-                        granted = state.locationGranted,
-                        onRequest = {
-                            locationPermissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                )
-                            )
-                        },
-                    )
-                    4 -> NotificationPage(
-                        granted = state.notificationGranted,
-                        onRequest = {
-                            if (Build.VERSION.SDK_INT >= 33) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                vm.setNotificationGranted(true)
-                            }
-                        },
-                    )
-                    5 -> SmsPage(
+                    3 -> SmsPage(
                         senders = state.smsSenders,
                         keywords = state.smsKeywords,
                         onSendersChange = vm::setSmsSenders,
@@ -217,15 +198,28 @@ fun OnboardingScreen(
                             smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                         },
                     )
-                    6 -> LlmPage(
-                        baseUrl = state.llmBaseUrl,
-                        model = state.llmModel,
-                        apiKeySet = state.llmApiKeySet,
-                        onBaseUrlChange = vm::setLlmBaseUrl,
-                        onModelChange = vm::setLlmModel,
-                        onSave = vm::saveLlm,
+                    4 -> LocationPage(
+                        granted = state.locationGranted,
+                        onRequest = {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                )
+                            )
+                        },
                     )
-                    7 -> DonePage(
+                    5 -> NotificationPage(
+                        granted = state.notificationGranted,
+                        onRequest = {
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                vm.setNotificationGranted(true)
+                            }
+                        },
+                    )
+                    6 -> DonePage(
                         imported = state.backupImported,
                         onNext = { vm.completeOnboarding(); onDone() },
                     )
@@ -732,7 +726,7 @@ private fun SmsPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Reads bank SMS on this phone. Needs AI helper set up (next page) before monitoring can turn on.",
+            "Reads bank SMS on this phone. Needs the AI helper (previous step) before monitoring can turn on.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,
@@ -823,7 +817,7 @@ private fun LlmPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Required to import bank emails and SMS. Without it you can still add spends by hand. Use Groq (free tier) or OpenAI.",
+            "Required for SMS import. Without it you can still add spends by hand. Use Groq (free tier) or OpenAI.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,
@@ -971,7 +965,7 @@ private fun DonePage(imported: Boolean, onNext: () -> Unit) {
             if (imported) {
                 "Your data is restored and permissions are ready. Tap below to start using Rupiyah."
             } else {
-                "Rupiyah is ready. You can configure Gmail, SMS, and AI later in Settings."
+                "Rupiyah is ready. You can tweak SMS and AI later in Settings."
             },
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,

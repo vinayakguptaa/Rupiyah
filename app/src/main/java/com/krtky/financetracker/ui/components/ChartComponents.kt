@@ -292,8 +292,8 @@ fun MonthlyExpenseChart(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                LegendDot(scheme.error, "Expense")
-                LegendDot(scheme.primary, "Income")
+                LegendDot(scheme.error, "Debit")
+                LegendDot(scheme.primary, "Credit")
             }
         }
         Canvas(

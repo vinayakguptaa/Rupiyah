@@ -2,7 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.FundBalance
@@ -27,7 +27,7 @@ import javax.inject.Inject
 class FundDetailViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     categoryRepository: CategoryRepository,
-    userPreferences: UserPreferences,
+    accountRepository: AccountRepository,
 ) : ViewModel() {
     private val fundIdFlow = MutableStateFlow<Long?>(null)
     private val _fund = MutableStateFlow<FundBalance?>(null)
@@ -44,7 +44,7 @@ class FundDetailViewModel @Inject constructor(
     val customTo: StateFlow<Long> = filters.customTo
 
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val bankAccounts = bankAccountsState(userPreferences, transactionRepository, includeUsageExtras = true)
+    val bankAccounts = filterAccountNamesState(accountRepository, transactionRepository)
 
     private data class Head(
         val id: Long?,
@@ -76,7 +76,7 @@ class FundDetailViewModel @Inject constructor(
                 if (id == null) flowOf(emptyList())
                 else {
                     val (from, to) = head.range.toMillisRange(tail.from, tail.to)
-                    transactionRepository.observeFiltered("", head.t, head.cat, id, from, to)
+                    transactionRepository.observeForTab(id, head.t, head.cat, from, to)
                         .map { applyPaymentAndSort(it, head.pay, tail.sort) }
                 }
             }

@@ -97,8 +97,8 @@ fun TransactionFilterBar(
     val scheme = MaterialTheme.colorScheme
 
     val typePill = when (type) {
-        TransactionType.EXPENSE -> "Expense"
-        TransactionType.INCOME -> "Income"
+        TransactionType.DEBIT -> "Debit"
+        TransactionType.CREDIT -> "Credit"
         null -> null
     }
     val bankPill = when {
@@ -216,15 +216,15 @@ fun TransactionFilterBar(
                 FilterDropdownField(
                     label = "Type",
                     value = when (draftType) {
-                        TransactionType.EXPENSE -> "Expense"
-                        TransactionType.INCOME -> "Income"
+                        TransactionType.DEBIT -> "Debit"
+                        TransactionType.CREDIT -> "Credit"
                         null -> "All"
                     },
-                    options = listOf("All", "Expense", "Income"),
+                    options = listOf("All", "Debit", "Credit"),
                     onSelect = { pick ->
                         draftType = when (pick) {
-                            "Expense" -> TransactionType.EXPENSE
-                            "Income" -> TransactionType.INCOME
+                            "Debit", "Expense" -> TransactionType.DEBIT
+                            "Credit", "Income" -> TransactionType.CREDIT
                             else -> null
                         }
                     },

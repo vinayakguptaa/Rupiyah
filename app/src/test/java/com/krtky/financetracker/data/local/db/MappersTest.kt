@@ -49,13 +49,13 @@ class MappersTest {
     fun `TransactionEntity toDomain maps all fields`() {
         val now = System.currentTimeMillis()
         val entity = TransactionEntity(
-            id = "txn-1", type = "EXPENSE", amountPaise = 5_00_00L, occurredAt = now, recordedAt = now,
+            id = "txn-1", type = "DEBIT", amountPaise = 5_00_00L, occurredAt = now, recordedAt = now,
             source = "MANUAL", classificationStatus = "PENDING", updatedAt = now,
             merchant = "Swiggy", paymentMethod = "UPI", note = "Dinner",
         )
         val domain = entity.toDomain()
         assertThat(domain.id).isEqualTo("txn-1")
-        assertThat(domain.type).isEqualTo(TransactionType.EXPENSE)
+        assertThat(domain.type).isEqualTo(TransactionType.DEBIT)
         assertThat(domain.amountPaise).isEqualTo(5_00_00L)
         assertThat(domain.merchant).isEqualTo("Swiggy")
         assertThat(domain.paymentMethod).isEqualTo("UPI")
@@ -66,7 +66,7 @@ class MappersTest {
     fun `TransactionEntity toDomain uses counterparty fallback`() {
         val now = System.currentTimeMillis()
         val entity = TransactionEntity(
-            id = "txn-2", type = "EXPENSE", amountPaise = 1000L, occurredAt = now, recordedAt = now,
+            id = "txn-2", type = "DEBIT", amountPaise = 1000L, occurredAt = now, recordedAt = now,
             source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now,
             merchant = "Amazon", counterparty = null,
         )
@@ -77,12 +77,12 @@ class MappersTest {
     @Test
     fun `Transaction toEntity maps all fields`() {
         val txn = Transaction(
-            id = "txn-3", type = TransactionType.INCOME, amountPaise = 1_00_00_00L,
+            id = "txn-3", type = TransactionType.CREDIT, amountPaise = 1_00_00_00L,
             occurredAt = 1_000_000L, source = TransactionSource.EMAIL, paymentMethod = "HDFC",
             categoryId = 1, fundId = 2, note = "Salary",
         )
         val entity = txn.toEntity()
-        assertThat(entity.type).isEqualTo("INCOME")
+        assertThat(entity.type).isEqualTo("CREDIT")
         assertThat(entity.source).isEqualTo("EMAIL")
         assertThat(entity.categoryId).isEqualTo(1)
         assertThat(entity.fundId).isEqualTo(2)

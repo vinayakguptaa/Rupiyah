@@ -8,7 +8,7 @@ import org.junit.Test
 class ViewModelHelpersTest {
 
     private fun txn(paymentMethod: String? = null, isCash: Boolean = false) =
-        Transaction(id = "1", type = TransactionType.EXPENSE, amountPaise = 100L, occurredAt = 1L, paymentMethod = paymentMethod, isCash = isCash)
+        Transaction(id = "1", type = TransactionType.DEBIT, amountPaise = 100L, occurredAt = 1L, paymentMethod = paymentMethod, isCash = isCash)
 
     @Test
     fun `matchesPaymentFilter matches Cash exactly`() {
@@ -33,19 +33,19 @@ class ViewModelHelpersTest {
 
     @Test
     fun `effectiveFundId returns null when fundId is null`() {
-        assertThat(effectiveFundId(TransactionType.EXPENSE, null, false)).isNull()
-        assertThat(effectiveFundId(TransactionType.INCOME, null, true)).isNull()
+        assertThat(effectiveFundId(TransactionType.DEBIT, null, false)).isNull()
+        assertThat(effectiveFundId(TransactionType.CREDIT, null, true)).isNull()
     }
 
     @Test
     fun `effectiveFundId returns fundId for expense`() {
-        assertThat(effectiveFundId(TransactionType.EXPENSE, 1L, false)).isEqualTo(1L)
+        assertThat(effectiveFundId(TransactionType.DEBIT, 1L, false)).isEqualTo(1L)
     }
 
     @Test
     fun `effectiveFundId returns fundId for income only when addToFund is true`() {
-        assertThat(effectiveFundId(TransactionType.INCOME, 1L, false)).isNull()
-        assertThat(effectiveFundId(TransactionType.INCOME, 1L, true)).isEqualTo(1L)
+        assertThat(effectiveFundId(TransactionType.CREDIT, 1L, false)).isNull()
+        assertThat(effectiveFundId(TransactionType.CREDIT, 1L, true)).isEqualTo(1L)
     }
 
     @Test

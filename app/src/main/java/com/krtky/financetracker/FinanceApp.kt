@@ -4,8 +4,8 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
-import com.krtky.financetracker.email.EmailMonitorService
 import com.krtky.financetracker.notification.ClassificationNotifier
 import com.krtky.financetracker.workers.WorkScheduler
 import dagger.hilt.android.HiltAndroidApp
@@ -20,6 +20,7 @@ class FinanceApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var categoryRepository: CategoryRepository
+    @Inject lateinit var accountRepository: AccountRepository
     @Inject lateinit var classificationNotifier: ClassificationNotifier
     @Inject lateinit var userPreferences: UserPreferences
 
@@ -32,10 +33,15 @@ class FinanceApp : Application(), Configuration.Provider {
         WorkScheduler.scheduleAll(this)
         CoroutineScope(Dispatchers.IO).launch {
             categoryRepository.seedDefaultsIfEmpty()
-            // No default trusted senders — user adds their own (public app)
-            if (userPreferences.emailPollEnabled.first()) {
-                EmailMonitorService.start(this@FinanceApp)
+            val banks = userPreferences.parseBankList(userPreferences.bankAccounts.first())
+            // Cash + Settings bank list. Empty prefs do not archive migration-seeded accounts.
+            accountRepository.syncFromBankList(banks)
+            // Mirror active names into prefs (e.g. after Room migration seeded from paymentMethod).
+            val active = accountRepository.activeBankNames()
+            if (active.joinToString(",") != banks.joinToString(",")) {
+                userPreferences.setBankAccounts(active.joinToString(","))
             }
+            // Email ingest removed from product path — SMS + CSV + manual only.
             // Prime widgets on cold start so they are not stuck on empty chrome.
             runCatching {
                 com.krtky.financetracker.widget.WidgetUpdater.refreshAll(this@FinanceApp)

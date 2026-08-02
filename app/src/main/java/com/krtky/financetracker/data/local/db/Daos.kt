@@ -32,6 +32,36 @@ interface CategoryDao {
 }
 
 @Dao
+interface AccountDao {
+    @Query("SELECT * FROM accounts WHERE archived = 0 ORDER BY sortOrder, name")
+    fun observeActive(): Flow<List<AccountEntity>>
+
+    @Query("SELECT * FROM accounts WHERE archived = 1 ORDER BY sortOrder, name")
+    fun observeArchived(): Flow<List<AccountEntity>>
+
+    @Query("SELECT * FROM accounts ORDER BY archived ASC, sortOrder, name")
+    fun observeAll(): Flow<List<AccountEntity>>
+
+    @Query("SELECT * FROM accounts ORDER BY sortOrder, name")
+    suspend fun getAll(): List<AccountEntity>
+
+    @Query("SELECT * FROM accounts WHERE id = :id")
+    suspend fun getById(id: Long): AccountEntity?
+
+    @Query("SELECT * FROM accounts WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getByName(name: String): AccountEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: AccountEntity): Long
+
+    @Update
+    suspend fun update(entity: AccountEntity)
+
+    @Query("SELECT COUNT(*) FROM accounts")
+    suspend fun count(): Int
+}
+
+@Dao
 interface FundDao {
     @Query("SELECT * FROM funds WHERE archived = 0 ORDER BY name")
     fun observeActive(): Flow<List<FundEntity>>
@@ -63,6 +93,28 @@ interface TransactionDao {
     )
     fun observeAll(): Flow<List<TransactionEntity>>
 
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE deletedAt IS NULL
+        ORDER BY occurredAt DESC, recordedAt DESC, id DESC
+        """
+    )
+    suspend fun getAllNonDeleted(): List<TransactionEntity>
+
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE deletedAt IS NULL
+          AND (
+            accountId = :accountId
+            OR (accountId IS NULL AND paymentMethod = :accountName COLLATE NOCASE)
+          )
+        ORDER BY occurredAt DESC
+        """
+    )
+    suspend fun getForAccount(accountId: Long, accountName: String): List<TransactionEntity>
+
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getById(id: String): TransactionEntity?
 
@@ -70,10 +122,11 @@ interface TransactionDao {
         """
         SELECT * FROM transactions
         WHERE deletedAt IS NULL
-          AND (:query = '' OR merchant LIKE '%' || :query || '%' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR paymentMethod LIKE '%' || :query || '%')
+          AND (:query = '' OR merchant LIKE '%' || :query || '%' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR paymentMethod LIKE '%' || :query || '%' OR rawDescription LIKE '%' || :query || '%')
           AND (:type IS NULL OR type = :type)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
           AND (:fundId IS NULL OR fundId = :fundId)
+          AND (:accountId IS NULL OR accountId = :accountId)
           AND occurredAt >= :fromTs AND occurredAt <= :toTs
         ORDER BY occurredAt DESC, recordedAt DESC, id DESC
         """
@@ -85,6 +138,7 @@ interface TransactionDao {
         fundId: Long?,
         fromTs: Long,
         toTs: Long,
+        accountId: Long?,
     ): Flow<List<TransactionEntity>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -116,7 +170,10 @@ interface TransactionDao {
     @Query(
         """
         SELECT COALESCE(SUM(amountPaise), 0) FROM transactions
-        WHERE deletedAt IS NULL AND type = :type AND occurredAt >= :fromTs AND occurredAt <= :toTs
+        WHERE deletedAt IS NULL
+          AND type = :type
+          AND (kind IS NULL OR kind = 'NORMAL')
+          AND occurredAt >= :fromTs AND occurredAt <= :toTs
         """
     )
     suspend fun sumByType(type: String, fromTs: Long, toTs: Long): Long
@@ -127,7 +184,10 @@ interface TransactionDao {
                COALESCE((SELECT name FROM categories c WHERE c.id = t.categoryId), 'Uncategorized') AS categoryName,
                SUM(amountPaise) AS totalPaise
         FROM transactions t
-        WHERE deletedAt IS NULL AND type = 'EXPENSE' AND occurredAt >= :fromTs AND occurredAt <= :toTs
+        WHERE deletedAt IS NULL
+          AND type IN ('DEBIT', 'EXPENSE')
+          AND (kind IS NULL OR kind = 'NORMAL')
+          AND occurredAt >= :fromTs AND occurredAt <= :toTs
         GROUP BY categoryId
         ORDER BY totalPaise DESC
         """
@@ -158,16 +218,46 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT strftime('%Y-%m', occurredAt / 1000, 'unixepoch', 'localtime') AS monthKey,
-               COALESCE(SUM(CASE WHEN type = 'INCOME' THEN amountPaise ELSE 0 END), 0) AS incomePaise,
-               COALESCE(SUM(CASE WHEN type = 'EXPENSE' THEN amountPaise ELSE 0 END), 0) AS expensePaise
+        SELECT accountId AS id, COUNT(*) AS useCount
         FROM transactions
-        WHERE deletedAt IS NULL AND occurredAt >= :fromTs AND occurredAt <= :toTs
+        WHERE deletedAt IS NULL AND accountId IS NOT NULL
+        GROUP BY accountId
+        ORDER BY useCount DESC
+        """
+    )
+    fun observeAccountUsage(): Flow<List<UsageCountRow>>
+
+    @Query(
+        """
+        SELECT strftime('%Y-%m', occurredAt / 1000, 'unixepoch', 'localtime') AS monthKey,
+               COALESCE(SUM(CASE WHEN type IN ('CREDIT', 'INCOME') THEN amountPaise ELSE 0 END), 0) AS incomePaise,
+               COALESCE(SUM(CASE WHEN type IN ('DEBIT', 'EXPENSE') THEN amountPaise ELSE 0 END), 0) AS expensePaise
+        FROM transactions
+        WHERE deletedAt IS NULL
+          AND (kind IS NULL OR kind = 'NORMAL')
+          AND occurredAt >= :fromTs AND occurredAt <= :toTs
         GROUP BY monthKey
         ORDER BY monthKey ASC
         """
     )
     suspend fun monthlyTrend(fromTs: Long, toTs: Long): List<MonthlyTrendRow>
+
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE transferGroupId = :groupId AND deletedAt IS NULL
+        """
+    )
+    suspend fun getByTransferGroup(groupId: String): List<TransactionEntity>
+
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE accountId = :accountId AND deletedAt IS NULL
+        ORDER BY occurredAt DESC
+        """
+    )
+    suspend fun getAllForAccount(accountId: Long): List<TransactionEntity>
 
     @Query("SELECT * FROM transactions WHERE sheetsSynced = 0 AND deletedAt IS NULL")
     suspend fun getUnsynced(): List<TransactionEntity>
@@ -335,6 +425,62 @@ interface PendingClassificationDao {
     @Update
     suspend fun update(entity: PendingClassificationEntity)
 }
+
+@Dao
+interface TransactionSplitDao {
+    @Query(
+        """
+        SELECT * FROM transaction_splits
+        WHERE transactionId = :transactionId
+        ORDER BY sortOrder ASC, id ASC
+        """,
+    )
+    fun observeForTransaction(transactionId: String): Flow<List<TransactionSplitEntity>>
+
+    @Query(
+        """
+        SELECT * FROM transaction_splits
+        WHERE transactionId = :transactionId
+        ORDER BY sortOrder ASC, id ASC
+        """,
+    )
+    suspend fun getForTransaction(transactionId: String): List<TransactionSplitEntity>
+
+    @Query("SELECT * FROM transaction_splits ORDER BY transactionId, sortOrder, id")
+    fun observeAll(): Flow<List<TransactionSplitEntity>>
+
+    @Query("SELECT * FROM transaction_splits ORDER BY transactionId, sortOrder, id")
+    suspend fun getAll(): List<TransactionSplitEntity>
+
+    @Query("SELECT * FROM transaction_splits WHERE fundId = :fundId")
+    suspend fun getForFund(fundId: Long): List<TransactionSplitEntity>
+
+    @Query(
+        """
+        SELECT transactionId, COUNT(*) AS cnt
+        FROM transaction_splits
+        GROUP BY transactionId
+        """,
+    )
+    fun observeSplitCounts(): Flow<List<SplitCountRow>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: TransactionSplitEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entities: List<TransactionSplitEntity>)
+
+    @Query("DELETE FROM transaction_splits WHERE transactionId = :transactionId")
+    suspend fun deleteForTransaction(transactionId: String)
+
+    @Query("DELETE FROM transaction_splits WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+data class SplitCountRow(
+    val transactionId: String,
+    val cnt: Int,
+)
 
 @Dao
 interface SyncOutboxDao {

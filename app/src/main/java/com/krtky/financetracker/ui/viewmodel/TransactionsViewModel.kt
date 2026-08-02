@@ -2,7 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.Transaction
@@ -24,7 +24,7 @@ import javax.inject.Inject
 class TransactionsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     categoryRepository: CategoryRepository,
-    userPreferences: UserPreferences,
+    accountRepository: AccountRepository,
 ) : ViewModel() {
     private val _query = MutableStateFlow("")
     private val filters = TransactionFilterState()
@@ -41,7 +41,8 @@ class TransactionsViewModel @Inject constructor(
 
     val categories = categoriesState(categoryRepository, transactionRepository)
     val funds = fundsState(transactionRepository)
-    val bankAccounts = bankAccountsState(userPreferences, transactionRepository, includeUsageExtras = true)
+    /** Active + archived account names for filters (history on old banks stays findable). */
+    val bankAccounts = filterAccountNamesState(accountRepository, transactionRepository)
 
     private data class Head(
         val q: String,

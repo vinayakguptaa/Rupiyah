@@ -3,6 +3,7 @@ package com.krtky.financetracker.data.email
 import com.krtky.financetracker.data.llm.ExtractedTransaction
 import com.krtky.financetracker.data.llm.LlmClient
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.ClassificationStatus
@@ -20,6 +21,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Shared envelope for SMS (and legacy paste) body parsing. */
 data class RawEmail(
     val messageId: String,
     val sender: String,
@@ -33,6 +35,7 @@ class TransactionParser @Inject constructor(
     private val llmClient: LlmClient,
     private val categoryRepository: CategoryRepository,
     private val userPreferences: UserPreferences,
+    private val accountRepository: AccountRepository,
 ) {
     private val amountRegex = Regex(
         """(?:₹|Rs\.?|INR|Rs)\s*([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:₹|Rs\.?|INR)""",
@@ -78,9 +81,6 @@ class TransactionParser @Inject constructor(
         "FamPay", "PhonePe", "GPay", "Google Pay", "Paytm", "Amazon Pay", "CRED",
     )
 
-    suspend fun parse(email: RawEmail, walletLabel: String): Transaction? =
-        parseSource(email, walletLabel, TransactionSource.EMAIL)
-
     suspend fun parseSms(sender: String, body: String, receivedAt: Long): Transaction? =
         parseSource(
             RawEmail("sms-$receivedAt-${body.hashCode()}", sender, null, body, receivedAt),
@@ -94,9 +94,13 @@ class TransactionParser @Inject constructor(
             append(EmailRedactor.stripHtml(email.body))
         }
         val categories = categoryRepository.getAll()
-        val banks = userPreferences.parseBankList(userPreferences.bankAccounts.first())
-        // Default digital account when AI cannot pin a bank (settings)
+        // Prefer live active accounts; fall back to prefs mirror.
+        val banks = accountRepository.activeBankNames()
+            .ifEmpty { userPreferences.parseBankList(userPreferences.bankAccounts.first()) }
         val defaultDigital = userPreferences.resolveDigitalPaymentMethod(null)
+            .takeIf { name -> banks.any { it.equals(name, true) } || name.equals("Cash", true) }
+            .orEmpty()
+            .ifBlank { banks.firstOrNull().orEmpty() }
         val deterministic = parseDeterministic(
             text, email, walletLabel, source, categories, banks, defaultDigital,
         )
@@ -117,7 +121,23 @@ class TransactionParser @Inject constructor(
         val fromLlm = extracted?.let {
             mapExtracted(it, email, walletLabel, source, categories, banks, defaultDigital)
         }
-        return merge(deterministic, fromLlm, categories, banks, defaultDigital)
+        val merged = merge(deterministic, fromLlm, categories, banks, defaultDigital)
+        return merged?.let { attachAccount(it) }
+    }
+
+    /** Link paymentMethod label to accounts table (active first, then any name match). */
+    private suspend fun attachAccount(txn: Transaction): Transaction {
+        val label = txn.paymentMethod?.trim().orEmpty()
+        if (label.isBlank() || label.equals("Digital", true) || label.equals("UPI", true)) {
+            return txn
+        }
+        val account = accountRepository.getByName(label) ?: return txn
+        return txn.copy(
+            accountId = account.id,
+            paymentMethod = account.name,
+            isCash = account.kind.name == "CASH" || account.name.equals("Cash", true),
+            accountName = account.name,
+        )
     }
 
     private fun merge(
@@ -181,11 +201,11 @@ class TransactionParser @Inject constructor(
         if (money.paise <= 0) return null
 
         val type = when {
-            credited.containsMatchIn(text) && !debited.containsMatchIn(text) -> TransactionType.INCOME
-            debited.containsMatchIn(text) || movementConfirm.containsMatchIn(text) -> TransactionType.EXPENSE
-            email.subject?.contains("received", true) == true -> TransactionType.INCOME
+            credited.containsMatchIn(text) && !debited.containsMatchIn(text) -> TransactionType.CREDIT
+            debited.containsMatchIn(text) || movementConfirm.containsMatchIn(text) -> TransactionType.DEBIT
+            email.subject?.contains("received", true) == true -> TransactionType.CREDIT
             email.subject?.contains("paid", true) == true ||
-                email.subject?.contains("sent", true) == true -> TransactionType.EXPENSE
+                email.subject?.contains("sent", true) == true -> TransactionType.DEBIT
             else -> return null
         }
 
@@ -198,7 +218,7 @@ class TransactionParser @Inject constructor(
                     !it.equals("Digital", true)
             }
         val method = resolveMethodLabel(bank, banks, defaultDigital)
-        val categoryId = if (type == TransactionType.INCOME) {
+        val categoryId = if (type == TransactionType.CREDIT) {
             categories.firstOrNull { it.name.contains("Salary", true) || it.name.contains("Income", true) }?.id
         } else null
         val occurred = email.receivedAt
@@ -239,8 +259,8 @@ class TransactionParser @Inject constructor(
         if (conf < 0.35) return null
         val money = Money.fromRupees(amount)
         val type = when (e.type?.lowercase(Locale.US)) {
-            "received", "income", "credit", "credited" -> TransactionType.INCOME
-            "sent", "expense", "debit", "debited", "paid" -> TransactionType.EXPENSE
+            "received", "income", "credit", "credited" -> TransactionType.CREDIT
+            "sent", "expense", "debit", "debited", "paid" -> TransactionType.DEBIT
             "none", "null", "ignore", "bill", "reminder" -> return null
             else -> return null
         }
@@ -259,7 +279,7 @@ class TransactionParser @Inject constructor(
             else -> resolveMethodLabel(bank ?: e.paymentMethod, banks, defaultDigital)
         }
         val categoryId = matchCategory(e.category, categories)
-            ?: if (type == TransactionType.INCOME) {
+            ?: if (type == TransactionType.CREDIT) {
                 categories.firstOrNull { it.name.contains("Salary", true) || it.name.contains("Income", true) }?.id
             } else null
         val hash = TransactionRepository.contentHash(
@@ -392,7 +412,7 @@ class TransactionParser @Inject constructor(
     }
 
     private fun extractCounterparty(text: String, type: TransactionType): String? {
-        val patterns = if (type == TransactionType.INCOME) {
+        val patterns = if (type == TransactionType.CREDIT) {
             listOf(
                 Regex("""(?:received from|from|credited by|sender)[:\s]+([A-Za-z0-9 &._@-]{2,50})""", RegexOption.IGNORE_CASE),
                 Regex("""(?:by)\s+([A-Za-z][A-Za-z0-9 &._-]{1,40})""", RegexOption.IGNORE_CASE),

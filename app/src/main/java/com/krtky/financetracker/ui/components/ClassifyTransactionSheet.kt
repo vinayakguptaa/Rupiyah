@@ -104,10 +104,10 @@ fun ClassifyTransactionSheet(
             )
             val t = txn
             if (t != null) {
-                val sign = if (t.type == TransactionType.EXPENSE) "−" else "+"
+                val sign = if (t.type == TransactionType.DEBIT) "−" else "+"
                 val party = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Payment"
                 val amountColor =
-                    if (t.type == TransactionType.EXPENSE) scheme.error else scheme.primary
+                    if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.extraLarge,
@@ -134,7 +134,7 @@ fun ClassifyTransactionSheet(
                             )
                         }
                         Text(
-                            if (t.type == TransactionType.EXPENSE) "Expense" else "Income",
+                            if (t.type == TransactionType.DEBIT) "Debit" else "Credit",
                             style = MaterialTheme.typography.labelLarge,
                             color = amountColor,
                         )

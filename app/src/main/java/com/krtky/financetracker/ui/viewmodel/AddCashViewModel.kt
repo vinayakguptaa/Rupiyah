@@ -5,12 +5,15 @@ import androidx.lifecycle.viewModelScope
 import android.net.Uri
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.receipt.ReceiptStore
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionSource
+import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +25,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AddCashViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
+    private val accountRepository: AccountRepository,
     categoryRepository: CategoryRepository,
     private val locationRepository: LocationRepository,
     private val userPreferences: UserPreferences,
@@ -29,7 +33,9 @@ class AddCashViewModel @Inject constructor(
 ) : ViewModel() {
     val categories = categoriesState(categoryRepository, transactionRepository)
     val funds = fundsState(transactionRepository)
-    val bankAccounts = bankAccountsState(userPreferences, transactionRepository, includeUsageExtras = false)
+    /** Active accounts only — archived banks hidden from Add. */
+    val accounts = accountRepository.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val defaultPaymentMethod = userPreferences.defaultPaymentMethod
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Cash")
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
@@ -48,6 +54,10 @@ class AddCashViewModel @Inject constructor(
         return transactionRepository.getRecommendedFundForCategory(categoryId)
     }
 
+    /**
+     * @param splits optional lines saved with the parent (sum must match amount).
+     * @return new transaction id, or null on failure.
+     */
     suspend fun save(
         amountText: String,
         type: TransactionType,
@@ -56,16 +66,35 @@ class AddCashViewModel @Inject constructor(
         note: String,
         counterparty: String = "",
         paymentMethod: String,
+        accountId: Long? = null,
         useLocation: Boolean,
         addToFund: Boolean,
         occurredAt: Long = System.currentTimeMillis(),
         receiptLocalUri: Uri? = null,
-    ): Boolean {
-        val money = Money.fromRupeesString(amountText) ?: return false
+        splits: List<TransactionSplit> = emptyList(),
+    ): String? {
+        val money = Money.fromRupeesString(amountText) ?: return null
+        if (splits.isNotEmpty()) {
+            val err = com.krtky.financetracker.domain.model.SplitRules.validateSum(
+                money.paise,
+                splits.map { it.amountPaise },
+            )
+            if (err != null) return null
+        }
         val loc = if (useLocation) locationRepository.captureCurrent() else null
         val party = counterparty.ifBlank { null }
         val id = UUID.randomUUID().toString()
         val receiptPath = receiptLocalUri?.let { receiptStore.persistFromUri(it, id) }
+        val resolvedAccountId = accountId
+            ?: accountRepository.resolveId(paymentMethod, paymentMethod.equals("Cash", true))
+        val account = resolvedAccountId?.let { accountRepository.getById(it) }
+        val methodLabel = account?.name ?: paymentMethod
+        // When splits exist, parent category/tab are optional summary; lines own the allocation.
+        val primaryCat = if (splits.isNotEmpty()) {
+            splits.firstOrNull { it.categoryId != null }?.categoryId ?: categoryId
+        } else {
+            categoryId
+        }
         val txn = Transaction(
             id = id,
             type = type,
@@ -73,13 +102,18 @@ class AddCashViewModel @Inject constructor(
             occurredAt = occurredAt,
             merchant = party,
             counterparty = party,
-            categoryId = categoryId,
-            fundId = fundId,
-            paymentMethod = paymentMethod,
+            categoryId = primaryCat,
+            fundId = if (splits.isNotEmpty()) null else fundId,
+            accountId = resolvedAccountId,
+            paymentMethod = methodLabel,
             source = TransactionSource.MANUAL,
             note = note.ifBlank { null },
-            isCash = paymentMethod == "Cash",
-            classificationStatus = if (categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
+            isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH",
+            classificationStatus = if (primaryCat != null || splits.any { it.categoryId != null }) {
+                ClassificationStatus.CLASSIFIED
+            } else {
+                ClassificationStatus.PENDING
+            },
             latitude = loc?.latitude,
             longitude = loc?.longitude,
             placeName = loc?.placeName,
@@ -87,16 +121,38 @@ class AddCashViewModel @Inject constructor(
             locationMatchedAt = if (loc != null) System.currentTimeMillis() else null,
             receiptUri = receiptPath,
         )
-        val resolvedFundId = effectiveFundId(type, fundId, addToFund)
-        transactionRepository.insertManual(
-            txn.copy(fundId = resolvedFundId),
+        val resolvedFundId = if (splits.isNotEmpty()) {
+            null
+        } else {
+            effectiveFundId(type, fundId, addToFund)
+        }
+        transactionRepository.insertManualWithSplits(
+            txn = txn.copy(fundId = resolvedFundId),
+            splits = splits.map { it.copy(transactionId = id) },
             addToFund = resolvedFundId != null,
         )
         userPreferences.setLastUsedDefaults(
-            categoryId = categoryId,
+            categoryId = primaryCat,
             fundId = resolvedFundId,
-            paymentMethod = paymentMethod,
+            paymentMethod = methodLabel,
         )
-        return true
+        return id
+    }
+
+    suspend fun saveSelfTransfer(
+        amountText: String,
+        fromAccountId: Long,
+        toAccountId: Long,
+        note: String,
+        occurredAt: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val money = Money.fromRupeesString(amountText) ?: return false
+        return transactionRepository.createSelfTransfer(
+            amountPaise = money.paise,
+            fromAccountId = fromAccountId,
+            toAccountId = toAccountId,
+            note = note.ifBlank { null },
+            occurredAt = occurredAt,
+        ) != null
     }
 }

@@ -9,7 +9,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.sheets.SheetsSyncService
@@ -18,26 +17,6 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
-
-@HiltWorker
-class EmailPollWorker @AssistedInject constructor(
-    @Assisted context: Context,
-    @Assisted params: WorkerParameters,
-    private val ingestService: EmailIngestService,
-    private val userPreferences: UserPreferences,
-) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result {
-        if (!userPreferences.emailPollEnabled.first()) return Result.success()
-        return try {
-            // Keep the foreground monitor alive on OEM-aggressive devices
-            com.krtky.financetracker.email.EmailMonitorService.start(applicationContext)
-            ingestService.ingest()
-            Result.success()
-        } catch (_: Exception) {
-            Result.retry()
-        }
-    }
-}
 
 @HiltWorker
 class ClassificationWorker @AssistedInject constructor(
@@ -94,13 +73,8 @@ object WorkScheduler {
         val wm = WorkManager.getInstance(context)
         val net = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-        wm.enqueueUniquePeriodicWork(
-            "email_poll",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<EmailPollWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(net)
-                .build(),
-        )
+        // Email poll intentionally not scheduled — capture is SMS + CSV + manual.
+        wm.cancelUniqueWork("email_poll")
         wm.enqueueUniquePeriodicWork(
             "classification_notify",
             ExistingPeriodicWorkPolicy.UPDATE,

@@ -11,7 +11,7 @@ enum class HomeSection(val id: String, val title: String) {
     CATEGORY_RING("category_ring", "Spending by category"),
     MONTHLY_TREND("monthly_trend", "Monthly flow"),
     RECENT("recent", "Recent activity"),
-    FUNDS_SUMMARY("funds_summary", "Funds"),
+    FUNDS_SUMMARY("funds_summary", "Open Tabs"),
     ;
 
     /** Half-width is useful for compact tiles; hero + recent stay full for readability. */

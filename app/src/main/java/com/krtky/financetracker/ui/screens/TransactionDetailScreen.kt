@@ -136,14 +136,18 @@ import kotlin.math.roundToLong
 fun TransactionDetailScreen(
     id: String,
     onBack: () -> Unit,
+    onOpenSplit: () -> Unit = {},
     vm: TransactionDetailViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(id) { vm.load(id) }
     val txn by vm.transaction.collectAsStateWithLifecycle()
+    val splits by vm.splits.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
-    val banks by vm.bankAccounts.collectAsStateWithLifecycle()
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
+    val archivedCurrent by vm.archivedCurrentAccount.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
+    val defaultPay by vm.defaultPaymentMethod.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
     val scope = rememberCoroutineScope()
@@ -155,9 +159,8 @@ fun TransactionDetailScreen(
     var fundId by remember { mutableStateOf<Long?>(null) }
     var addToFund by remember { mutableStateOf(true) }
     var amount by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(TransactionType.EXPENSE) }
-    var channel by remember { mutableStateOf("Digital") }
-    var selectedBank by remember { mutableStateOf<String?>(null) }
+    var type by remember { mutableStateOf(TransactionType.DEBIT) }
+    var selectedAccountId by remember { mutableStateOf<Long?>(null) }
     var useCurrentLocation by remember { mutableStateOf(false) }
     /** New pick while editing; null means keep existing unless [receiptCleared]. */
     var receiptLocalUri by remember { mutableStateOf<Uri?>(null) }
@@ -201,25 +204,13 @@ fun TransactionDetailScreen(
         }.timeInMillis
     }
 
-    val resolvedDefaultBank = remember(defaultDigital, banks) {
-        when {
-            defaultDigital.isNotBlank() && banks.any { it.equals(defaultDigital, true) } ->
-                banks.first { it.equals(defaultDigital, true) }
-            banks.isNotEmpty() -> banks.first()
-            else -> null
+    /** Active accounts + current archived (if any) so old bank still shows on this txn. */
+    val pickerAccounts = remember(accounts, archivedCurrent, selectedAccountId) {
+        buildList {
+            addAll(accounts)
+            val extra = archivedCurrent
+            if (extra != null && none { it.id == extra.id }) add(extra)
         }
-    }
-
-    val bankOptions = remember(banks, selectedBank) {
-        val list = banks.toMutableList()
-        val extra = selectedBank?.takeIf { s ->
-            s.isNotBlank() &&
-                !s.equals("Digital", true) &&
-                !s.equals("UPI", true) &&
-                list.none { it.equals(s, true) }
-        }
-        if (extra != null) list.add(0, extra)
-        list
     }
 
     val fieldShape = RoundedCornerShape(18.dp)
@@ -238,18 +229,9 @@ fun TransactionDetailScreen(
         unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
     )
 
-    val paymentLabel = when {
-        channel == "Cash" -> "Cash"
-        !selectedBank.isNullOrBlank() -> "Digital · $selectedBank"
-        else -> "Digital · ${defaultDigital.ifBlank { banks.firstOrNull() ?: "UPI" }}"
-    }
-
-    fun paymentMethod(): String = when {
-        channel == "Cash" -> "Cash"
-        !selectedBank.isNullOrBlank() -> selectedBank!!
-        resolvedDefaultBank != null -> resolvedDefaultBank
-        else -> "Digital"
-    }
+    val paymentLabel = pickerAccounts.firstOrNull { it.id == selectedAccountId }?.let { acc ->
+        if (acc.archived) "${acc.name} (archived)" else acc.name
+    } ?: "Select account"
 
     LaunchedEffect(Unit) { contentVisible = true }
 
@@ -258,31 +240,27 @@ fun TransactionDetailScreen(
         recommendedFundId = rec
     }
 
-    LaunchedEffect(txn, banks, defaultDigital) {
+    LaunchedEffect(txn, accounts, archivedCurrent, defaultDigital, defaultPay) {
         txn?.let {
             note = it.note.orEmpty()
             counterparty = it.counterparty ?: it.merchant.orEmpty()
             categoryId = it.categoryId
             fundId = it.fundId
-            // Income already on a fund ⇒ toggle on; expenses always affect fund when selected
-            addToFund = it.fundId != null || it.type == TransactionType.INCOME
+            addToFund = it.fundId != null || it.type == TransactionType.CREDIT
             amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
             type = it.type
-            when {
-                it.isCash || it.paymentMethod.equals("Cash", true) -> {
-                    channel = "Cash"
-                    selectedBank = null
-                }
+            selectedAccountId = when {
+                it.accountId != null -> it.accountId
+                it.isCash || it.paymentMethod.equals("Cash", true) ->
+                    accounts.firstOrNull { a -> a.name.equals("Cash", true) }?.id
+                        ?: archivedCurrent?.takeIf { a -> a.name.equals("Cash", true) }?.id
                 else -> {
-                    channel = "Digital"
                     val pm = it.paymentMethod.orEmpty()
-                    // Keep generic Digital as null so dirty-check matches (default bank only applied on save)
-                    selectedBank = when {
-                        pm.isBlank() || pm.equals("Digital", true) || pm.equals("UPI", true) -> null
-                        banks.any { b -> b.equals(pm, true) } ->
-                            banks.first { b -> b.equals(pm, true) }
-                        else -> pm.takeIf { p -> p.isNotBlank() }
-                    }
+                    accounts.firstOrNull { a -> a.name.equals(pm, true) }?.id
+                        ?: archivedCurrent?.id
+                        ?: accounts.firstOrNull { a -> a.name.equals(defaultDigital, true) }?.id
+                        ?: accounts.firstOrNull { a -> a.name.equals(defaultPay, true) }?.id
+                        ?: accounts.firstOrNull()?.id
                 }
             }
             val c = Calendar.getInstance().apply { timeInMillis = it.occurredAt }
@@ -299,15 +277,8 @@ fun TransactionDetailScreen(
         }
     }
 
-    /** UI payment label without applying default-bank substitution (for dirty detection). */
-    fun uiPaymentMethod(): String = when {
-        channel == "Cash" -> "Cash"
-        !selectedBank.isNullOrBlank() -> selectedBank!!
-        else -> "Digital"
-    }
-
     val isDirty = remember(
-        txn, note, counterparty, categoryId, fundId, addToFund, amount, type, channel, selectedBank,
+        txn, note, counterparty, categoryId, fundId, addToFund, amount, type, selectedAccountId,
         selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute, useCurrentLocation,
         receiptLocalUri, receiptCleared,
     ) {
@@ -315,15 +286,8 @@ fun TransactionDetailScreen(
         if (useCurrentLocation) return@remember true
         if (receiptLocalUri != null || receiptCleared) return@remember true
         val amountPaise = amount.toDoubleOrNull()?.let { (it * 100.0).roundToLong() }
-            ?: return@remember amount.isNotBlank() // invalid amount after user edit
+            ?: return@remember amount.isNotBlank()
         val originalParty = t.counterparty ?: t.merchant.orEmpty()
-        val originalMethod = when {
-            t.isCash || t.paymentMethod.equals("Cash", true) -> "Cash"
-            t.paymentMethod.isNullOrBlank() ||
-                t.paymentMethod.equals("Digital", true) ||
-                t.paymentMethod.equals("UPI", true) -> "Digital"
-            else -> t.paymentMethod.orEmpty()
-        }
         val origCal = Calendar.getInstance().apply { timeInMillis = t.occurredAt }
         val sameTime =
             selectedYear == origCal.get(Calendar.YEAR) &&
@@ -333,16 +297,17 @@ fun TransactionDetailScreen(
                 selectedMinute == origCal.get(Calendar.MINUTE)
         val effectiveFundId = when {
             fundId == null -> null
-            type == TransactionType.EXPENSE -> fundId
-            type == TransactionType.INCOME && addToFund -> fundId
+            type == TransactionType.DEBIT -> fundId
+            type == TransactionType.CREDIT && addToFund -> fundId
             else -> null
         }
+        val origAccountId = t.accountId
         note != t.note.orEmpty() ||
             counterparty != originalParty ||
             categoryId != t.categoryId ||
             effectiveFundId != t.fundId ||
             type != t.type ||
-            uiPaymentMethod() != originalMethod ||
+            selectedAccountId != origAccountId ||
             amountPaise != t.amountPaise ||
             !sameTime
     }
@@ -364,7 +329,7 @@ fun TransactionDetailScreen(
             amountText = amount,
             type = type,
             occurredAt = displayWhen,
-            paymentMethod = paymentMethod(),
+            accountId = selectedAccountId,
             categoryId = categoryId,
             fundId = fundId,
             note = note,
@@ -411,7 +376,7 @@ fun TransactionDetailScreen(
     BackHandler(enabled = editing) { exitEditOrScreen() }
 
     val partyTitle = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Transaction"
-    val amountSign = if (t.type == TransactionType.EXPENSE) "-" else "+"
+    val amountSign = if (t.type == TransactionType.DEBIT) "-" else "+"
     val infoPayment = when {
         t.isCash || t.paymentMethod.equals("Cash", true) -> "Cash"
         !t.paymentMethod.isNullOrBlank() -> t.paymentMethod!!
@@ -419,6 +384,8 @@ fun TransactionDetailScreen(
     }
     val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
     val fundName = funds.firstOrNull { it.fund.id == t.fundId }?.fund?.name
+    val amountLocked = t.amountLocked() || splits.isNotEmpty()
+    val canSplit = !t.isSelfTransfer()
 
     Scaffold(
         containerColor = scheme.background,
@@ -552,7 +519,7 @@ fun TransactionDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                if (t.type == TransactionType.EXPENSE) "Expense" else "Income",
+                                if (t.type == TransactionType.DEBIT) "Debit" else "Credit",
                                 style = MaterialTheme.typography.labelLarge,
                                 color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
                             )
@@ -622,11 +589,102 @@ fun TransactionDetailScreen(
                             }
                         }
                     }
-                    if (fundName != null) {
+                    if (fundName != null && splits.isEmpty()) {
                         InfoRow(
                             icon = Icons.Default.AccountBalance,
-                            label = "Fund",
+                            label = "Tab",
                             value = fundName,
+                        )
+                    }
+                    if (canSplit) {
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = scheme.surfaceContainerHigh,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.split_section_title),
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        Text(
+                                            if (splits.isEmpty()) {
+                                                "Break into categories, names, or tabs"
+                                            } else {
+                                                stringResource(
+                                                    R.string.split_lines_summary,
+                                                    splits.size,
+                                                )
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = scheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            haptics.select()
+                                            onOpenSplit()
+                                        },
+                                        shape = RoundedCornerShape(18.dp),
+                                    ) {
+                                        Text(
+                                            if (splits.isEmpty()) {
+                                                stringResource(R.string.split_action)
+                                            } else {
+                                                stringResource(R.string.split_edit)
+                                            },
+                                        )
+                                    }
+                                }
+                                splits.forEach { line ->
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                line.categoryName
+                                                    ?: line.counterparty
+                                                    ?: line.fundName
+                                                    ?: "Line",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                            )
+                                            val bits = buildList {
+                                                line.counterparty?.takeIf { it.isNotBlank() }?.let { add(it) }
+                                                line.fundName?.let { add(it) }
+                                                line.note?.takeIf { it.isNotBlank() }?.let { add(it) }
+                                            }
+                                            if (bits.isNotEmpty()) {
+                                                Text(
+                                                    bits.joinToString(" · "),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = scheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            line.amountPaise.inr(),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else if (t.isSelfTransfer()) {
+                        Text(
+                            stringResource(R.string.split_not_for_transfer),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
                         )
                     }
                     if (!t.note.isNullOrBlank()) {
@@ -699,7 +757,7 @@ fun TransactionDetailScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Expense | Income
+                // Debit | Credit (locked while splits exist)
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -708,16 +766,33 @@ fun TransactionDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     FormTypeSegment(
-                        label = "Expense",
-                        selected = type == TransactionType.EXPENSE,
+                        label = "Debit",
+                        selected = type == TransactionType.DEBIT,
                         modifier = Modifier.weight(1f),
-                        onClick = { type = TransactionType.EXPENSE; haptics.select() },
+                        onClick = {
+                            if (!amountLocked) {
+                                type = TransactionType.DEBIT
+                                haptics.select()
+                            }
+                        },
                     )
                     FormTypeSegment(
-                        label = "Income",
-                        selected = type == TransactionType.INCOME,
+                        label = "Credit",
+                        selected = type == TransactionType.CREDIT,
                         modifier = Modifier.weight(1f),
-                        onClick = { type = TransactionType.INCOME; haptics.select() },
+                        onClick = {
+                            if (!amountLocked) {
+                                type = TransactionType.CREDIT
+                                haptics.select()
+                            }
+                        },
+                    )
+                }
+                if (amountLocked) {
+                    Text(
+                        stringResource(R.string.split_lines_summary, splits.size.coerceAtLeast(t.splitCount)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
                     )
                 }
 
@@ -734,8 +809,8 @@ fun TransactionDetailScreen(
                         onValueChange = { counterparty = it },
                         placeholder = {
                             Text(
-                                if (currentType == TransactionType.EXPENSE) "Expense name"
-                                else "Income source",
+                                if (currentType == TransactionType.DEBIT) "Name (merchant or person)"
+                                else "Name (source)",
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -745,15 +820,20 @@ fun TransactionDetailScreen(
                     )
                 }
 
-                // Amount — app numpad only (no system keyboard)
+                // Amount — app numpad only; locked while splits exist
                 AmountRupeeField(
                     amount = amount,
                     onClick = {
+                        if (amountLocked) return@AmountRupeeField
                         haptics.select()
                         showAmountPad = true
                     },
                     shape = fieldShape,
-                    containerColor = fieldBg,
+                    containerColor = if (amountLocked) {
+                        scheme.surfaceContainerHighest
+                    } else {
+                        fieldBg
+                    },
                     amountStyle = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                     ),
@@ -868,70 +948,39 @@ fun TransactionDetailScreen(
                     exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Mode", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            FormAccountChip(
-                                label = "Cash",
-                                icon = Icons.Default.Payments,
-                                selected = channel == "Cash",
-                                onClick = {
-                                    channel = "Cash"
-                                    selectedBank = null
-                                    haptics.select()
-                                },
-                            )
-                            FormAccountChip(
-                                label = "Digital",
-                                icon = Icons.Default.AccountBalance,
-                                selected = channel == "Digital",
-                                onClick = {
-                                    channel = "Digital"
-                                    if (selectedBank == null) selectedBank = resolvedDefaultBank
-                                    haptics.select()
-                                },
+                        Text(
+                            "Same list as Settings → Bank accounts (+ Cash). Archived only if this txn already uses one.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        if (pickerAccounts.isEmpty()) {
+                            Text(
+                                "No accounts yet. Add banks in Settings → Bank accounts.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
                             )
                         }
-                        AnimatedVisibility(
-                            visible = channel == "Digital",
-                            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(),
-                            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(),
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    "Account (under Digital)",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = scheme.onSurfaceVariant,
+                            pickerAccounts.forEach { acc ->
+                                FormAccountChip(
+                                    label = if (acc.archived) "${acc.name} (archived)" else acc.name,
+                                    icon = if (acc.kind.name == "CASH") {
+                                        Icons.Default.Payments
+                                    } else {
+                                        Icons.Default.AccountBalance
+                                    },
+                                    selected = selectedAccountId == acc.id,
+                                    isDefault = defaultDigital.equals(acc.name, true) ||
+                                        defaultPay.equals(acc.name, true),
+                                    onClick = {
+                                        selectedAccountId = acc.id
+                                        haptics.select()
+                                    },
                                 )
-                                if (bankOptions.isEmpty()) {
-                                    Text(
-                                        "No digital accounts yet. Add them in Settings → Accounts.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSurfaceVariant,
-                                    )
-                                }
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    bankOptions.forEach { bank ->
-                                        FormAccountChip(
-                                            label = bank,
-                                            icon = Icons.Default.AccountBalance,
-                                            selected = selectedBank.equals(bank, true),
-                                            isDefault = defaultDigital.equals(bank, true),
-                                            onClick = {
-                                                selectedBank = bank
-                                                haptics.select()
-                                            },
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -1032,7 +1081,7 @@ fun TransactionDetailScreen(
                             )
                         }
                     }
-                    AnimatedVisibility(visible = type == TransactionType.INCOME && fundId != null) {
+                    AnimatedVisibility(visible = type == TransactionType.CREDIT && fundId != null) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
                             color = fieldBg,
@@ -1171,25 +1220,15 @@ fun TransactionDetailScreen(
                     counterparty = it.counterparty ?: it.merchant.orEmpty()
                     categoryId = it.categoryId
                     fundId = it.fundId
-                    addToFund = it.fundId != null || it.type == TransactionType.INCOME
+                    addToFund = it.fundId != null || it.type == TransactionType.CREDIT
                     amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
                     type = it.type
-                    when {
-                        it.isCash || it.paymentMethod.equals("Cash", true) -> {
-                            channel = "Cash"
-                            selectedBank = null
-                        }
-                        else -> {
-                            channel = "Digital"
-                            val pm = it.paymentMethod.orEmpty()
-                            selectedBank = when {
-                                pm.isBlank() || pm.equals("Digital", true) || pm.equals("UPI", true) -> null
-                                banks.any { b -> b.equals(pm, true) } ->
-                                    banks.first { b -> b.equals(pm, true) }
-                                else -> pm.takeIf { p -> p.isNotBlank() }
-                            }
-                        }
-                    }
+                    selectedAccountId = it.accountId
+                        ?: accounts.firstOrNull { a ->
+                            a.name.equals(it.paymentMethod, true) ||
+                                (it.isCash && a.name.equals("Cash", true))
+                        }?.id
+                        ?: archivedCurrent?.id
                     val c = Calendar.getInstance().apply { timeInMillis = it.occurredAt }
                     selectedYear = c.get(Calendar.YEAR)
                     selectedMonth = c.get(Calendar.MONTH)
@@ -1209,7 +1248,7 @@ fun TransactionDetailScreen(
         )
     }
 
-    if (showAmountPad) {
+    if (showAmountPad && !amountLocked) {
         AmountNumpadSheet(
             initialAmount = amount,
             title = "Edit amount",
@@ -1222,6 +1261,7 @@ fun TransactionDetailScreen(
             },
         )
     }
+
 }
 
 private val CARTO_LIGHT = XYTileSource(

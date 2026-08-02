@@ -2,7 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
@@ -21,10 +21,10 @@ import javax.inject.Inject
 @HiltViewModel
 class CategoryDetailViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
-    userPreferences: UserPreferences,
+    accountRepository: AccountRepository,
 ) : ViewModel() {
     private val scopeKey = MutableStateFlow<Pair<Long?, String>>(null to "")
-    private val filters = TransactionFilterState(initialType = TransactionType.EXPENSE)
+    private val filters = TransactionFilterState(initialType = TransactionType.DEBIT)
 
     val title: StateFlow<String> = scopeKey.map { it.second }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
@@ -37,7 +37,7 @@ class CategoryDetailViewModel @Inject constructor(
     val customTo: StateFlow<Long> = filters.customTo
 
     val funds = fundsState(transactionRepository)
-    val bankAccounts = bankAccountsState(userPreferences, transactionRepository, includeUsageExtras = true)
+    val bankAccounts = filterAccountNamesState(accountRepository, transactionRepository)
 
     private data class Head(
         val key: Pair<Long?, String>,
@@ -67,31 +67,45 @@ class CategoryDetailViewModel @Inject constructor(
             .flatMapLatest { (head, tail) ->
                 val (categoryId, _) = head.key
                 val (from, to) = head.range.toMillisRange(tail.from, tail.to)
-                val base = if (categoryId != null) {
-                    transactionRepository.observeFiltered(
-                        query = "",
-                        type = head.t,
-                        categoryId = categoryId,
-                        fundId = head.fund,
-                        fromTs = from,
-                        toTs = to,
-                    )
-                } else {
-                    transactionRepository.observeFiltered(
-                        query = "",
-                        type = head.t,
-                        categoryId = null,
-                        fundId = head.fund,
-                        fromTs = from,
-                        toTs = to,
-                    ).map { list -> list.filter { txn -> txn.categoryId == null } }
+                // observeForTab: null categoryId = any category. Uncategorized uses observeForCategory.
+                val base = when {
+                    categoryId != null && head.fund != null ->
+                        transactionRepository.observeForTab(
+                            fundId = head.fund,
+                            type = head.t,
+                            categoryId = categoryId,
+                            fromTs = from,
+                            toTs = to,
+                        )
+                    categoryId != null ->
+                        transactionRepository.observeForCategory(
+                            categoryId = categoryId,
+                            type = head.t,
+                            fromTs = from,
+                            toTs = to,
+                        )
+                    head.fund != null ->
+                        // Uncategorized on a tab: allocation amounts with null category on that fund.
+                        transactionRepository.observeForCategory(
+                            categoryId = null,
+                            type = head.t,
+                            fromTs = from,
+                            toTs = to,
+                        ).map { list -> list.filter { it.fundId == head.fund } }
+                    else ->
+                        transactionRepository.observeForCategory(
+                            categoryId = null,
+                            type = head.t,
+                            fromTs = from,
+                            toTs = to,
+                        )
                 }
                 base.map { applyPaymentAndSort(it, head.pay, tail.sort) }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalPaise: StateFlow<Long> = transactions.map { list ->
-        list.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amountPaise }
+        list.filter { it.type == TransactionType.DEBIT }.sumOf { it.amountPaise }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     fun load(categoryId: Long?, categoryName: String) {
@@ -104,5 +118,5 @@ class CategoryDetailViewModel @Inject constructor(
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)
-    fun clearFilters() = filters.clear(type = TransactionType.EXPENSE, clearCategory = false)
+    fun clearFilters() = filters.clear(type = TransactionType.DEBIT, clearCategory = false)
 }

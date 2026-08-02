@@ -78,7 +78,7 @@ object CategoryIcons {
         Entry("trending_up", "Invest", Icons.AutoMirrored.Filled.TrendingUp),
         Entry("checkroom", "Clothes", Icons.Default.Checkroom),
         Entry("pets", "Pets", Icons.Default.Pets),
-        Entry("build", "Repair", Icons.Default.Build),
+        Entry("build", "Utilities", Icons.Default.Build),
         Entry("more_horiz", "Other", Icons.Default.MoreHoriz),
         Entry("help_outline", "Misc", Icons.AutoMirrored.Filled.HelpOutline),
     )

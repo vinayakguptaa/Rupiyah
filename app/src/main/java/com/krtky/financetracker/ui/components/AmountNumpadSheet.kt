@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,10 +51,17 @@ import androidx.compose.ui.unit.sp
 import com.krtky.financetracker.domain.model.TransactionType
 import java.util.Locale
 
+/** Result of the entry-gate numpad (Debit / Credit / Self Transfer). */
+data class NumpadConfirm(
+    val amountText: String,
+    val type: TransactionType = TransactionType.DEBIT,
+    val isSelfTransfer: Boolean = false,
+)
+
 /**
  * App-owned number keyboard for ₹ amounts (bottom sheet).
  *
- * - [pickTransactionType] = true → confirm with − Expense / + Income (add flow).
+ * - [pickTransactionType] = true → Debit / Credit / Transfer (add flow).
  * - [pickTransactionType] = false → confirm with Done (edit amount / pure keyboard).
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,9 +73,11 @@ fun AmountNumpadSheet(
     pickTransactionType: Boolean = false,
     /**
      * Called with amount and type when [pickTransactionType] is true.
-     * Type is never null in that mode.
+     * Prefer [onConfirmEntry] for Transfer support.
      */
     onConfirmWithType: (amountText: String, type: TransactionType) -> Unit = { _, _ -> },
+    /** Preferred confirm for add flow (includes self-transfer). */
+    onConfirmEntry: ((NumpadConfirm) -> Unit)? = null,
     /** Called with amount when [pickTransactionType] is false. */
     onConfirmAmount: (amountText: String) -> Unit = {},
 ) {
@@ -169,33 +179,51 @@ fun AmountNumpadSheet(
             Spacer(Modifier.height(16.dp))
 
             if (pickTransactionType) {
+                fun confirm(type: TransactionType, selfTransfer: Boolean) {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    val normalized = normalizeAmount(amount)
+                    if (onConfirmEntry != null) {
+                        onConfirmEntry(
+                            NumpadConfirm(
+                                amountText = normalized,
+                                type = type,
+                                isSelfTransfer = selfTransfer,
+                            ),
+                        )
+                    } else {
+                        onConfirmWithType(normalized, type)
+                    }
+                }
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     NumpadActionButton(
                         modifier = Modifier.weight(1f),
                         icon = Icons.Default.Remove,
-                        label = "Expense",
+                        label = "Debit",
                         enabled = canConfirm,
                         containerColor = scheme.errorContainer,
                         contentColor = scheme.onErrorContainer,
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onConfirmWithType(normalizeAmount(amount), TransactionType.EXPENSE)
-                        },
+                        onClick = { confirm(TransactionType.DEBIT, false) },
                     )
                     NumpadActionButton(
                         modifier = Modifier.weight(1f),
                         icon = Icons.Default.Add,
-                        label = "Income",
+                        label = "Credit",
                         enabled = canConfirm,
                         containerColor = scheme.primaryContainer,
                         contentColor = scheme.onPrimaryContainer,
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onConfirmWithType(normalizeAmount(amount), TransactionType.INCOME)
-                        },
+                        onClick = { confirm(TransactionType.CREDIT, false) },
+                    )
+                    NumpadActionButton(
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Default.SwapHoriz,
+                        label = "Transfer",
+                        enabled = canConfirm,
+                        containerColor = scheme.secondaryContainer,
+                        contentColor = scheme.onSecondaryContainer,
+                        onClick = { confirm(TransactionType.DEBIT, true) },
                     )
                 }
             } else {

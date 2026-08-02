@@ -37,8 +37,8 @@ fun downloadTransactionsCsv(
     val fileName = "${safePrefix}_$stamp.csv"
 
     val header = listOf(
-        "Date", "Time", "Type", "Amount (INR)", "Merchant", "Counterparty",
-        "Category", "Fund", "Payment Method", "Cash vs Digital", "Note",
+        "Date", "Time", "Type", "Amount (INR)", "Name", "Counterparty",
+        "Category", "Fund", "Account", "Cash vs Digital", "Note",
         "Place", "Source", "Transaction ID",
     )
     val rows = transactions.map { t ->
@@ -133,7 +133,7 @@ private fun csvEscape(value: String): String {
 }
 
 fun csvSummaryLine(transactions: List<Transaction>): String {
-    val income = transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amountPaise }
-    val expense = transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amountPaise }
+    val income = transactions.filter { it.type == TransactionType.CREDIT }.sumOf { it.amountPaise }
+    val expense = transactions.filter { it.type == TransactionType.DEBIT }.sumOf { it.amountPaise }
     return "${transactions.size} txns · income ${income.inr()} · expense ${expense.inr()}"
 }

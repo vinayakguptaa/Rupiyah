@@ -51,16 +51,16 @@ android {
     ).all { value -> value != null }
 
     signingConfigs {
-        create("release") {
-            check(hasReleaseSigning) {
-                "Release signing missing. Add keystore.properties at repo root " +
-                    "(storeFile, storePassword, keyAlias, keyPassword) or pass -PRELEASE_* props."
+        // Only configure release signing when credentials exist so debug
+        // builds work without a keystore (CI/local day-to-day).
+        if (hasReleaseSigning) {
+            create("release") {
+                // Paths in keystore.properties are relative to the project root.
+                storeFile = rootProject.file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                this.keyPassword = releaseKeyPassword
             }
-            // Paths in keystore.properties are relative to the project root.
-            storeFile = rootProject.file(releaseStoreFilePath!!)
-            storePassword = releaseStorePassword
-            keyAlias = releaseKeyAlias
-            this.keyPassword = releaseKeyPassword
         }
     }
 
@@ -68,7 +68,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

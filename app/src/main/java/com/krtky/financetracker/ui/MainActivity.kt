@@ -61,15 +61,18 @@ import com.krtky.financetracker.ui.screens.AccountsScreen
 import com.krtky.financetracker.ui.screens.AddCashScreen
 import com.krtky.financetracker.ui.screens.CategoriesScreen
 import com.krtky.financetracker.ui.screens.CategoryDetailScreen
+import com.krtky.financetracker.ui.screens.CsvImportScreen
 import com.krtky.financetracker.ui.screens.FundDetailScreen
 import com.krtky.financetracker.ui.screens.FundsScreen
 import com.krtky.financetracker.ui.screens.HomeScreen
 import com.krtky.financetracker.ui.screens.SettingsDetailScreen
 import com.krtky.financetracker.ui.screens.OnboardingScreen
 import com.krtky.financetracker.ui.screens.SettingsScreen
+import com.krtky.financetracker.ui.screens.SplitTransactionScreen
 import com.krtky.financetracker.ui.screens.TransactionDetailScreen
 import com.krtky.financetracker.ui.screens.TransactionsScreen
 import com.krtky.financetracker.ui.navigation.AccountsRoute
+import com.krtky.financetracker.ui.navigation.CsvImportRoute
 import com.krtky.financetracker.ui.navigation.ActivityFilterArgs
 import com.krtky.financetracker.ui.navigation.ActivityFilterKeys
 import com.krtky.financetracker.ui.navigation.AddCashRoute
@@ -82,6 +85,7 @@ import com.krtky.financetracker.ui.navigation.MainTabs
 import com.krtky.financetracker.ui.navigation.OnboardingRoute
 import com.krtky.financetracker.ui.navigation.SettingsRoute
 import com.krtky.financetracker.ui.navigation.SettingsSectionRoute
+import com.krtky.financetracker.ui.navigation.SplitRoute
 import com.krtky.financetracker.ui.navigation.TransactionsRoute
 import com.krtky.financetracker.ui.navigation.TxnRoute
 import com.krtky.financetracker.ui.navigation.clearActivityDeepLinkFiltersIfNeeded
@@ -332,7 +336,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenExpenseActivity = {
                                         nav.openActivityWithFilters(
                                             ActivityFilterArgs(
-                                                type = TransactionType.EXPENSE,
+                                                type = TransactionType.DEBIT,
                                                 payment = null,
                                                 categoryId = null,
                                                 applyCategory = true,
@@ -353,6 +357,19 @@ class MainActivity : ComponentActivity() {
                                 AccountsScreen(
                                     onBack = { nav.popBackStack() },
                                     onOpenSettings = { nav.navigate(SettingsSectionRoute("banks")) },
+                                    onImportStatement = { accountId ->
+                                        nav.navigate(
+                                            CsvImportRoute(accountId = accountId ?: -1L),
+                                        )
+                                    },
+                                )
+                            }
+                            composable<CsvImportRoute> { entry ->
+                                val args = entry.toRoute<CsvImportRoute>()
+                                CsvImportScreen(
+                                    onBack = { nav.popBackStack() },
+                                    onDone = { nav.popBackStack() },
+                                    initialAccountId = args.accountId.takeIf { it > 0L },
                                 )
                             }
                             composable<CategoriesRoute> {
@@ -424,7 +441,18 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<TxnRoute> { entry ->
                                 val args = entry.toRoute<TxnRoute>()
-                                TransactionDetailScreen(id = args.id, onBack = { nav.popBackStack() })
+                                TransactionDetailScreen(
+                                    id = args.id,
+                                    onBack = { nav.popBackStack() },
+                                    onOpenSplit = { nav.navigate(SplitRoute(args.id)) },
+                                )
+                            }
+                            composable<SplitRoute> { entry ->
+                                val args = entry.toRoute<SplitRoute>()
+                                SplitTransactionScreen(
+                                    id = args.id,
+                                    onBack = { nav.popBackStack() },
+                                )
                             }
                         }
 
@@ -447,7 +475,7 @@ class MainActivity : ComponentActivity() {
                                 showFab = true,
                                 fabIcon = fab.first,
                                 fabContentDescription = when (tabRoute) {
-                                    MainTabs.FUNDS -> "Add fund"
+                                    MainTabs.FUNDS -> "Add tab"
                                     MainTabs.SETTINGS -> "Search settings"
                                     else -> stringResource(R.string.cd_fab_log)
                                 },

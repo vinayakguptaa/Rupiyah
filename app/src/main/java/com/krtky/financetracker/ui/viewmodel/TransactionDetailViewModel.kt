@@ -5,16 +5,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.receipt.ReceiptStore
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,28 +29,87 @@ import javax.inject.Inject
 @HiltViewModel
 class TransactionDetailViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
+    private val accountRepository: AccountRepository,
     categoryRepository: CategoryRepository,
     private val locationRepository: LocationRepository,
     userPreferences: UserPreferences,
     private val receiptStore: ReceiptStore,
 ) : ViewModel() {
     private val _txn = MutableStateFlow<Transaction?>(null)
+    private val txnIdFlow = MutableStateFlow<String?>(null)
     val transaction: StateFlow<Transaction?> = _txn
     val categories = categoriesState(categoryRepository, transactionRepository)
     val funds = fundsState(transactionRepository)
-    val bankAccounts = bankAccountsState(userPreferences, transactionRepository, includeUsageExtras = false)
+    /** Active accounts for the account picker (Add-style). */
+    val accounts = accountRepository.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val defaultPaymentMethod = userPreferences.defaultPaymentMethod
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Cash")
+
+    /**
+     * If the loaded txn sits on an archived account, expose it so the chip still shows
+     * (without listing all archived banks).
+     */
+    private val currentAccountId = MutableStateFlow<Long?>(null)
+    val currentAccount: StateFlow<Account?> = combine(currentAccountId, accounts) { id, active ->
+        if (id == null) return@combine null
+        active.firstOrNull { it.id == id }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _archivedCurrent = MutableStateFlow<Account?>(null)
+    val archivedCurrentAccount: StateFlow<Account?> = _archivedCurrent
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val splits: StateFlow<List<TransactionSplit>> = txnIdFlow
+        .flatMapLatest { id ->
+            if (id.isNullOrBlank()) flowOf(emptyList())
+            else transactionRepository.observeSplits(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun load(id: String) {
-        viewModelScope.launch { _txn.value = transactionRepository.getById(id) }
+        txnIdFlow.value = id
+        viewModelScope.launch {
+            val t = transactionRepository.getById(id)
+            _txn.value = t
+            val accId = t?.accountId
+            currentAccountId.value = accId
+            _archivedCurrent.value = if (accId != null) {
+                val acc = accountRepository.getById(accId)
+                if (acc != null && acc.archived) acc else null
+            } else {
+                // Legacy: try paymentMethod name even if archived
+                val name = t?.paymentMethod?.takeIf { it.isNotBlank() && !it.equals("Digital", true) }
+                name?.let { accountRepository.getByName(it) }?.takeIf { it.archived }
+            }
+        }
+    }
+
+    suspend fun saveSplits(lines: List<TransactionSplit>): Result<Unit> {
+        val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
+        val result = transactionRepository.setSplits(id, lines)
+        if (result.isSuccess) {
+            _txn.value = transactionRepository.getById(id)
+        }
+        return result
+    }
+
+    suspend fun clearSplits(): Result<Unit> {
+        val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
+        val result = transactionRepository.clearSplits(id)
+        if (result.isSuccess) {
+            _txn.value = transactionRepository.getById(id)
+        }
+        return result
     }
 
     suspend fun save(
         amountText: String,
         type: TransactionType,
         occurredAt: Long,
-        paymentMethod: String,
+        accountId: Long?,
         categoryId: Long?,
         fundId: Long?,
         note: String,
@@ -56,11 +122,11 @@ class TransactionDetailViewModel @Inject constructor(
         val t = _txn.value ?: return false
         val amount = Money.fromRupeesString(amountText) ?: return false
         val location = if (useCurrentLocation) locationRepository.captureCurrent() else null
-        val method = normalizePaymentMethod(
-            paymentMethod,
-            defaultDigitalAccount.value,
-            bankAccounts.value,
-        )
+        val account = accountId?.let { accountRepository.getById(it) }
+        val methodLabel = account?.name
+            ?: t.paymentMethod
+            ?: "Cash"
+        val isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH"
         val catName = categories.value.firstOrNull { it.id == categoryId }?.name
         val resolvedFundId = effectiveFundId(type, fundId, addToFund)
         val newReceipt = when {
@@ -74,12 +140,15 @@ class TransactionDetailViewModel @Inject constructor(
             }
             else -> t.receiptUri
         }
+        val amountPaise = if (t.amountLocked()) t.amountPaise else amount.paise
+        val lockedType = if (t.amountLocked()) t.type else type
         val updated = t.copy(
-            amountPaise = amount.paise,
-            type = type,
+            amountPaise = amountPaise,
+            type = lockedType,
             occurredAt = occurredAt,
-            paymentMethod = method,
-            isCash = method.equals("Cash", true),
+            accountId = account?.id ?: accountId,
+            paymentMethod = methodLabel,
+            isCash = isCash,
             categoryId = categoryId,
             categoryName = catName,
             fundId = resolvedFundId,
@@ -94,7 +163,11 @@ class TransactionDetailViewModel @Inject constructor(
             receiptUri = newReceipt,
         )
         transactionRepository.update(updated)
-        _txn.value = updated
+        _txn.value = transactionRepository.getById(t.id) ?: updated
+        currentAccountId.value = updated.accountId
+        _archivedCurrent.value = updated.accountId?.let { id ->
+            accountRepository.getById(id)?.takeIf { it.archived }
+        }
         return true
     }
 

@@ -252,7 +252,10 @@ class OnboardingViewModel @Inject constructor(
                             db.transactionDao().insert(
                                 TransactionEntity(
                                     id = obj["id"]?.jsonPrimitive?.content.orEmpty(),
-                                    type = obj["type"]?.jsonPrimitive?.content ?: "EXPENSE",
+                                    type = when (obj["type"]?.jsonPrimitive?.content?.uppercase()) {
+                                        "INCOME", "CREDIT" -> "CREDIT"
+                                        else -> "DEBIT"
+                                    },
                                     amountPaise = obj["amountPaise"]?.jsonPrimitive?.long ?: 0L,
                                     currency = obj["currency"]?.jsonPrimitive?.content ?: "INR",
                                     occurredAt = obj["occurredAt"]?.jsonPrimitive?.long ?: System.currentTimeMillis(),

@@ -3,8 +3,10 @@ package com.krtky.financetracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.AccountKind
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
@@ -14,23 +16,26 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-/** Cash / Digital bucket or exact bank/wallet name. */
+/** Cash / Digital bucket or exact bank/wallet / account name. */
 fun matchesPaymentFilter(txn: Transaction, pay: String): Boolean {
-    val isCash = txn.isCash || txn.paymentMethod.equals("Cash", true)
+    val isCash = txn.isCash ||
+        txn.paymentMethod.equals("Cash", true) ||
+        txn.accountName.equals("Cash", true)
     return when {
         pay.equals("Cash", true) -> isCash
         pay.equals("Digital", true) -> !isCash
-        else -> txn.paymentMethod.equals(pay, true)
+        else -> txn.accountName.equals(pay, true) || txn.paymentMethod.equals(pay, true)
     }
 }
 
-/** Income only hits the pot when [addToFund] is on; expenses always do when fund is set. */
+/** Credits only hit the pot when [addToFund] is on; debits always do when fund is set. */
 fun effectiveFundId(type: TransactionType, fundId: Long?, addToFund: Boolean): Long? = when {
     fundId == null -> null
-    type == TransactionType.EXPENSE -> fundId
-    type == TransactionType.INCOME && addToFund -> fundId
+    type == TransactionType.DEBIT -> fundId
+    type == TransactionType.CREDIT && addToFund -> fundId
     else -> null
 }
 
@@ -78,10 +83,30 @@ fun observeCategoriesSortedByUsage(
 }
 
 /**
- * Configured banks sorted by usage.
- * When [includeUsageExtras] is true, also append payment methods seen on transactions
- * that are not Cash/Digital and not already configured.
+ * Account names for Activity filters: active + archived (non-Cash).
+ * Archived stay filterable so history on old banks is still findable.
+ * Sorted active first, then archived, by usage when available.
  */
+fun observeFilterAccountNames(
+    accountRepository: AccountRepository,
+    transactionRepository: TransactionRepository,
+): Flow<List<String>> = combine(
+    accountRepository.observeAll(),
+    transactionRepository.observePaymentMethodUsage(),
+) { accounts, usage ->
+    accounts
+        .filter { it.kind != AccountKind.CASH && !it.name.equals("Cash", true) }
+        .sortedWith(
+            compareBy<com.krtky.financetracker.domain.model.Account> { it.archived }
+                .thenByDescending { usage[it.name] ?: 0L }
+                .thenBy { it.sortOrder }
+                .thenBy { it.name },
+        )
+        .map { it.name }
+        .distinct()
+}
+
+/** @deprecated Prefer [filterAccountNamesState] / AccountRepository. */
 fun observeBankAccounts(
     userPreferences: UserPreferences,
     transactionRepository: TransactionRepository,
@@ -110,6 +135,24 @@ fun ViewModel.categoriesState(
     observeCategoriesSortedByUsage(categoryRepository, transactionRepository)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+/** Filter chips: active + archived account names (not inventing usage-only labels). */
+fun ViewModel.filterAccountNamesState(
+    accountRepository: AccountRepository,
+    transactionRepository: TransactionRepository,
+): StateFlow<List<String>> =
+    observeFilterAccountNames(accountRepository, transactionRepository)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+/** Active non-Cash names only (Add / defaults). */
+fun ViewModel.activeBankNamesState(accountRepository: AccountRepository): StateFlow<List<String>> =
+    accountRepository.observeActive()
+        .map { list ->
+            list.filter { it.kind != AccountKind.CASH && !it.name.equals("Cash", true) }
+                .map { it.name }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+/** @deprecated Prefer [filterAccountNamesState] or [activeBankNamesState]. */
 fun ViewModel.bankAccountsState(
     userPreferences: UserPreferences,
     transactionRepository: TransactionRepository,

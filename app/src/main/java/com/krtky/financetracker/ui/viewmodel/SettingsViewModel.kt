@@ -11,12 +11,10 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
-import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.email.EmailSource
-import com.krtky.financetracker.data.email.GmailApiClient
-import com.krtky.financetracker.data.email.ImapEmailClient
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.BackupRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
@@ -24,7 +22,6 @@ import com.krtky.financetracker.data.repository.TrustedSenderRepository
 import com.krtky.financetracker.data.sheets.SheetsSyncService
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.TrustedSender
-import com.krtky.financetracker.email.EmailMonitorService
 import com.krtky.financetracker.location.LocationTrackingService
 import com.krtky.financetracker.ui.UiMessenger
 import com.krtky.financetracker.ui.theme.ColorSchemeStyle
@@ -54,11 +51,9 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val trustedSenderRepository: TrustedSenderRepository,
     private val categoryRepository: CategoryRepository,
+    private val accountRepository: AccountRepository,
     private val transactionRepository: TransactionRepository,
-    private val emailIngestService: EmailIngestService,
     private val sheetsSyncService: SheetsSyncService,
-    private val imapEmailClient: ImapEmailClient,
-    private val gmailApiClient: GmailApiClient,
     private val backupRepository: BackupRepository,
     private val uiMessenger: UiMessenger,
 ) : ViewModel() {
@@ -74,6 +69,13 @@ class SettingsViewModel @Inject constructor(
     /** Net balances keyed by account/payment method label (Cash, HDFC, …). */
     val accountBalances = transactionRepository.observeAccountBalances()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+    /** Ledger balances including archived (Settings bank list). */
+    val managedAccountBalances = accountRepository.observeAllBalances()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val activeAccounts = accountRepository.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val archivedAccounts = accountRepository.observeArchived()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         viewModelScope.launch {
@@ -186,8 +188,8 @@ class SettingsViewModel @Inject constructor(
         llmModel = secureStore.llmModel,
         gmail = secureStore.gmailAddress.orEmpty(),
         gmailPassSet = !secureStore.gmailAppPassword.isNullOrBlank(),
-        gmailOAuthConnected = gmailApiClient.isConfigured(),
-        gmailOAuthEmail = gmailApiClient.connectedEmail().orEmpty(),
+        gmailOAuthConnected = false,
+        gmailOAuthEmail = "",
         sheetId = secureStore.sheetsSpreadsheetId.orEmpty(),
         sheetTokenSet = !secureStore.sheetsAccessToken.isNullOrBlank(),
         googleWebClientId = secureStore.googleWebClientId.orEmpty(),
@@ -316,91 +318,47 @@ class SettingsViewModel @Inject constructor(
         notifySaved("AI key removed — bank email & SMS auto-import turned off")
     }
 
-    /** Stops email watch + SMS import when AI is no longer ready. */
+    /** Stops SMS import when AI is no longer ready. Email watch removed. */
     private suspend fun disableAutoImportForMissingAi() {
         userPreferences.setSmsEnabled(false)
         if (userPreferences.emailPollEnabled.first()) {
             userPreferences.setEmailPollEnabled(false)
-            EmailMonitorService.stop(appContext)
         }
-        // Reflect prefs in UI (collectors may lag a frame).
         _state.value = _state.value.copy(smsEnabled = false, emailPoll = false)
     }
 
     fun setEmailSource(source: EmailSource) = viewModelScope.launch {
         userPreferences.setEmailSource(source)
-        notifySaved(
-            when (source) {
-                EmailSource.IMAP -> "Using IMAP + App Password"
-                EmailSource.GMAIL_OAUTH -> "Using Google Sign-In (Gmail.readonly)"
-            },
-        )
+        notifySaved("Email import is no longer available — use SMS or CSV")
     }
 
     fun saveGmail(address: String, password: String?) {
         secureStore.gmailAddress = address.trim().lowercase()
         if (password != null) secureStore.gmailAppPassword = password.replace(" ", "").trim()
         refreshSecureFields()
-        notifySaved("Gmail saved — tap Test connection")
+        notifySaved("Email import removed — use SMS or CSV statement import")
     }
 
     suspend fun testGmail() {
-        val source = userPreferences.emailSource.first()
-        _status.value = when (source) {
-            EmailSource.GMAIL_OAUTH -> "Testing Gmail API…"
-            EmailSource.IMAP -> "Testing IMAP…"
-        }
-        val r = when (source) {
-            EmailSource.GMAIL_OAUTH -> gmailApiClient.testConnection()
-            EmailSource.IMAP -> imapEmailClient.testConnection()
-        }
-        _status.value = r.fold(
-            onSuccess = { it },
-            onFailure = { it.message ?: "Connection failed" },
-        )
+        _status.value = "Email import removed — use SMS or CSV"
+        uiMessenger.show("Email import removed — use SMS or CSV")
     }
 
     fun gmailSignInIntent(context: Context): Intent {
-        val builder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-        val webClientId = secureStore.googleWebClientId
-        if (!webClientId.isNullOrBlank()) {
-            builder.requestIdToken(webClientId)
-        }
-        builder.requestEmail()
-            .requestScopes(Scope(GmailApiClient.GMAIL_READONLY_SCOPE))
-        return GoogleSignIn.getClient(context, builder.build()).signInIntent
+        // Legacy no-op intent; UI for Gmail is retired.
+        return Intent()
     }
 
     suspend fun completeGmailSignIn(context: Context, data: Intent?): Boolean {
-        return try {
-            val account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
-            val email = account.email?.trim().orEmpty()
-            if (email.isBlank() || account.account == null) {
-                notifySaved("Google did not return an email")
-                return false
-            }
-            val token = withContext(Dispatchers.IO) {
-                GoogleAuthUtil.getToken(
-                    context,
-                    account.account!!,
-                    "oauth2:${GmailApiClient.GMAIL_READONLY_SCOPE}",
-                )
-            }
-            gmailApiClient.saveSession(email, token)
-            userPreferences.setEmailSource(EmailSource.GMAIL_OAUTH)
-            refreshSecureFields()
-            notifySaved("Gmail connected as $email")
-            true
-        } catch (e: Exception) {
-            notifySaved(e.message ?: "Gmail sign-in failed")
-            false
-        }
+        notifySaved("Email import removed — use SMS or CSV")
+        return false
     }
 
     fun disconnectGmailOAuth() {
-        gmailApiClient.clearSession()
+        secureStore.gmailAccessToken = null
+        secureStore.gmailOAuthEmail = null
         refreshSecureFields()
-        notifySaved("Gmail OAuth disconnected")
+        notifySaved("Cleared saved Gmail session")
     }
 
     fun saveSheets(id: String, token: String?) {
@@ -458,29 +416,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setEmailPoll(context: Context, v: Boolean) = viewModelScope.launch {
-        if (v && !secureStore.isLlmReady()) {
-            notifySaved("Set up AI helper first — required to watch bank emails")
-            return@launch
-        }
-        userPreferences.setEmailPollEnabled(v)
+        // Email monitor removed — never enable.
+        userPreferences.setEmailPollEnabled(false)
+        _state.value = _state.value.copy(emailPoll = false)
         if (v) {
-            EmailMonitorService.start(context)
-            try {
-                val pm = context.getSystemService(android.os.PowerManager::class.java)
-                val pkg = context.packageName
-                if (!pm.isIgnoringBatteryOptimizations(pkg)) {
-                    val i = Intent(
-                        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        Uri.parse("package:$pkg"),
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(i)
-                }
-            } catch (_: Exception) {
-            }
-            notifySaved("Live email monitor started — allow unrestricted battery if asked")
-        } else {
-            EmailMonitorService.stop(context)
-            notifySaved("Email monitor stopped")
+            notifySaved("Email import removed — use SMS or CSV instead")
         }
     }
 
@@ -536,7 +476,49 @@ class SettingsViewModel @Inject constructor(
 
     fun saveBankAccounts(raw: String) = viewModelScope.launch {
         userPreferences.setBankAccounts(raw)
+        accountRepository.syncFromBankList(userPreferences.parseBankList(raw))
         notifySaved("Accounts saved")
+    }
+
+    /** Add bank/UPI name (or restore if archived). Prefs stay mirrored for backup/SMS. */
+    fun addBankAccount(name: String) = viewModelScope.launch {
+        val id = accountRepository.addOrRestore(name) ?: return@launch
+        syncBankPrefsFromAccounts()
+        // Clear defaults that pointed at nothing
+        notifySaved("“${accountRepository.getById(id)?.name ?: name.trim()}” added")
+    }
+
+    /** Archive account — transactions kept; hidden from Add Transaction pickers. */
+    fun archiveBankAccount(id: Long) = viewModelScope.launch {
+        val acc = accountRepository.getById(id) ?: return@launch
+        if (acc.name.equals("Cash", true)) return@launch
+        accountRepository.archive(id)
+        syncBankPrefsFromAccounts()
+        val defDigital = userPreferences.defaultDigitalAccount.first()
+        if (defDigital.equals(acc.name, true)) {
+            userPreferences.setDefaultDigitalAccount("")
+            _state.value = _state.value.copy(defaultDigitalAccount = "")
+        }
+        val defPay = userPreferences.defaultPaymentMethod.first()
+        if (defPay.equals(acc.name, true)) {
+            userPreferences.setDefaultPaymentMethod("Cash")
+            _state.value = _state.value.copy(defaultPaymentMethod = "Cash")
+        }
+        notifySaved("“${acc.name}” archived — past transactions kept")
+    }
+
+    fun restoreBankAccount(id: Long) = viewModelScope.launch {
+        val acc = accountRepository.getById(id) ?: return@launch
+        accountRepository.unarchive(id)
+        syncBankPrefsFromAccounts()
+        notifySaved("“${acc.name}” restored")
+    }
+
+    private suspend fun syncBankPrefsFromAccounts() {
+        val names = accountRepository.activeBankNames()
+        val joined = names.joinToString(",")
+        userPreferences.setBankAccounts(joined)
+        _state.value = _state.value.copy(bankAccounts = joined)
     }
 
     fun saveDefaultPaymentMethod(method: String) = viewModelScope.launch {
@@ -577,29 +559,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     suspend fun pollNow() {
-        if (!secureStore.isLlmReady()) {
-            val msg = "Set up AI helper first — required to parse bank emails"
-            _status.value = msg
-            uiMessenger.show(msg)
-            return
-        }
-        _status.value = "Polling…"
-        val r = emailIngestService.ingest(force = true)
-        val msg = r.error ?: "Created ${r.created}, skipped ${r.skipped}"
+        val msg = "Email import removed — use SMS or CSV statement import"
         _status.value = msg
-        if (r.error != null) uiMessenger.show(r.error.take(80))
+        uiMessenger.show(msg)
     }
 
     suspend fun processPaste(sender: String, subject: String, body: String) {
-        if (!secureStore.isLlmReady()) {
-            val msg = "Set up AI helper first — required to parse emails"
-            _status.value = msg
-            uiMessenger.show(msg)
-            return
-        }
-        _status.value = "Processing…"
-        val id = emailIngestService.processPastedEmail(sender, subject, body)
-        _status.value = if (id != null) "Transaction created" else "Could not parse / duplicate / not trusted"
+        val msg = "Email paste removed — use SMS or CSV statement import"
+        _status.value = msg
+        uiMessenger.show(msg)
     }
 
     suspend fun syncSheetsNow() {

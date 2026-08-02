@@ -13,9 +13,9 @@ class TransactionSortTest {
     @Before
     fun setUp() {
         txns = listOf(
-            Transaction(id = "a", type = TransactionType.EXPENSE, amountPaise = 5000L, occurredAt = 3000L, counterparty = "Amazon"),
-            Transaction(id = "b", type = TransactionType.EXPENSE, amountPaise = 10000L, occurredAt = 1000L, counterparty = "Swiggy"),
-            Transaction(id = "c", type = TransactionType.INCOME, amountPaise = 50000L, occurredAt = 2000L, counterparty = "Salary"),
+            Transaction(id = "a", type = TransactionType.DEBIT, amountPaise = 5000L, occurredAt = 3000L, counterparty = "Amazon"),
+            Transaction(id = "b", type = TransactionType.DEBIT, amountPaise = 10000L, occurredAt = 1000L, counterparty = "Swiggy"),
+            Transaction(id = "c", type = TransactionType.CREDIT, amountPaise = 50000L, occurredAt = 2000L, counterparty = "Salary"),
         )
     }
 

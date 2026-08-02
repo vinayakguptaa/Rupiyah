@@ -205,7 +205,7 @@ private fun OverlayClassifierContent(
     var fundId by remember { mutableStateOf<Long?>(txn?.fundId) }
     var note by remember { mutableStateOf(txn?.note.orEmpty()) }
     var saving by remember { mutableStateOf(false) }
-    val isExpense = txn?.type != TransactionType.INCOME
+    val isExpense = txn?.type != TransactionType.CREDIT
     val amountColor = if (isExpense) scheme.error else scheme.primary
 
     Surface(

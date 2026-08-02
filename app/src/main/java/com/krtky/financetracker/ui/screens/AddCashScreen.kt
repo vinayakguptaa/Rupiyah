@@ -44,9 +44,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -66,6 +68,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.krtky.financetracker.domain.model.Money
+import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.AmountNumpadSheet
 import com.krtky.financetracker.ui.components.AmountRupeeField
@@ -96,13 +100,13 @@ import java.util.Locale
 fun AddCashScreen(
     onDone: () -> Unit,
     initialAmount: String = "",
-    initialType: TransactionType = TransactionType.EXPENSE,
+    initialType: TransactionType = TransactionType.DEBIT,
     vm: AddCashViewModel = hiltViewModel(),
 ) {
     // NavHost handles predictive back (no intercepting BackHandler).
     val categories by vm.categories.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
-    val banks by vm.bankAccounts.collectAsStateWithLifecycle()
+    val accounts by vm.accounts.collectAsStateWithLifecycle()
     val defaultPay by vm.defaultPaymentMethod.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
     val accountBalances by vm.accountBalances.collectAsStateWithLifecycle()
@@ -112,27 +116,13 @@ fun AddCashScreen(
     var note by remember { mutableStateOf("") }
     var counterparty by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(initialType) }
+    var isSelfTransfer by remember { mutableStateOf(false) }
+    var fromAccountId by remember { mutableStateOf<Long?>(null) }
+    var toAccountId by remember { mutableStateOf<Long?>(null) }
+    var selectedAccountId by remember { mutableStateOf<Long?>(null) }
     // Always open the amount numpad when landing on this screen; tapping amount reopens it later
     var showAmountPad by remember { mutableStateOf(true) }
     var amountPadIsEntryGate by remember { mutableStateOf(true) }
-    val defaultIsCash = defaultPay.equals("Cash", true)
-    val resolvedDefaultBank = remember(defaultPay, defaultDigital, banks) {
-        when {
-            defaultIsCash -> null
-            banks.any { it.equals(defaultPay, true) } ->
-                banks.first { it.equals(defaultPay, true) }
-            defaultDigital.isNotBlank() && banks.any { it.equals(defaultDigital, true) } ->
-                banks.first { it.equals(defaultDigital, true) }
-            banks.isNotEmpty() -> banks.first()
-            else -> null
-        }
-    }
-    var channel by remember(defaultPay) {
-        mutableStateOf(if (defaultIsCash) "Cash" else "Digital")
-    }
-    var selectedBank by remember(defaultPay, defaultDigital, banks) {
-        mutableStateOf(if (defaultIsCash) null else resolvedDefaultBank)
-    }
     val lastCategory by vm.lastUsedCategoryId.collectAsStateWithLifecycle()
     val lastFund by vm.lastUsedFundId.collectAsStateWithLifecycle()
     val lastPayment by vm.lastUsedPaymentMethod.collectAsStateWithLifecycle()
@@ -143,6 +133,24 @@ fun AddCashScreen(
     var receiptUri by remember { mutableStateOf<Uri?>(null) }
     var moreExpanded by remember { mutableStateOf(false) }
     var appliedLastUsed by remember { mutableStateOf(false) }
+    /** Draft splits composed on Add; saved with the parent on submit. */
+    var draftSplits by remember { mutableStateOf<List<TransactionSplit>>(emptyList()) }
+    /** Full-screen split editor (not a sheet). */
+    var editingSplits by remember { mutableStateOf(false) }
+    // Default account: last used → default pay/digital → Cash → first account
+    LaunchedEffect(accounts, defaultPay, defaultDigital, lastPayment) {
+        if (selectedAccountId != null) return@LaunchedEffect
+        if (accounts.isEmpty()) return@LaunchedEffect
+        fun match(name: String?) =
+            name?.takeIf { it.isNotBlank() }?.let { n ->
+                accounts.firstOrNull { it.name.equals(n, true) }?.id
+            }
+        selectedAccountId = match(lastPayment)
+            ?: match(defaultPay)
+            ?: match(defaultDigital)
+            ?: accounts.firstOrNull { it.kind.name == "CASH" }?.id
+            ?: accounts.first().id
+    }
     // Date + time stored as wall-clock fields so either picker can update independently
     val nowCal = remember { Calendar.getInstance() }
     var selectedYear by remember { mutableStateOf(nowCal.get(Calendar.YEAR)) }
@@ -191,15 +199,72 @@ fun AddCashScreen(
         focusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
         unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
     )
-    val ctaLabel = if (type == TransactionType.EXPENSE) "Add transaction" else "Add income"
-    val paymentLabel = when {
-        channel == "Cash" -> "Cash"
-        !selectedBank.isNullOrBlank() -> "Digital · $selectedBank"
-        else -> "Digital · ${defaultDigital.ifBlank { banks.firstOrNull() ?: "UPI" }}"
+    val ctaLabel = when {
+        isSelfTransfer -> "Transfer between accounts"
+        draftSplits.isNotEmpty() && type == TransactionType.DEBIT -> "Add debit (split)"
+        draftSplits.isNotEmpty() && type == TransactionType.CREDIT -> "Add credit (split)"
+        type == TransactionType.DEBIT -> "Add debit"
+        else -> "Add credit"
     }
+
+    // Self-transfer cannot use splits
+    LaunchedEffect(isSelfTransfer) {
+        if (isSelfTransfer) {
+            draftSplits = emptyList()
+            editingSplits = false
+        }
+    }
+
+    // Seed self-transfer account picks once accounts load
+    LaunchedEffect(accounts) {
+        if (fromAccountId == null && accounts.isNotEmpty()) {
+            fromAccountId = accounts.first().id
+        }
+        if (toAccountId == null && accounts.size >= 2) {
+            toAccountId = accounts.getOrNull(1)?.id ?: accounts.first().id
+        }
+        // Drop selection if account was archived (no longer in list)
+        if (selectedAccountId != null && accounts.none { it.id == selectedAccountId }) {
+            selectedAccountId = null
+        }
+        if (fromAccountId != null && accounts.none { it.id == fromAccountId }) {
+            fromAccountId = accounts.firstOrNull()?.id
+        }
+        if (toAccountId != null && accounts.none { it.id == toAccountId }) {
+            toAccountId = accounts.firstOrNull { it.id != fromAccountId }?.id
+        }
+    }
+    val paymentLabel = accounts.firstOrNull { it.id == selectedAccountId }?.name ?: "Select account"
+    val parentAmountPaise = Money.fromRupeesString(amount)?.paise ?: 0L
 
     LaunchedEffect(Unit) {
         contentVisible = true
+    }
+
+    // Full-screen split editor (same route, full body)
+    if (editingSplits && !isSelfTransfer) {
+        if (parentAmountPaise <= 0L) {
+            LaunchedEffect(Unit) { editingSplits = false }
+        } else {
+            SplitEditorScreen(
+                parentAmountPaise = parentAmountPaise,
+                initialSplits = draftSplits,
+                categories = categories,
+                funds = funds,
+                onBack = { editingSplits = false },
+                allowClear = draftSplits.isNotEmpty(),
+                saveLabel = "Use these splits",
+                onSave = { lines ->
+                    draftSplits = lines
+                    Result.success(Unit)
+                },
+                onClear = {
+                    draftSplits = emptyList()
+                    Result.success(Unit)
+                },
+            )
+            return
+        }
     }
 
     // When category changes, look up recommended fund from past usage
@@ -208,19 +273,9 @@ fun AddCashScreen(
         recommendedFundId = rec
     }
 
-    // Prefer last-used category / fund / payment over static defaults (once)
-    LaunchedEffect(lastCategory, lastFund, lastPayment, categories, funds, banks, defaultPay) {
+    // Prefer last-used category / fund once
+    LaunchedEffect(lastCategory, lastFund, categories, funds) {
         if (appliedLastUsed) return@LaunchedEffect
-        val pay = lastPayment
-        if (pay != null) {
-            if (pay.equals("Cash", true)) {
-                channel = "Cash"
-                selectedBank = null
-            } else {
-                channel = "Digital"
-                selectedBank = banks.firstOrNull { it.equals(pay, true) } ?: pay
-            }
-        }
         if (lastCategory != null && categories.any { it.id == lastCategory }) {
             categoryId = lastCategory
         }
@@ -272,27 +327,40 @@ fun AddCashScreen(
                             scope.launch {
                                 saving = true
                                 val whenMs = displayWhen
-                                // Cash = mode; Digital banks are accounts under digital
-                                val method = when {
-                                    channel == "Cash" -> "Cash"
-                                    !selectedBank.isNullOrBlank() -> selectedBank!!
-                                    defaultDigital.isNotBlank() -> defaultDigital
-                                    banks.isNotEmpty() -> banks.first()
-                                    else -> "Digital"
+                                val ok = if (isSelfTransfer) {
+                                    val fromId = fromAccountId
+                                    val toId = toAccountId
+                                    if (fromId == null || toId == null || fromId == toId) {
+                                        false
+                                    } else {
+                                        vm.saveSelfTransfer(
+                                            amountText = amount,
+                                            fromAccountId = fromId,
+                                            toAccountId = toId,
+                                            note = note,
+                                            occurredAt = whenMs,
+                                        )
+                                    }
+                                } else {
+                                    val acc = accounts.firstOrNull { it.id == selectedAccountId }
+                                    val method = acc?.name ?: "Cash"
+                                    val id = vm.save(
+                                        amountText = amount,
+                                        type = type,
+                                        categoryId = categoryId,
+                                        fundId = fundId,
+                                        note = note,
+                                        counterparty = counterparty,
+                                        paymentMethod = method,
+                                        accountId = selectedAccountId,
+                                        useLocation = useLocation,
+                                        addToFund = addToFund,
+                                        occurredAt = whenMs,
+                                        receiptLocalUri = receiptUri,
+                                        splits = draftSplits,
+                                    )
+                                    id != null
                                 }
-                                val ok = vm.save(
-                                    amountText = amount,
-                                    type = type,
-                                    categoryId = categoryId,
-                                    fundId = fundId,
-                                    note = note,
-                                    counterparty = counterparty,
-                                    paymentMethod = method,
-                                    useLocation = useLocation,
-                                    addToFund = addToFund,
-                                    occurredAt = whenMs,
-                                    receiptLocalUri = receiptUri,
-                                )
                                 saving = false
                                 if (ok) {
                                     haptics.click()
@@ -300,7 +368,8 @@ fun AddCashScreen(
                                 }
                             }
                         },
-                        enabled = !saving && amount.isNotBlank(),
+                        enabled = !saving && amount.isNotBlank() &&
+                            (!isSelfTransfer || (fromAccountId != null && toAccountId != null && fromAccountId != toAccountId)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -345,7 +414,7 @@ fun AddCashScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Expense | Income segmented control
+                // Debit | Credit | Transfer segmented control
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -354,45 +423,115 @@ fun AddCashScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     FormTypeSegment(
-                        label = "Expense",
-                        selected = type == TransactionType.EXPENSE,
+                        label = "Debit",
+                        selected = !isSelfTransfer && type == TransactionType.DEBIT,
                         modifier = Modifier.weight(1f),
-                        onClick = { type = TransactionType.EXPENSE; haptics.select() },
+                        onClick = {
+                            isSelfTransfer = false
+                            type = TransactionType.DEBIT
+                            haptics.select()
+                        },
                     )
                     FormTypeSegment(
-                        label = "Income",
-                        selected = type == TransactionType.INCOME,
+                        label = "Credit",
+                        selected = !isSelfTransfer && type == TransactionType.CREDIT,
                         modifier = Modifier.weight(1f),
-                        onClick = { type = TransactionType.INCOME; haptics.select() },
+                        onClick = {
+                            isSelfTransfer = false
+                            type = TransactionType.CREDIT
+                            haptics.select()
+                        },
+                    )
+                    FormTypeSegment(
+                        label = "Transfer",
+                        selected = isSelfTransfer,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            isSelfTransfer = true
+                            haptics.select()
+                        },
                     )
                 }
 
-                AnimatedContent(
-                    targetState = type,
-                    transitionSpec = {
-                        (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
-                            .togetherWith(fadeOut(M3EMotion.effectsFast()))
-                    },
-                    label = "typeFields",
-                ) { currentType ->
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        TextField(
-                            value = counterparty,
-                            onValueChange = { counterparty = it },
-                            placeholder = {
-                                Text(
-                                    if (currentType == TransactionType.EXPENSE) {
-                                        "Expense name"
-                                    } else {
-                                        "Income source"
-                                    },
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = fieldShape,
-                            colors = fieldColors,
-                        )
+                if (isSelfTransfer) {
+                    Text(
+                        "From account",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        accounts.forEach { acc ->
+                            FormAccountChip(
+                                label = acc.name,
+                                icon = Icons.Default.AccountBalance,
+                                selected = fromAccountId == acc.id,
+                                balanceLabel = accountBalances[acc.name]?.let { paise -> paise.inr() },
+                                onClick = {
+                                    haptics.select()
+                                    fromAccountId = acc.id
+                                    if (toAccountId == acc.id) {
+                                        toAccountId = accounts.firstOrNull { it.id != acc.id }?.id
+                                    }
+                                },
+                            )
+                        }
+                    }
+                    Text(
+                        "To account",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        accounts.forEach { acc ->
+                            FormAccountChip(
+                                label = acc.name,
+                                icon = Icons.Default.AccountBalance,
+                                selected = toAccountId == acc.id,
+                                balanceLabel = accountBalances[acc.name]?.let { paise -> paise.inr() },
+                                onClick = {
+                                    haptics.select()
+                                    toAccountId = acc.id
+                                    if (fromAccountId == acc.id) {
+                                        fromAccountId = accounts.firstOrNull { it.id != acc.id }?.id
+                                    }
+                                },
+                            )
+                        }
+                    }
+                } else {
+                    AnimatedContent(
+                        targetState = type,
+                        transitionSpec = {
+                            (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
+                                .togetherWith(fadeOut(M3EMotion.effectsFast()))
+                        },
+                        label = "typeFields",
+                    ) { currentType ->
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            TextField(
+                                value = counterparty,
+                                onValueChange = { counterparty = it },
+                                placeholder = {
+                                    Text(
+                                        if (currentType == TransactionType.DEBIT) {
+                                            "Name (merchant or person)"
+                                        } else {
+                                            "Name (source)"
+                                        },
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = fieldShape,
+                                colors = fieldColors,
+                            )
+                        }
                     }
                 }
 
@@ -525,8 +664,8 @@ fun AddCashScreen(
                     }
                 }
 
-                FormExpandableHeader(
-                    title = "Payment",
+                if (!isSelfTransfer) FormExpandableHeader(
+                    title = "Account",
                     subtitle = paymentLabel,
                     icon = Icons.Default.Payments,
                     expanded = paymentExpanded,
@@ -536,105 +675,126 @@ fun AddCashScreen(
                     },
                 )
                 AnimatedVisibility(
-                    visible = paymentExpanded,
+                    visible = !isSelfTransfer && paymentExpanded,
                     enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
                     exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            "Mode",
+                            "Same list as Settings → Bank accounts (+ Cash)",
                             style = MaterialTheme.typography.labelMedium,
                             color = scheme.onSurfaceVariant,
                         )
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                        FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            FormAccountChip(
-                                label = "Cash",
-                                icon = Icons.Default.Payments,
-                                selected = channel == "Cash",
-                                balanceLabel = accountBalances["Cash"]?.inr(),
-                                onClick = {
-                                    channel = "Cash"
-                                    selectedBank = null
-                                    haptics.select()
-                                },
-                            )
-                            FormAccountChip(
-                                label = "Digital",
-                                icon = Icons.Default.AccountBalance,
-                                selected = channel == "Digital",
-                                balanceLabel = null,
-                                onClick = {
-                                    channel = "Digital"
-                                    if (selectedBank == null) {
-                                        selectedBank = resolvedDefaultBank
-                                    }
-                                    haptics.select()
-                                },
+                            accounts.forEach { acc ->
+                                FormAccountChip(
+                                    label = acc.name,
+                                    icon = if (acc.kind.name == "CASH") {
+                                        Icons.Default.Payments
+                                    } else {
+                                        Icons.Default.AccountBalance
+                                    },
+                                    selected = selectedAccountId == acc.id,
+                                    balanceLabel = accountBalances[acc.name]?.inr(),
+                                    isDefault = defaultDigital.equals(acc.name, true) ||
+                                        defaultPay.equals(acc.name, true),
+                                    onClick = {
+                                        selectedAccountId = acc.id
+                                        haptics.select()
+                                    },
+                                )
+                            }
+                        }
+                        if (accounts.isEmpty()) {
+                            Text(
+                                "No accounts yet. Add banks in Settings → Bank accounts.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
                             )
                         }
+                    }
+                }
 
-                        AnimatedVisibility(
-                            visible = channel == "Digital",
-                            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(),
-                            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(),
+                // Splits — full-screen editor (available while adding, not only from detail)
+                if (!isSelfTransfer) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = scheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    "Account (under Digital)",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    if (banks.isEmpty()) {
-                                        FormAccountChip(
-                                            label = "UPI / any",
-                                            icon = Icons.Default.AccountBalance,
-                                            selected = selectedBank == null,
-                                            onClick = {
-                                                selectedBank = null
-                                                haptics.select()
-                                            },
-                                        )
-                                    }
-                                    banks.forEach { bank ->
-                                        val bal = accountBalances.entries
-                                            .firstOrNull { it.key.equals(bank, true) }
-                                            ?.value
-                                        FormAccountChip(
-                                            label = bank,
-                                            icon = Icons.Default.AccountBalance,
-                                            selected = selectedBank.equals(bank, true),
-                                            balanceLabel = bal?.inr(),
-                                            isDefault = defaultDigital.equals(bank, true),
-                                            onClick = {
-                                                selectedBank = bank
-                                                haptics.select()
-                                            },
-                                        )
-                                    }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Splits",
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text(
+                                        if (draftSplits.isEmpty()) {
+                                            "Optional · break amount across categories, names, or tabs"
+                                        } else {
+                                            "${draftSplits.size} lines · parent amount locked on save"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = scheme.onSurfaceVariant,
+                                    )
                                 }
-                                Text(
-                                    "AI auto-detects bank/wallet from email/SMS when possible; " +
-                                        "otherwise your default digital account is used.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = scheme.onSurfaceVariant,
-                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        haptics.select()
+                                        if (parentAmountPaise <= 0L) {
+                                            showAmountPad = true
+                                        } else {
+                                            editingSplits = true
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(18.dp),
+                                    enabled = amount.isNotBlank(),
+                                ) {
+                                    Text(if (draftSplits.isEmpty()) "Split" else "Edit")
+                                }
+                            }
+                            draftSplits.forEach { line ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        line.categoryName
+                                            ?: line.counterparty
+                                            ?: categories.firstOrNull { it.id == line.categoryId }?.name
+                                            ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
+                                            ?: "Line",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        line.amountPaise.inr(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                            if (draftSplits.isNotEmpty()) {
+                                TextButton(onClick = { draftSplits = emptyList() }) {
+                                    Text("Clear splits")
+                                }
                             }
                         }
                     }
                 }
 
-                FormExpandableHeader(
+                if (!isSelfTransfer && draftSplits.isEmpty()) FormExpandableHeader(
                     title = "Category",
                     subtitle = categories.firstOrNull { it.id == categoryId }?.name ?: "Select category",
                     icon = Icons.Default.Payments,
@@ -645,7 +805,7 @@ fun AddCashScreen(
                     },
                 )
                 AnimatedVisibility(
-                    visible = categoryExpanded,
+                    visible = !isSelfTransfer && draftSplits.isEmpty() && categoryExpanded,
                     enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
                     exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                 ) {
@@ -677,15 +837,15 @@ fun AddCashScreen(
                     }
                 }
 
-                FormExpandableHeader(
+                if (draftSplits.isEmpty()) FormExpandableHeader(
                     title = "More",
                     subtitle = buildString {
                         val bits = mutableListOf<String>()
                         if (fundId != null) {
-                            bits += funds.firstOrNull { it.fund.id == fundId }?.fund?.name ?: "Fund"
+                            bits += funds.firstOrNull { it.fund.id == fundId }?.fund?.name ?: "Tab"
                         }
                         if (useLocation) bits += "Location"
-                        append(bits.joinToString(" · ").ifBlank { "Fund, location" })
+                        append(bits.joinToString(" · ").ifBlank { "Tab, location" })
                     },
                     icon = Icons.Default.KeyboardArrowDown,
                     expanded = moreExpanded,
@@ -695,7 +855,7 @@ fun AddCashScreen(
                     },
                 )
                 AnimatedVisibility(
-                    visible = moreExpanded,
+                    visible = draftSplits.isEmpty() && moreExpanded,
                     enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
                     exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                 ) {
@@ -706,7 +866,7 @@ fun AddCashScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    "Fund",
+                                    "Tab",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = scheme.onSurface,
@@ -753,9 +913,9 @@ fun AddCashScreen(
                                     )
                                 }
                             }
-                            AnimatedVisibility(visible = type == TransactionType.INCOME && fundId != null) {
+                            AnimatedVisibility(visible = type == TransactionType.CREDIT && fundId != null) {
                                 FormToggleRow(
-                                    title = "Add to fund balance",
+                                    title = "Apply credit to tab balance",
                                     checked = addToFund,
                                     onCheckedChange = { addToFund = it },
                                 )
@@ -806,7 +966,7 @@ fun AddCashScreen(
         AmountNumpadSheet(
             initialAmount = amount,
             title = "Enter amount",
-            // Entry gate: pick expense/income. Later edits on this screen: amount only.
+            // Entry gate: Debit / Credit / Transfer. Later edits: amount only.
             pickTransactionType = amountPadIsEntryGate || amount.isBlank(),
             onDismiss = {
                 showAmountPad = false
@@ -814,9 +974,18 @@ fun AddCashScreen(
                 if (amountPadIsEntryGate && amount.isBlank()) onDone()
                 amountPadIsEntryGate = false
             },
+            onConfirmEntry = { entry ->
+                amount = entry.amountText
+                isSelfTransfer = entry.isSelfTransfer
+                if (!entry.isSelfTransfer) type = entry.type
+                showAmountPad = false
+                amountPadIsEntryGate = false
+                haptics.select()
+            },
             onConfirmWithType = { amountText, selectedType ->
                 amount = amountText
                 type = selectedType
+                isSelfTransfer = false
                 showAmountPad = false
                 amountPadIsEntryGate = false
                 haptics.select()

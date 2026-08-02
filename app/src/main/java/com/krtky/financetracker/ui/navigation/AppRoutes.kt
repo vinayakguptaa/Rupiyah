@@ -32,6 +32,10 @@ data object SettingsRoute
 data object AccountsRoute
 
 @Serializable
+@SerialName("csv_import")
+data class CsvImportRoute(val accountId: Long = -1L)
+
+@Serializable
 @SerialName("categories")
 data object CategoriesRoute
 
@@ -42,6 +46,10 @@ data object AddCashRoute
 @Serializable
 @SerialName("txn")
 data class TxnRoute(val id: String)
+
+@Serializable
+@SerialName("txn_split")
+data class SplitRoute(val id: String)
 
 @Serializable
 @SerialName("fund")
@@ -83,6 +91,7 @@ fun destinationFromNavigateExtra(raw: String): Any? = when (raw) {
     "accounts" -> AccountsRoute
     "categories" -> CategoriesRoute
     else -> when {
+        raw.startsWith("txn/split/") -> SplitRoute(raw.removePrefix("txn/split/"))
         raw.startsWith("txn/") -> TxnRoute(raw.removePrefix("txn/"))
         raw.startsWith("fund/") -> raw.removePrefix("fund/").toLongOrNull()?.let { FundRoute(it) }
         raw.startsWith("settings/") -> SettingsSectionRoute(raw.removePrefix("settings/"))

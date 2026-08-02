@@ -38,7 +38,7 @@ data class SettingsUiState(
     val smsEnabled: Boolean = false,
     val smsSenders: String = "",
     val smsKeywords: String = "debited,credited,spent,paid,sent,received,transaction,INR,Rs,UPI",
-    val bankAccounts: String = "HDFC,ICICI,SBI,Axis",
+    val bankAccounts: String = "",
     val defaultPaymentMethod: String = "Cash",
     val defaultDigitalAccount: String = "",
     val devUnlocked: Boolean = false,

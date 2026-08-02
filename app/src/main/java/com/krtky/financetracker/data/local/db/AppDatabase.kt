@@ -8,9 +8,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [
         CategoryEntity::class,
+        AccountEntity::class,
         FundEntity::class,
         TransactionEntity::class,
         FundLedgerEntity::class,
+        TransactionSplitEntity::class,
         TrustedSenderEntity::class,
         EmailIngestLogEntity::class,
         LocationSampleEntity::class,
@@ -20,14 +22,16 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    version = 6,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
+    abstract fun accountDao(): AccountDao
     abstract fun fundDao(): FundDao
     abstract fun transactionDao(): TransactionDao
     abstract fun fundLedgerDao(): FundLedgerDao
+    abstract fun transactionSplitDao(): TransactionSplitDao
     abstract fun trustedSenderDao(): TrustedSenderDao
     abstract fun emailIngestDao(): EmailIngestDao
     abstract fun locationSampleDao(): LocationSampleDao
@@ -174,21 +178,6 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 db.execSQL("DROP TABLE IF EXISTS `recurring_payments`")
             }
-
-            private fun tableHasColumn(
-                db: SupportSQLiteDatabase,
-                table: String,
-                column: String,
-            ): Boolean {
-                db.query("PRAGMA table_info(`$table`)").use { cursor ->
-                    val nameIdx = cursor.getColumnIndex("name")
-                    if (nameIdx < 0) return false
-                    while (cursor.moveToNext()) {
-                        if (cursor.getString(nameIdx) == column) return true
-                    }
-                }
-                return false
-            }
         }
 
         /** Optional receipt photo path/URI on transactions. */
@@ -196,6 +185,191 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE transactions ADD COLUMN receiptUri TEXT")
             }
+        }
+
+        /**
+         * Cashflow foundation:
+         * - accounts table
+         * - transaction accountId / kind / transferGroupId / isSkipped / rawDescription
+         * - EXPENSE→DEBIT, INCOME→CREDIT
+         * - link legacy paymentMethod rows to accounts by name
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `accounts` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `currency` TEXT NOT NULL,
+                        `openingBalancePaise` INTEGER NOT NULL,
+                        `archived` INTEGER NOT NULL,
+                        `sortOrder` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+
+                if (!tableHasColumn(db, "transactions", "accountId")) {
+                    db.execSQL("ALTER TABLE transactions ADD COLUMN accountId INTEGER")
+                }
+                if (!tableHasColumn(db, "transactions", "isSkipped")) {
+                    db.execSQL(
+                        "ALTER TABLE transactions ADD COLUMN isSkipped INTEGER NOT NULL DEFAULT 0",
+                    )
+                }
+                if (!tableHasColumn(db, "transactions", "kind")) {
+                    db.execSQL(
+                        "ALTER TABLE transactions ADD COLUMN kind TEXT NOT NULL DEFAULT 'NORMAL'",
+                    )
+                }
+                if (!tableHasColumn(db, "transactions", "transferGroupId")) {
+                    db.execSQL("ALTER TABLE transactions ADD COLUMN transferGroupId TEXT")
+                }
+                if (!tableHasColumn(db, "transactions", "rawDescription")) {
+                    db.execSQL("ALTER TABLE transactions ADD COLUMN rawDescription TEXT")
+                }
+
+                db.execSQL("UPDATE transactions SET type = 'DEBIT' WHERE type = 'EXPENSE'")
+                db.execSQL("UPDATE transactions SET type = 'CREDIT' WHERE type = 'INCOME'")
+                db.execSQL(
+                    "UPDATE transactions SET isSkipped = 1 WHERE classificationStatus = 'SKIPPED'",
+                )
+                db.execSQL(
+                    """
+                    UPDATE transactions
+                    SET counterparty = merchant
+                    WHERE (counterparty IS NULL OR counterparty = '')
+                      AND merchant IS NOT NULL AND merchant != ''
+                    """.trimIndent(),
+                )
+
+                // Seed accounts from distinct payment methods + Cash (case-normalized uniqueness)
+                db.execSQL(
+                    """
+                    INSERT INTO accounts (name, kind, currency, openingBalancePaise, archived, sortOrder, createdAt)
+                    SELECT
+                        MIN(TRIM(paymentMethod)) AS name,
+                        CASE
+                            WHEN LOWER(TRIM(paymentMethod)) = 'cash' THEN 'CASH'
+                            WHEN LOWER(TRIM(paymentMethod)) LIKE '%card%' THEN 'CARD'
+                            WHEN LOWER(TRIM(paymentMethod)) LIKE '%wallet%'
+                              OR LOWER(TRIM(paymentMethod)) LIKE '%pay%' THEN 'WALLET'
+                            ELSE 'BANK'
+                        END AS kind,
+                        'INR',
+                        0,
+                        0,
+                        10,
+                        strftime('%s','now') * 1000
+                    FROM transactions
+                    WHERE paymentMethod IS NOT NULL
+                      AND TRIM(paymentMethod) != ''
+                      AND LOWER(TRIM(paymentMethod)) != 'digital'
+                      AND LOWER(TRIM(paymentMethod)) != 'upi'
+                    GROUP BY LOWER(TRIM(paymentMethod))
+                    """.trimIndent(),
+                )
+                // Ensure Cash exists if any isCash or Cash paymentMethod rows
+                db.execSQL(
+                    """
+                    INSERT INTO accounts (name, kind, currency, openingBalancePaise, archived, sortOrder, createdAt)
+                    SELECT 'Cash', 'CASH', 'INR', 0, 0, 0, strftime('%s','now') * 1000
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM accounts WHERE name = 'Cash' COLLATE NOCASE
+                    )
+                      AND EXISTS (
+                        SELECT 1 FROM transactions
+                        WHERE deletedAt IS NULL
+                          AND (isCash = 1 OR LOWER(TRIM(IFNULL(paymentMethod,''))) = 'cash')
+                      )
+                    """.trimIndent(),
+                )
+
+                // Link transactions to accounts by payment method name
+                db.execSQL(
+                    """
+                    UPDATE transactions
+                    SET accountId = (
+                        SELECT a.id FROM accounts a
+                        WHERE a.name = TRIM(transactions.paymentMethod) COLLATE NOCASE
+                        LIMIT 1
+                    )
+                    WHERE accountId IS NULL
+                      AND paymentMethod IS NOT NULL
+                      AND TRIM(paymentMethod) != ''
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    UPDATE transactions
+                    SET accountId = (
+                        SELECT a.id FROM accounts a
+                        WHERE a.name = 'Cash' COLLATE NOCASE
+                        LIMIT 1
+                    )
+                    WHERE accountId IS NULL AND isCash = 1
+                    """.trimIndent(),
+                )
+
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId` " +
+                        "ON `transactions` (`accountId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_transferGroupId` " +
+                        "ON `transactions` (`transferGroupId`)",
+                )
+            }
+        }
+
+        /** Phase 3: transaction_splits for multi-category / multi-tab allocations. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transaction_splits` (
+                        `id` TEXT NOT NULL,
+                        `transactionId` TEXT NOT NULL,
+                        `amountPaise` INTEGER NOT NULL,
+                        `categoryId` INTEGER,
+                        `counterparty` TEXT,
+                        `fundId` INTEGER,
+                        `note` TEXT,
+                        `sortOrder` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_transactionId` " +
+                        "ON `transaction_splits` (`transactionId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_categoryId` " +
+                        "ON `transaction_splits` (`categoryId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_fundId` " +
+                        "ON `transaction_splits` (`fundId`)",
+                )
+            }
+        }
+
+        private fun tableHasColumn(
+            db: SupportSQLiteDatabase,
+            table: String,
+            column: String,
+        ): Boolean {
+            db.query("PRAGMA table_info(`$table`)").use { cursor ->
+                val nameIdx = cursor.getColumnIndex("name")
+                if (nameIdx < 0) return false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIdx) == column) return true
+                }
+            }
+            return false
         }
     }
 }

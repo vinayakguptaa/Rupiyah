@@ -4,11 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import com.krtky.financetracker.data.email.EmailIngestService
 import com.krtky.financetracker.data.email.TransactionParser
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.location.LocationRepository
 import com.krtky.financetracker.notification.ClassificationNotifier
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -24,8 +25,8 @@ class SmsReceiver : BroadcastReceiver() {
     @Inject lateinit var preferences: UserPreferences
     @Inject lateinit var secureStore: SecureStore
     @Inject lateinit var parser: TransactionParser
-    @Inject lateinit var emailIngestService: EmailIngestService
     @Inject lateinit var transactionRepository: TransactionRepository
+    @Inject lateinit var locationRepository: LocationRepository
     @Inject lateinit var notifier: ClassificationNotifier
 
     override fun onReceive(context: Context, intent: Intent?) {
@@ -42,19 +43,30 @@ class SmsReceiver : BroadcastReceiver() {
                 val sender = messages.firstOrNull()?.originatingAddress.orEmpty()
                 val body = messages.joinToString("") { it.messageBody.orEmpty() }
                 if (body.isBlank()) return@launch
-                // Prefer configured filters, but never drop money-looking SMS when monitoring is on.
                 if (!shouldInspect(sender, body)) return@launch
                 val receivedAt = System.currentTimeMillis()
                 val txn = parser.parseSms(sender, body, receivedAt) ?: return@launch
-                val id = transactionRepository.insertFromEmail(
-                    emailIngestService.attachLocation(txn, preferCurrent = true),
-                )
+                val withLoc = attachLocation(txn)
+                val id = transactionRepository.insertFromEmail(withLoc)
                 if (id != null) notifier.notifyPayment(id, "SMS payment", sender)
             } finally {
                 pending.finish()
                 scope.cancel()
             }
         }
+    }
+
+    private suspend fun attachLocation(txn: Transaction): Transaction {
+        val locationOn = runCatching { preferences.locationEnabled.first() }.getOrDefault(false)
+        if (!locationOn) return txn
+        val live = runCatching { locationRepository.captureCurrent() }.getOrNull() ?: return txn
+        return txn.copy(
+            latitude = live.latitude,
+            longitude = live.longitude,
+            placeName = live.placeName,
+            locationAccuracy = live.accuracy,
+            locationMatchedAt = System.currentTimeMillis(),
+        )
     }
 
     private suspend fun shouldInspect(sender: String, body: String): Boolean {

@@ -122,7 +122,7 @@ fun FundsScreen(
         ) {
             item {
                 ScreenHeader(
-                    title = "Funds",
+                    title = "Tabs",
                     subtitle = "Envelope budgets you can credit and spend from",
                 )
             }
@@ -192,7 +192,7 @@ fun FundsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "${funds.size} fund${if (funds.size == 1) "" else "s"}",
+                        "${funds.size} tab${if (funds.size == 1) "" else "s"}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -266,7 +266,7 @@ fun FundsScreen(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("New fund", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("New tab", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it },
@@ -278,7 +278,7 @@ fun FundsScreen(
                 OutlinedTextField(
                     value = newAmount,
                     onValueChange = { newAmount = it },
-                    label = { Text("Fund amount ₹") },
+                    label = { Text("Opening balance ₹ (optional)") },
                     placeholder = { Text("e.g. 1500") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -323,14 +323,14 @@ fun FundsScreen(
             ) {
                 Text("Edit $adjustFundName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Set the fund amount (starting pot). Remaining = this amount + income − expenses on this fund.",
+                    "Opening balance for this tab. Open = opening + debits − credits. + means they owe you.",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
                     value = adjustAmount,
                     onValueChange = { adjustAmount = it },
-                    label = { Text("Fund amount ₹") },
+                    label = { Text("Opening balance ₹ (optional)") },
                     placeholder = { Text("e.g. 1500") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -358,7 +358,7 @@ fun FundsScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
-                ) { Text("Delete fund", color = scheme.error) }
+                ) { Text("Archive tab", color = scheme.error) }
                 OutlinedButton(
                     onClick = { showAdjust = false },
                     modifier = Modifier.fillMaxWidth(),

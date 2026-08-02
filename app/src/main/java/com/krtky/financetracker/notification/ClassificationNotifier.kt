@@ -63,7 +63,7 @@ class ClassificationNotifier @Inject constructor(
         val txn = transactionRepository.getById(transactionId) ?: return
         val amount = Money(txn.amountPaise).formatInr()
         val party = (txn.counterparty ?: txn.merchant)?.trim().orEmpty()
-        val isIn = txn.type == TransactionType.INCOME
+        val isIn = txn.type == TransactionType.CREDIT
         val title = if (isIn) "Received $amount" else "Paid $amount"
         val line = when {
             party.isNotBlank() && isIn -> "From $party"

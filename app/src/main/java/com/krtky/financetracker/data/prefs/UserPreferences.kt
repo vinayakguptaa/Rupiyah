@@ -95,8 +95,9 @@ class UserPreferences @Inject constructor(
     val smsKeywords: Flow<String> = context.dataStore.data.map {
         it[Keys.smsKeywords] ?: "debited,credited,spent,paid,sent,received,transaction,INR,Rs,UPI"
     }
+    /** Comma-separated active bank names (mirror of accounts table). Empty until user adds. */
     val bankAccounts: Flow<String> = context.dataStore.data.map {
-        it[Keys.bankAccounts] ?: "HDFC,ICICI,SBI,Axis"
+        it[Keys.bankAccounts].orEmpty()
     }
     val defaultPaymentMethod: Flow<String> = context.dataStore.data.map {
         it[Keys.defaultPaymentMethod] ?: "Cash"

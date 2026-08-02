@@ -169,7 +169,7 @@ internal object WidgetDataLoader {
     }
 
     private fun toTxnRow(txn: Transaction): TxnRow {
-        val isExpense = txn.type == TransactionType.EXPENSE
+        val isExpense = txn.type == TransactionType.DEBIT
         val sign = if (isExpense) "−" else "+"
         return TxnRow(
             name = txnDisplayName(txn).take(28),

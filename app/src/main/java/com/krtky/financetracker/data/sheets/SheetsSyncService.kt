@@ -390,21 +390,22 @@ class SheetsSyncService @Inject constructor(
         // Named ranges for readability in formulas
         val mStart = "TEXT(EOMONTH(TODAY(),-1)+1,\"yyyy-mm-dd\")"
         val mEnd = "TEXT(EOMONTH(TODAY(),0)+1,\"yyyy-mm-dd\")"
-        val incM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"INCOME\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
-        val expM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
+        // Types are DEBIT/CREDIT after cashflow migration (legacy INCOME/EXPENSE also matched).
+        val incM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"CREDIT\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)+SUMIFS(Transactions!E:E,Transactions!D:D,\"INCOME\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
+        val expM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"DEBIT\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)+SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
         val cntM = "=COUNTIFS(Transactions!A:A,\"<>\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
-        val cashM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!K:K,\"Cash\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
-        val digM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!K:K,\"Digital\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
+        val cashM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"DEBIT\",Transactions!K:K,\"Cash\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)+SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!K:K,\"Cash\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
+        val digM = "=SUMIFS(Transactions!E:E,Transactions!D:D,\"DEBIT\",Transactions!K:K,\"Digital\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)+SUMIFS(Transactions!E:E,Transactions!D:D,\"EXPENSE\",Transactions!K:K,\"Digital\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)"
 
         val dash = listOf(
             listOf("Rupiyah", "Personal finance dashboard", "", "", "", "", "", ""),
             listOf("=TEXT(TODAY(),\"dddd, dd mmmm yyyy\")", "Synced from the app · formulas auto-update", "", "", "", "", "", ""),
             listOf("", "", "", "", "", "", "", ""),
             listOf("THIS MONTH", "=\"· \"&TEXT(EOMONTH(TODAY(),-1)+1,\"mmm yyyy\")", "", "ALL TIME", "", "", "QUICK RATIOS", ""),
-            listOf("Income", incM, "", "Income", "=SUMIF(Transactions!D:D,\"INCOME\",Transactions!E:E)", "", "Savings rate (month)", "=IF(B5=0,\"—\",B7/B5)"),
-            listOf("Expense", expM, "", "Expense", "=SUMIF(Transactions!D:D,\"EXPENSE\",Transactions!E:E)", "", "Expense / income", "=IF(B5=0,\"—\",B6/B5)"),
+            listOf("Income", incM, "", "Income", "=SUMIF(Transactions!D:D,\"CREDIT\",Transactions!E:E)+SUMIF(Transactions!D:D,\"INCOME\",Transactions!E:E)", "", "Savings rate (month)", "=IF(B5=0,\"—\",B7/B5)"),
+            listOf("Expense", expM, "", "Expense", "=SUMIF(Transactions!D:D,\"DEBIT\",Transactions!E:E)+SUMIF(Transactions!D:D,\"EXPENSE\",Transactions!E:E)", "", "Expense / income", "=IF(B5=0,\"—\",B6/B5)"),
             listOf("Net", "=B5-B6", "", "Net", "=E5-E6", "", "Daily avg spend", "=IF(DAY(TODAY())=0,0,B6/DAY(TODAY()))"),
-            listOf("Transactions", cntM, "", "Transactions", "=COUNTA(Transactions!A2:A)", "", "Avg txn (expense)", "=IFERROR(B6/MAX(1,COUNTIFS(Transactions!D:D,\"EXPENSE\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)),0)"),
+            listOf("Transactions", cntM, "", "Transactions", "=COUNTA(Transactions!A2:A)", "", "Avg txn (expense)", "=IFERROR(B6/MAX(1,COUNTIFS(Transactions!D:D,\"DEBIT\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)+COUNTIFS(Transactions!D:D,\"EXPENSE\",Transactions!B:B,\">=\"&$mStart,Transactions!B:B,\"<\"&$mEnd)),0)"),
             listOf("", "", "", "", "", "", "", ""),
             listOf("PAYMENT MIX (this month)", "", "", "HIGHLIGHTS", "", "", "", ""),
             listOf("Cash spend", cashM, "", "Top category", "=IFERROR(INDEX(Categories!A:A,2),\"—\")", "", "Top category ₹", "=IFERROR(INDEX(Categories!B:B,2),0)"),
@@ -413,13 +414,13 @@ class SheetsSyncService @Inject constructor(
             listOf("", "", "", "", "", "", "", ""),
             listOf("LAST 6 MONTHS (expense)", "Amount", "", "TOP CATEGORIES", "Amount", "", "BY ACCOUNT", "Amount"),
             listOf(
-                "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='EXPENSE' and T is not null and T<>'' group by T order by T desc limit 6 label T 'Month', sum(E) 'Amount'\",1),\"\")",
+                "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='DEBIT' and T is not null and T<>'' group by T order by T desc limit 6 label T 'Month', sum(E) 'Amount'\",1),\"\")",
                 "",
                 "",
-                "=IFERROR(QUERY(Transactions!A:T,\"select G, sum(E) where D='EXPENSE' and G is not null and G<>'' group by G order by sum(E) desc limit 8 label G 'Category', sum(E) 'Amount'\",1),\"\")",
+                "=IFERROR(QUERY(Transactions!A:T,\"select G, sum(E) where D='DEBIT' and G is not null and G<>'' group by G order by sum(E) desc limit 8 label G 'Category', sum(E) 'Amount'\",1),\"\")",
                 "",
                 "",
-                "=IFERROR(QUERY(Transactions!A:T,\"select J, sum(E) where D='EXPENSE' and J is not null and J<>'' group by J order by sum(E) desc limit 8 label J 'Account', sum(E) 'Amount'\",1),\"\")",
+                "=IFERROR(QUERY(Transactions!A:T,\"select J, sum(E) where D='DEBIT' and J is not null and J<>'' group by J order by sum(E) desc limit 8 label J 'Account', sum(E) 'Amount'\",1),\"\")",
                 "",
             ),
             listOf("", "", "", "", "", "", "", ""),
@@ -434,9 +435,9 @@ class SheetsSyncService @Inject constructor(
             listOf(
                 listOf("Month", "Expense", "Month", "Income"),
                 listOf(
-                    "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='EXPENSE' and T is not null and T<>'' group by T order by T label T 'Month', sum(E) 'Expense'\",1),\"\")",
+                    "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='DEBIT' and T is not null and T<>'' group by T order by T label T 'Month', sum(E) 'Expense'\",1),\"\")",
                     "",
-                    "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='INCOME' and T is not null and T<>'' group by T order by T label T 'Month', sum(E) 'Income'\",1),\"\")",
+                    "=IFERROR(QUERY(Transactions!A:T,\"select T, sum(E) where D='CREDIT' and T is not null and T<>'' group by T order by T label T 'Month', sum(E) 'Income'\",1),\"\")",
                     "",
                 ),
             ),
@@ -447,7 +448,7 @@ class SheetsSyncService @Inject constructor(
             listOf(
                 listOf("Category", "Expense total"),
                 listOf(
-                    "=IFERROR(QUERY(Transactions!A:T,\"select G, sum(E) where D='EXPENSE' and G is not null and G<>'' group by G order by sum(E) desc label G 'Category', sum(E) 'Expense total'\",1),\"No data\")",
+                    "=IFERROR(QUERY(Transactions!A:T,\"select G, sum(E) where D='DEBIT' and G is not null and G<>'' group by G order by sum(E) desc label G 'Category', sum(E) 'Expense total'\",1),\"No data\")",
                     "",
                 ),
             ),
@@ -458,7 +459,7 @@ class SheetsSyncService @Inject constructor(
             listOf(
                 listOf("Payment method", "Expense total"),
                 listOf(
-                    "=IFERROR(QUERY(Transactions!A:T,\"select J, sum(E) where D='EXPENSE' and J is not null and J<>'' group by J order by sum(E) desc label J 'Payment method', sum(E) 'Expense total'\",1),\"No data\")",
+                    "=IFERROR(QUERY(Transactions!A:T,\"select J, sum(E) where D='DEBIT' and J is not null and J<>'' group by J order by sum(E) desc label J 'Payment method', sum(E) 'Expense total'\",1),\"No data\")",
                     "",
                 ),
             ),
@@ -480,7 +481,7 @@ class SheetsSyncService @Inject constructor(
             listOf(
                 listOf("Merchant", "Expense total"),
                 listOf(
-                    "=IFERROR(QUERY(Transactions!A:T,\"select F, sum(E) where D='EXPENSE' and F is not null and F<>'' group by F order by sum(E) desc limit 30 label F 'Merchant', sum(E) 'Expense total'\",1),\"No data\")",
+                    "=IFERROR(QUERY(Transactions!A:T,\"select F, sum(E) where D='DEBIT' and F is not null and F<>'' group by F order by sum(E) desc limit 30 label F 'Merchant', sum(E) 'Expense total'\",1),\"No data\")",
                     "",
                 ),
             ),

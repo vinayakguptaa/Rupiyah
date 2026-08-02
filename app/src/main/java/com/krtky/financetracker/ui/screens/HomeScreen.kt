@@ -109,7 +109,9 @@ fun HomeScreen(
     vm: HomeViewModel = hiltViewModel(),
 ) {
     val summary by vm.summary.collectAsStateWithLifecycle()
+    val cashflow by vm.cashflow.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
+    val openTabs by vm.openTabs.collectAsStateWithLifecycle()
     val paymentBalances by vm.paymentBalances.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
     val categorySpend by vm.categorySpend.collectAsStateWithLifecycle()
@@ -126,10 +128,12 @@ fun HomeScreen(
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
 
-    val income = summary.incomePaise
-    val spent = summary.expensePaise
-    val net = summary.netPaise
-    val fundBalance = funds.sumOf { it.balancePaise }
+    // Home uses lifestyle spend (excl. Investment + self-transfer) and credits
+    val income = cashflow.creditPaise
+    val spent = cashflow.lifestyleSpendPaise
+    val net = income - spent
+    val fundBalance = openTabs.sumOf { it.balancePaise }
+    val lifestyleCategories = cashflow.lifestyleByCategory.ifEmpty { categorySpend }
     // Cash mode vs everything else (named banks/wallets + unlabelled Digital)
     val cashBal = paymentBalances.entries
         .firstOrNull { it.key.equals("Cash", ignoreCase = true) }
@@ -138,7 +142,7 @@ fun HomeScreen(
         .filter { !it.key.equals("Cash", ignoreCase = true) }
         .sumOf { it.value }
     val accountsTotal = cashBal + digitalBal
-    val topCategory = categorySpend.maxByOrNull { it.totalPaise }
+    val topCategory = lifestyleCategories.maxByOrNull { it.totalPaise }
     val topCategoryPct = if (spent > 0 && topCategory != null) {
         ((topCategory.totalPaise * 100.0) / spent).roundToInt()
     } else {
@@ -309,12 +313,12 @@ fun HomeScreen(
                             SetupCheckRow(
                                 done = setupChecklist.gmailDone,
                                 label = stringResource(R.string.home_setup_gmail),
-                                onClick = { onOpenSettingsSection("email") },
+                                onClick = { onOpenSettingsSection("llm") },
                             )
                             SetupCheckRow(
                                 done = setupChecklist.sendersDone,
                                 label = stringResource(R.string.home_setup_senders),
-                                onClick = { onOpenSettingsSection("email") },
+                                onClick = { onOpenSettingsSection("banks") },
                             )
                             SetupCheckRow(
                                 done = setupChecklist.firstTxnDone,
@@ -340,17 +344,20 @@ fun HomeScreen(
                         monthLabel = monthLabel,
                         isNetHidden = isNetHidden,
                         mom = mom,
-                        funds = funds,
+                        funds = openTabs.ifEmpty { funds },
                         fundBalance = fundBalance,
                         accountsTotal = accountsTotal,
                         cashBal = cashBal,
                         digitalBal = digitalBal,
                         topCategory = topCategory,
                         topCategoryPct = topCategoryPct,
-                        categorySpend = categorySpend,
+                        categorySpend = lifestyleCategories,
                         monthlyTrend = monthlyTrend,
                         filtered = filtered,
                         selectedCategoryFilter = selectedCategoryFilter,
+                        investedPaise = cashflow.investedPaise,
+                        redeemedPaise = cashflow.redeemedPaise,
+                        investmentByName = cashflow.investmentByName,
                     ),
                     onMoveSection = { from, to ->
                         haptics.select()

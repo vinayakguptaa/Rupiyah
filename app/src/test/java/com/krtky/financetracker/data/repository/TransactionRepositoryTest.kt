@@ -10,10 +10,10 @@ class TransactionRepositoryTest {
     @Test
     fun `contentHash is deterministic`() {
         val hash1 = TransactionRepository.contentHash(
-            TransactionType.EXPENSE, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
+            TransactionType.DEBIT, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
         )
         val hash2 = TransactionRepository.contentHash(
-            TransactionType.EXPENSE, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
+            TransactionType.DEBIT, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
         )
         assertThat(hash1).isEqualTo(hash2)
     }
@@ -21,10 +21,10 @@ class TransactionRepositoryTest {
     @Test
     fun `contentHash changes with different input`() {
         val hash1 = TransactionRepository.contentHash(
-            TransactionType.EXPENSE, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
+            TransactionType.DEBIT, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
         )
         val hash2 = TransactionRepository.contentHash(
-            TransactionType.INCOME, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
+            TransactionType.CREDIT, 5_00_00L, 1_000_000L, "Swiggy", "ref123", "extra"
         )
         assertThat(hash1).isNotEqualTo(hash2)
     }
@@ -32,7 +32,7 @@ class TransactionRepositoryTest {
     @Test
     fun `contentHash returns hex string of correct length`() {
         val hash = TransactionRepository.contentHash(
-            TransactionType.EXPENSE, 100L, System.currentTimeMillis(), null, null, null
+            TransactionType.DEBIT, 100L, System.currentTimeMillis(), null, null, null
         )
         assertThat(hash).matches("^[a-f0-9]{64}$")
     }

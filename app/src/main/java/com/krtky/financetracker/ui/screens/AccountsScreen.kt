@@ -24,9 +24,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,42 +41,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.krtky.financetracker.domain.model.AccountBalance
+import com.krtky.financetracker.domain.model.AccountKind
 import com.krtky.financetracker.ui.components.chrome.StackTopBar
 import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.viewmodel.AccountsViewModel
 
 /**
- * Summary of payment accounts:
- * - Cash (mode)
- * - Digital accounts (named banks/wallets + unlabelled Digital)
+ * Ledger summary: active accounts + optional archived section.
+ * Manage list in Settings → Bank accounts (archive keeps history).
  */
 @Composable
 fun AccountsScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    onImportStatement: (accountId: Long?) -> Unit = {},
     vm: AccountsViewModel = hiltViewModel(),
 ) {
-    // NavHost handles predictive back (no intercepting BackHandler).
-    val banks by vm.bankAccounts.collectAsStateWithLifecycle()
-    val balances by vm.accountBalances.collectAsStateWithLifecycle()
+    val balances by vm.allBalancesDetail.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
 
-    val cashBal = balances["Cash"] ?: 0L
-    val digitalOrphan = balances["Digital"] ?: 0L
-    val digitalNamed = remember(banks, balances) {
-        banks.map { name ->
-            val bal = balances.entries.firstOrNull { it.key.equals(name, true) }?.value ?: 0L
-            name to bal
-        }
-    }
-    val orphanDigitalNames = remember(banks, balances) {
-        val known = (banks + listOf("Cash", "Digital")).map { it.lowercase() }.toSet()
-        balances.filterKeys { it.lowercase() !in known }.toList()
-    }
-    val digitalTotal = digitalNamed.sumOf { it.second } + digitalOrphan + orphanDigitalNames.sumOf { it.second }
-    val grandTotal = cashBal + digitalTotal
+    val active = remember(balances) { balances.filter { !it.account.archived } }
+    val archived = remember(balances) { balances.filter { it.account.archived } }
+    val cashBal = active.firstOrNull { it.account.kind == AccountKind.CASH }?.balancePaise ?: 0L
+    val digitalActive = active.filter { it.account.kind != AccountKind.CASH }
+    val digitalTotal = digitalActive.sumOf { it.balancePaise }
+    val grandTotal = active.sumOf { it.balancePaise }
 
     LazyColumn(
         modifier = Modifier
@@ -91,7 +85,7 @@ fun AccountsScreen(
         item {
             StackTopBar(
                 title = "Accounts",
-                subtitle = "Where money sits by payment method",
+                subtitle = "Where money sits by account",
                 onBack = onBack,
                 actions = {
                     IconButton(onClick = onOpenSettings) {
@@ -108,7 +102,7 @@ fun AccountsScreen(
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "Total across accounts",
+                        "Total (active accounts)",
                         style = MaterialTheme.typography.labelLarge,
                         color = scheme.onPrimaryContainer.copy(alpha = 0.8f),
                     )
@@ -121,12 +115,30 @@ fun AccountsScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text("Cash", style = MaterialTheme.typography.labelMedium, color = scheme.onPrimaryContainer.copy(alpha = 0.7f))
-                            Text(cashBal.inr(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = scheme.onPrimaryContainer)
+                            Text(
+                                "Cash",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = scheme.onPrimaryContainer.copy(alpha = 0.7f),
+                            )
+                            Text(
+                                cashBal.inr(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onPrimaryContainer,
+                            )
                         }
                         Column(Modifier.weight(1f)) {
-                            Text("Digital", style = MaterialTheme.typography.labelMedium, color = scheme.onPrimaryContainer.copy(alpha = 0.7f))
-                            Text(digitalTotal.inr(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = scheme.onPrimaryContainer)
+                            Text(
+                                "Banks & wallets",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = scheme.onPrimaryContainer.copy(alpha = 0.7f),
+                            )
+                            Text(
+                                digitalTotal.inr(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onPrimaryContainer,
+                            )
                         }
                     }
                 }
@@ -135,90 +147,62 @@ fun AccountsScreen(
 
         item {
             Text(
-                "Payment modes",
+                "Active",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
         }
 
-        item {
-            ModeCard(
-                title = "Cash",
-                subtitle = "Physical cash",
-                balance = cashBal,
-                icon = Icons.Default.Payments,
-                accent = scheme.secondary,
+        if (active.isEmpty()) {
+            item {
+                Text(
+                    "No accounts yet. Add banks in Settings → Bank accounts.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        items(active, key = { it.account.id }) { row ->
+            AccountLedgerRow(
+                row = row,
+                isDefault = defaultDigital.equals(row.account.name, true),
             )
         }
 
+        if (archived.isNotEmpty()) {
+            item {
+                Text(
+                    "Archived",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            item {
+                Text(
+                    "Hidden from Add Transaction · history kept",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            items(archived, key = { "arch-${it.account.id}" }) { row ->
+                AccountLedgerRow(
+                    row = row,
+                    isDefault = false,
+                    archived = true,
+                )
+            }
+        }
+
         item {
-            Surface(
+            OutlinedButton(
+                onClick = { onImportStatement(null) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                color = scheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(18.dp),
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(44.dp)
-                                .background(scheme.tertiary.copy(alpha = 0.95f), CircleShape),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.Default.AccountBalance, null, tint = scheme.tertiary)
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Digital",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                "Banks & UPI wallets",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            digitalTotal.inr(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = scheme.tertiary,
-                        )
-                    }
-
-                    if (digitalNamed.isEmpty() && digitalOrphan == 0L && orphanDigitalNames.isEmpty()) {
-                        Text(
-                            "No digital accounts yet. Add banks in Settings → Accounts.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-
-                    digitalNamed.forEach { (name, bal) ->
-                        DigitalAccountRow(
-                            name = name,
-                            balance = bal,
-                            isDefault = defaultDigital.equals(name, true),
-                        )
-                    }
-                    if (digitalOrphan != 0L) {
-                        DigitalAccountRow(
-                            name = "Unspecified digital",
-                            balance = digitalOrphan,
-                            isDefault = false,
-                        )
-                    }
-                    orphanDigitalNames.forEach { (name, bal) ->
-                        DigitalAccountRow(
-                            name = name,
-                            balance = bal,
-                            isDefault = false,
-                            hint = "Detected from transactions",
-                        )
-                    }
-                }
+                Icon(Icons.Default.UploadFile, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Import bank statement (CSV)")
             }
         }
 
@@ -230,7 +214,7 @@ fun AccountsScreen(
                 color = scheme.surfaceContainerHighest,
             ) {
                 Text(
-                    "Manage accounts & default digital bank",
+                    "Manage accounts (add / archive / restore)",
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -242,18 +226,19 @@ fun AccountsScreen(
 }
 
 @Composable
-private fun ModeCard(
-    title: String,
-    subtitle: String,
-    balance: Long,
-    icon: ImageVector,
-    accent: androidx.compose.ui.graphics.Color,
+private fun AccountLedgerRow(
+    row: AccountBalance,
+    isDefault: Boolean,
+    archived: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val acc = row.account
+    val icon: ImageVector =
+        if (acc.kind == AccountKind.CASH) Icons.Default.Payments else Icons.Default.AccountBalance
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = scheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(18.dp),
+        color = if (archived) scheme.surfaceContainerLow else scheme.surfaceContainerHigh,
     ) {
         Row(
             Modifier.padding(16.dp),
@@ -262,73 +247,51 @@ private fun ModeCard(
             Box(
                 Modifier
                     .size(44.dp)
-                    .background(accent.copy(alpha = 0.16f), CircleShape),
+                    .background(
+                        if (archived) {
+                            scheme.surfaceContainerHighest
+                        } else {
+                            scheme.secondaryContainer
+                        },
+                        CircleShape,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, tint = accent)
+                Icon(
+                    icon,
+                    null,
+                    tint = if (archived) scheme.onSurfaceVariant else scheme.onSecondaryContainer,
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                Text(
+                    acc.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (archived) scheme.onSurfaceVariant else scheme.onSurface,
+                )
+                Text(
+                    buildString {
+                        append(acc.kind.name.lowercase().replaceFirstChar { it.titlecase() })
+                        if (isDefault) append(" · default")
+                        if (archived) append(" · archived")
+                        if (row.txnCount > 0) append(" · ${row.txnCount} txns")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
             }
             Text(
-                balance.inr(),
+                row.balancePaise.inr(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = accent,
+                color = when {
+                    row.balancePaise < 0 -> scheme.error
+                    archived -> scheme.onSurfaceVariant
+                    else -> scheme.onSurface
+                },
             )
         }
-    }
-}
-
-@Composable
-private fun DigitalAccountRow(
-    name: String,
-    balance: Long,
-    isDefault: Boolean,
-    hint: String? = null,
-) {
-    val scheme = MaterialTheme.colorScheme
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(scheme.surfaceContainerHighest, RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Default.AccountBalance,
-            contentDescription = null,
-            tint = scheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                if (isDefault) {
-                    Spacer(Modifier.width(8.dp))
-                    Surface(shape = CircleShape, color = scheme.primaryContainer) {
-                        Text(
-                            "Default",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onPrimaryContainer,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-            if (hint != null) {
-                Text(hint, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-            }
-        }
-        Text(
-            balance.inr(),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = if (balance < 0) scheme.error else scheme.onSurface,
-        )
     }
 }

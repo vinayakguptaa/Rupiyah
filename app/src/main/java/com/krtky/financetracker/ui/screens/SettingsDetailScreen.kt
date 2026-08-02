@@ -103,6 +103,9 @@ fun SettingsDetailScreen(
     val senders by vm.senders.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val accountBalances by vm.accountBalances.collectAsStateWithLifecycle()
+    val managedAccountBalances by vm.managedAccountBalances.collectAsStateWithLifecycle()
+    val activeAccounts by vm.activeAccounts.collectAsStateWithLifecycle()
+    val archivedAccounts by vm.archivedAccounts.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -134,37 +137,26 @@ fun SettingsDetailScreen(
     var categoryPendingDelete by remember { mutableStateOf<Long?>(null) }
     var showBankSheet by remember { mutableStateOf(false) }
     var newBankName by remember { mutableStateOf("") }
-    var bankPendingDelete by remember { mutableStateOf<String?>(null) }
+    var bankPendingArchiveId by remember { mutableStateOf<Long?>(null) }
     var showSenderSheet by remember { mutableStateOf(false) }
     var senderPendingDelete by remember { mutableStateOf<Long?>(null) }
     var smsSenders by remember(state.smsSenders) { mutableStateOf(state.smsSenders) }
     var smsKeywords by remember(state.smsKeywords) { mutableStateOf(state.smsKeywords) }
-    var banksRaw by remember(state.bankAccounts) { mutableStateOf(state.bankAccounts) }
     var defaultPay by remember(state.defaultPaymentMethod) { mutableStateOf(state.defaultPaymentMethod) }
     var defaultDigital by remember(state.defaultDigitalAccount) {
         mutableStateOf(state.defaultDigitalAccount)
     }
-    val bankList = remember(banksRaw) {
-        banksRaw.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    val activeBanks = remember(activeAccounts) {
+        activeAccounts.filter { !it.name.equals("Cash", true) }
     }
-    fun persistBanks(list: List<String>) {
-        val joined = list.joinToString(",")
-        banksRaw = joined
-        vm.saveBankAccounts(joined)
-        // Drop default digital if the account was removed
-        if (defaultDigital.isNotBlank() && list.none { it.equals(defaultDigital, true) }) {
-            defaultDigital = ""
-            vm.saveDefaultDigitalAccount("")
-        }
-        if (defaultPay.isNotBlank() &&
-            !defaultPay.equals("Cash", true) &&
-            !defaultPay.equals("Digital", true) &&
-            list.none { it.equals(defaultPay, true) }
-        ) {
-            defaultPay = "Cash"
-            vm.saveDefaultPaymentMethod("Cash")
-        }
+    val archivedBanks = remember(archivedAccounts) {
+        archivedAccounts.filter { !it.name.equals("Cash", true) }
     }
+    fun balanceFor(name: String): Long =
+        managedAccountBalances.firstOrNull { it.account.name.equals(name, true) }?.balancePaise
+            ?: accountBalances.entries.firstOrNull { it.key.equals(name, true) }?.value
+            ?: 0L
+
     var systemPrompt by remember(state.llmSystemPrompt) { mutableStateOf(state.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }) }
     var classDelay by remember(state.classificationDelayMin) { mutableStateOf(state.classificationDelayMin.toString()) }
 
@@ -217,8 +209,7 @@ fun SettingsDetailScreen(
 
     val title = sectionEnum?.title ?: "Settings"
 
-    val listSections = section == "categories" || section == "banks" ||
-        section == "senders" || section == "email" || section == "gmail"
+    val listSections = section == "categories" || section == "banks"
     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
     Column(
         Modifier
@@ -415,225 +406,24 @@ fun SettingsDetailScreen(
                 }
             }
 
-            "email", "gmail" -> {
+            "email", "gmail", "senders", "paste" -> {
                 SettingsBlock(
-                    title = "Step 1 · How to connect",
-                    helpTitle = "Bank emails",
-                    helpMessage = "Recommended: Connect with Google (no password stored). Advanced: use a Gmail App Password. Only mail from your trusted bank list is read.",
+                    title = "Email import removed",
+                    helpTitle = "Capture methods",
+                    helpMessage = "Rupiyah no longer reads bank email. Use SMS, CSV statement import, or manual entry.",
                 ) {
                     Text(
-                        "Recommended for most people: Google",
+                        "Capture is SMS + CSV + manual only.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "• Settings → Bank text messages (SMS) for live bank alerts\n• Accounts → Import bank statement (CSV)\n• + button for manual Debit / Credit",
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
                     )
-                    SettingsSegmentedRow {
-                        SettingsSegment(
-                            label = "Google (easy)",
-                            selected = state.emailSource == EmailSource.GMAIL_OAUTH,
-                            onClick = { vm.setEmailSource(EmailSource.GMAIL_OAUTH) },
-                        )
-                        SettingsSegment(
-                            label = "Password",
-                            selected = state.emailSource == EmailSource.IMAP,
-                            onClick = { vm.setEmailSource(EmailSource.IMAP) },
-                        )
-                    }
-                    SettingsToggleRow(
-                        title = "Watch for new bank emails",
-                        subtitle = when {
-                            !state.llmReady ->
-                                "Needs AI helper first (Settings → AI helper)"
-                            state.emailPoll ->
-                                "On · checks in the background"
-                            else ->
-                                "Off · turn on after AI is ready"
-                        },
-                        checked = state.emailPoll && state.llmReady,
-                        onCheckedChange = { on ->
-                            if (on && !state.llmReady) {
-                                vm.setEmailPoll(context, true) // shows “set up AI” message
-                            } else {
-                                vm.setEmailPoll(context, on)
-                            }
-                        },
-                    )
-                }
-                if (state.emailSource == EmailSource.GMAIL_OAUTH) {
-                    SettingsBlock(
-                        title = "Step 2 · Sign in to Gmail",
-                        helpTitle = "Connect with Google",
-                        helpMessage = "The app only reads mail (not send or delete). If sign-in fails, open Settings → More options → Google sign-in setup.",
-                    ) {
-                        SettingsStatusText(
-                            text = if (state.gmailOAuthConnected) {
-                                "Connected as ${state.gmailOAuthEmail.ifBlank { "Google account" }}"
-                            } else {
-                                "Not connected yet"
-                            },
-                            positive = state.gmailOAuthConnected,
-                        )
-                        SettingsButtonStack {
-                            Button(
-                                onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) {
-                                Text(if (state.gmailOAuthConnected) "Connect a different account" else "Connect with Google")
-                            }
-                            if (state.gmailOAuthConnected) {
-                                OutlinedButton(
-                                    onClick = { vm.disconnectGmailOAuth() },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = shapes.large,
-                                ) { Text("Disconnect") }
-                            }
-                            AppSecondaryButton(
-                                onClick = { scope.launch { vm.testGmail() } },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Test connection") }
-                            OutlinedButton(
-                                onClick = { scope.launch { vm.pollNow() } },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Check for new mail now") }
-                        }
-                    }
-                } else {
-                    SettingsBlock(
-                        title = "Step 2 · Gmail app password",
-                        helpTitle = "App password",
-                        helpMessage = "1. Open your Google Account on the web\n2. Turn on 2-Step Verification\n3. Create an App Password for Mail\n4. Paste it below (your normal Gmail password will not work)",
-                    ) {
-                        OutlinedTextField(
-                            gmail,
-                            { gmail = it },
-                            label = { Text("Your Gmail address") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = shapes.medium,
-                        )
-                        OutlinedTextField(
-                            gmailPass,
-                            { gmailPass = it },
-                            label = { Text(if (state.gmailPassSet) "App password (saved — type to replace)" else "App password from Google") },
-                            visualTransformation = PasswordVisualTransformation(),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = shapes.medium,
-                        )
-                        SettingsButtonStack {
-                            Button(
-                                onClick = { vm.saveGmail(gmail, gmailPass.ifBlank { null }) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Save") }
-                            AppSecondaryButton(
-                                onClick = { scope.launch { vm.testGmail() } },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Test connection") }
-                            OutlinedButton(
-                                onClick = { scope.launch { vm.pollNow() } },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Check for new mail now") }
-                        }
-                    }
-                }
-                SettingsBlock(
-                    title = "Step 3 · Which banks to trust",
-                    helpTitle = "Trusted banks",
-                    helpMessage = "Only emails from these addresses are turned into spends. Tap + (bottom right) to add a bank or wallet email pattern.",
-                ) {
-                    if (senders.isEmpty()) {
-                        Text(
-                            "None yet. Tap the + button and add your bank or UPI app (e.g. HDFC, PhonePe).",
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    senders.forEachIndexed { index, s ->
-                        if (index > 0) HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(44.dp)
-                                    .background(scheme.secondaryContainer, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(Icons.Default.Mail, null, tint = scheme.onSecondaryContainer)
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(s.emailPattern, fontWeight = FontWeight.SemiBold)
-                                Text(s.walletLabel, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                            }
-                            IconButton(onClick = { senderPendingDelete = s.id }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = scheme.error)
-                            }
-                        }
-                    }
                 }
             }
-
-            "senders" -> {
-                // Kept for deep links; hub now uses Bank emails for the same list.
-                SettingsBlock(
-                    title = "Trusted banks",
-                    helpTitle = "Trusted banks",
-                    helpMessage = "Only mail matching these patterns becomes a transaction. Tap + to add an address and a short label (e.g. HDFC, PhonePe).",
-                ) {
-                    if (senders.isEmpty()) {
-                        Text(
-                            "None yet. Tap + to add a bank or wallet email.",
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    senders.forEachIndexed { index, s ->
-                        if (index > 0) HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier.size(44.dp).background(scheme.secondaryContainer, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(Icons.Default.Mail, null, tint = scheme.onSecondaryContainer)
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(s.emailPattern, fontWeight = FontWeight.SemiBold)
-                                Text(s.walletLabel, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                            }
-                            IconButton(onClick = { senderPendingDelete = s.id }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = scheme.error)
-                            }
-                        }
-                    }
-                }
-            }
-
-            "paste" -> SettingsBlock(
-                title = "Try a sample email",
-                helpTitle = "Test email",
-                helpMessage = "Paste a bank or wallet email to see if the app can read the amount and merchant.",
-            ) {
-                OutlinedTextField(pasteSender, { pasteSender = it }, label = { Text("From") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                OutlinedTextField(pasteSubject, { pasteSubject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                OutlinedTextField(pasteBody, { pasteBody = it }, label = { Text("Message body") }, modifier = Modifier.fillMaxWidth(), minLines = 4, shape = shapes.medium)
-                Button(
-                    onClick = { scope.launch { vm.processPaste(pasteSender, pasteSubject, pasteBody) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.large,
-                ) { Text("Try this email") }
-            }
-
             "sms" -> {
                 SettingsBlock(
                     title = "Read bank SMS",
@@ -924,74 +714,67 @@ fun SettingsDetailScreen(
 
             "banks" -> {
                 SettingsBlock(
-                    title = "Cash and digital",
-                    helpTitle = "Payment modes",
-                    helpMessage = "Cash is physical money. Digital is the total of your bank and UPI accounts listed below.",
+                    title = "Cash",
+                    helpTitle = "Cash",
+                    helpMessage = "Physical cash is always available when you add a transaction. It cannot be archived.",
                 ) {
                     AccountBalanceRow(
                         name = "Cash",
-                        balancePaise = accountBalances["Cash"] ?: 0L,
+                        balancePaise = balanceFor("Cash"),
                         isDefaultDigital = false,
-                        subtitle = "Payment mode",
-                        onDelete = null,
-                    )
-                    HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
-                    val digitalTotal = bankList.sumOf { bank ->
-                        accountBalances.entries.firstOrNull { it.key.equals(bank, true) }?.value ?: 0L
-                    } + (accountBalances["Digital"] ?: 0L)
-                    AccountBalanceRow(
-                        name = "Digital (all banks)",
-                        balancePaise = digitalTotal,
-                        isDefaultDigital = false,
-                        subtitle = "Payment mode · sum of accounts below",
+                        subtitle = "Always available",
                         onDelete = null,
                     )
                 }
                 SettingsBlock(
                     title = "Your banks and UPI apps",
                     helpTitle = "Accounts",
-                    helpMessage = "Add names like HDFC, ICICI, PhonePe, or GPay. Tap + to add. The app tries to match these in bank emails and SMS.",
+                    helpMessage = "Active accounts appear when you add a transaction. Archiving hides them from Add but keeps all past transactions on that account.",
                 ) {
-                    if (bankList.isEmpty()) {
+                    if (activeBanks.isEmpty()) {
                         Text(
-                            "None yet — tap the + button to add a bank or UPI app",
+                            "None yet — tap + to add a bank or UPI app",
                             color = scheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    bankList.forEachIndexed { index, bank ->
-                        if (index > 0 || bankList.isNotEmpty()) {
+                    activeBanks.forEachIndexed { index, acc ->
+                        if (index > 0) {
                             HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
                         }
-                        val bal = accountBalances.entries
-                            .firstOrNull { it.key.equals(bank, true) }
-                            ?.value
-                            ?: 0L
                         AccountBalanceRow(
-                            name = bank,
-                            balancePaise = bal,
-                            isDefaultDigital = defaultDigital.equals(bank, true),
-                            onDelete = { bankPendingDelete = bank },
+                            name = acc.name,
+                            balancePaise = balanceFor(acc.name),
+                            isDefaultDigital = defaultDigital.equals(acc.name, true),
+                            onDelete = { bankPendingArchiveId = acc.id },
                         )
                     }
-                    val known = (bankList + listOf("Cash", "Digital")).map { it.lowercase() }.toSet()
-                    accountBalances
-                        .filterKeys { it.lowercase() !in known }
-                        .forEach { (name, bal) ->
-                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                }
+                if (archivedBanks.isNotEmpty()) {
+                    SettingsBlock(
+                        title = "Archived",
+                        helpTitle = "Archived accounts",
+                        helpMessage = "These stay linked to old transactions and can be filtered in Activity. They do not appear when adding a new transaction. Restore to use them again.",
+                    ) {
+                        archivedBanks.forEachIndexed { index, acc ->
+                            if (index > 0) {
+                                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
+                            }
                             AccountBalanceRow(
-                                name = name,
-                                balancePaise = bal,
+                                name = acc.name,
+                                balancePaise = balanceFor(acc.name),
                                 isDefaultDigital = false,
-                                subtitle = "Detected from transactions",
+                                subtitle = "Archived · ${acc.kind.name.lowercase()}",
                                 onDelete = null,
+                                onRestore = { vm.restoreBankAccount(acc.id) },
                             )
                         }
+                    }
                 }
                 SettingsBlock(
                     title = "Defaults when you add a spend",
                     helpTitle = "Defaults",
-                    helpMessage = "Payment type is pre-selected when you add a spend by hand. Default bank is used for Digital when the app cannot tell which account.",
+                    helpMessage = "Pre-select Cash or a default bank/UPI when the app cannot tell which account.",
                 ) {
                     SettingsPanelLabel("Usually pay with")
                     SettingsSegmentedRow {
@@ -999,7 +782,7 @@ fun SettingsDetailScreen(
                             SettingsSegment(
                                 label = method,
                                 selected = defaultPay.equals(method, true) ||
-                                    (method == "Digital" && bankList.any { it.equals(defaultPay, true) }),
+                                    (method == "Digital" && activeBanks.any { it.name.equals(defaultPay, true) }),
                                 onClick = {
                                     defaultPay = method
                                     vm.saveDefaultPaymentMethod(method)
@@ -1021,19 +804,19 @@ fun SettingsDetailScreen(
                             label = { Text("Let app choose") },
                             shape = shapes.medium,
                         )
-                        bankList.forEach { bank ->
+                        activeBanks.forEach { acc ->
                             FilterChip(
-                                selected = defaultDigital.equals(bank, true),
+                                selected = defaultDigital.equals(acc.name, true),
                                 onClick = {
-                                    defaultDigital = bank
-                                    vm.saveDefaultDigitalAccount(bank)
+                                    defaultDigital = acc.name
+                                    vm.saveDefaultDigitalAccount(acc.name)
                                 },
-                                label = { Text(bank) },
+                                label = { Text(acc.name) },
                                 shape = shapes.medium,
                             )
                         }
                     }
-                    if (bankList.isEmpty()) {
+                    if (activeBanks.isEmpty()) {
                         Text(
                             "Add a bank or UPI app above first.",
                             style = MaterialTheme.typography.bodySmall,
@@ -1161,23 +944,8 @@ fun SettingsDetailScreen(
             contentColor = scheme.onPrimaryContainer,
         ) { Icon(Icons.Default.Add, contentDescription = "Add bank") }
     }
-    if (section == "senders" || section == "email" || section == "gmail") {
-        FloatingActionButton(
-            onClick = {
-                senderEmail = ""
-                senderLabel = ""
-                showSenderSheet = true
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 20.dp, bottom = 20.dp),
-            shape = shapes.large,
-            containerColor = scheme.primaryContainer,
-            contentColor = scheme.onPrimaryContainer,
-        ) { Icon(Icons.Default.Add, contentDescription = "Add trusted bank") }
     }
-    }
+
 
     if (showCategorySheet) {
         ModalBottomSheet(
@@ -1355,8 +1123,8 @@ fun SettingsDetailScreen(
                     Button(
                         onClick = {
                             val name = newBankName.trim()
-                            if (name.isNotEmpty() && bankList.none { it.equals(name, true) }) {
-                                persistBanks(bankList + name)
+                            if (name.isNotEmpty()) {
+                                vm.addBankAccount(name)
                             }
                             newBankName = ""
                             showBankSheet = false
@@ -1443,22 +1211,21 @@ fun SettingsDetailScreen(
             },
         )
     }
-    bankPendingDelete?.let { bank ->
+    bankPendingArchiveId?.let { id ->
+        val name = activeBanks.firstOrNull { it.id == id }?.name ?: "This account"
         DeleteConfirmSheet(
-            title = "Remove account?",
-            message = "“$bank” will be removed from selectable accounts. Existing transactions keep their labels.",
-            onDismiss = { bankPendingDelete = null },
+            title = "Archive account?",
+            message = "“$name” will leave Add Transaction pickers. Past transactions stay on this account. You can restore it anytime under Archived.",
+            onDismiss = { bankPendingArchiveId = null },
             onConfirmDelete = {
-                persistBanks(bankList.filterNot { it.equals(bank, true) })
-                if (defaultPay.equals(bank, true)) {
+                vm.archiveBankAccount(id)
+                if (defaultPay.equals(name, true)) {
                     defaultPay = "Cash"
-                    vm.saveDefaultPaymentMethod("Cash")
                 }
-                if (defaultDigital.equals(bank, true)) {
+                if (defaultDigital.equals(name, true)) {
                     defaultDigital = ""
-                    vm.saveDefaultDigitalAccount("")
                 }
-                bankPendingDelete = null
+                bankPendingArchiveId = null
             },
         )
     }
@@ -1482,6 +1249,7 @@ private fun AccountBalanceRow(
     isDefaultDigital: Boolean,
     onDelete: (() -> Unit)?,
     subtitle: String? = null,
+    onRestore: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -1493,10 +1261,25 @@ private fun AccountBalanceRow(
         Box(
             Modifier
                 .size(40.dp)
-                .background(scheme.secondaryContainer, CircleShape),
+                .background(
+                    if (onRestore != null) {
+                        scheme.surfaceContainerHighest
+                    } else {
+                        scheme.secondaryContainer
+                    },
+                    CircleShape,
+                ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.AccountBalance, null, tint = scheme.onSecondaryContainer)
+            Icon(
+                Icons.Default.AccountBalance,
+                null,
+                tint = if (onRestore != null) {
+                    scheme.onSurfaceVariant
+                } else {
+                    scheme.onSecondaryContainer
+                },
+            )
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -1505,6 +1288,11 @@ private fun AccountBalanceRow(
                     name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = if (onRestore != null) {
+                        scheme.onSurfaceVariant
+                    } else {
+                        scheme.onSurface
+                    },
                 )
                 if (isDefaultDigital) {
                     Spacer(Modifier.width(8.dp))
@@ -1536,9 +1324,13 @@ private fun AccountBalanceRow(
                 )
             }
         }
-        if (onDelete != null) {
+        if (onRestore != null) {
+            TextButton(onClick = onRestore) {
+                Text("Restore")
+            }
+        } else if (onDelete != null) {
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = scheme.error)
+                Icon(Icons.Default.Delete, contentDescription = "Archive", tint = scheme.error)
             }
         }
     }
