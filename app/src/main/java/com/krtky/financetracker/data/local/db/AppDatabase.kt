@@ -12,7 +12,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FundEntity::class,
         TransactionEntity::class,
         FundLedgerEntity::class,
-        TransactionSplitEntity::class,
         TrustedSenderEntity::class,
         EmailIngestLogEntity::class,
         LocationSampleEntity::class,
@@ -22,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,7 +30,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fundDao(): FundDao
     abstract fun transactionDao(): TransactionDao
     abstract fun fundLedgerDao(): FundLedgerDao
-    abstract fun transactionSplitDao(): TransactionSplitDao
     abstract fun trustedSenderDao(): TrustedSenderDao
     abstract fun emailIngestDao(): EmailIngestDao
     abstract fun locationSampleDao(): LocationSampleDao
@@ -353,6 +351,99 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_transaction_splits_fundId` " +
                         "ON `transaction_splits` (`fundId`)",
+                )
+            }
+        }
+
+        /**
+         * Phase 4: replace child-table splits with parent-replacement split rows.
+         *
+         * Every `transaction_splits` line becomes a real transaction row sharing
+         * `splitGroupId` = the original parent id. Parents that had splits are
+         * soft-deleted (children carry the data), a remainder child preserves any
+         * amount not covered by the lines, and the now-unused table is dropped.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `splitGroupId` TEXT")
+
+                val now = "CAST(strftime('%s','now') AS INTEGER) * 1000"
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions` (
+                        `id`, `type`, `amountPaise`, `currency`, `occurredAt`, `recordedAt`,
+                        `merchant`, `counterparty`, `categoryId`, `fundId`, `accountId`,
+                        `paymentMethod`, `source`, `note`, `isCash`, `classificationStatus`,
+                        `isSkipped`, `kind`, `transferGroupId`, `rawDescription`,
+                        `classificationNotifiedAt`, `latitude`, `longitude`, `placeName`,
+                        `locationAccuracy`, `locationMatchedAt`, `emailMessageId`,
+                        `externalRefId`, `contentHash`, `sheetsSynced`, `deletedAt`,
+                        `updatedAt`, `version`, `receiptUri`, `splitGroupId`
+                    )
+                    SELECT
+                        'mig_' || s.`id`,
+                        p.`type`, s.`amountPaise`, p.`currency`, p.`occurredAt`, p.`recordedAt`,
+                        p.`merchant`,
+                        COALESCE(s.`counterparty`, p.`counterparty`, p.`merchant`),
+                        s.`categoryId`, s.`fundId`, p.`accountId`, p.`paymentMethod`, p.`source`,
+                        COALESCE(s.`note`, p.`note`), p.`isCash`, p.`classificationStatus`,
+                        p.`isSkipped`, p.`kind`, p.`transferGroupId`, p.`rawDescription`,
+                        p.`classificationNotifiedAt`, p.`latitude`, p.`longitude`, p.`placeName`,
+                        p.`locationAccuracy`, p.`locationMatchedAt`, NULL, NULL, NULL, 0, NULL,
+                        $now, 1, p.`receiptUri`, p.`id`
+                    FROM `transaction_splits` s
+                    INNER JOIN `transactions` p ON p.`id` = s.`transactionId`
+                    """.trimIndent(),
+                )
+
+                // Remainder child for any amount the split lines did not cover.
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions` (
+                        `id`, `type`, `amountPaise`, `currency`, `occurredAt`, `recordedAt`,
+                        `merchant`, `counterparty`, `categoryId`, `fundId`, `accountId`,
+                        `paymentMethod`, `source`, `note`, `isCash`, `classificationStatus`,
+                        `isSkipped`, `kind`, `transferGroupId`, `rawDescription`,
+                        `classificationNotifiedAt`, `latitude`, `longitude`, `placeName`,
+                        `locationAccuracy`, `locationMatchedAt`, `emailMessageId`,
+                        `externalRefId`, `contentHash`, `sheetsSynced`, `deletedAt`,
+                        `updatedAt`, `version`, `receiptUri`, `splitGroupId`
+                    )
+                    SELECT
+                        'mig_remainder_' || p.`id`,
+                        p.`type`, p.`amountPaise` - COALESCE((
+                            SELECT SUM(s.`amountPaise`) FROM `transaction_splits` s
+                            WHERE s.`transactionId` = p.`id`
+                        ), 0),
+                        p.`currency`, p.`occurredAt`, p.`recordedAt`, p.`merchant`,
+                        p.`counterparty`, p.`categoryId`, p.`fundId`, p.`accountId`,
+                        p.`paymentMethod`, p.`source`, p.`note`, p.`isCash`, p.`classificationStatus`,
+                        p.`isSkipped`, p.`kind`, p.`transferGroupId`, p.`rawDescription`,
+                        p.`classificationNotifiedAt`, p.`latitude`, p.`longitude`, p.`placeName`,
+                        p.`locationAccuracy`, p.`locationMatchedAt`, NULL, NULL, NULL, 0, NULL,
+                        $now, 1, p.`receiptUri`, p.`id`
+                    FROM `transactions` p
+                    WHERE p.`id` IN (SELECT DISTINCT s.`transactionId` FROM `transaction_splits` s)
+                      AND p.`amountPaise` > COALESCE((
+                            SELECT SUM(s.`amountPaise`) FROM `transaction_splits` s
+                            WHERE s.`transactionId` = p.`id`
+                      ), 0)
+                    """.trimIndent(),
+                )
+
+                // Soft-delete parents that had splits; children now carry the data.
+                db.execSQL(
+                    """
+                    UPDATE `transactions`
+                    SET `deletedAt` = $now
+                    WHERE `id` IN (SELECT DISTINCT s.`transactionId` FROM `transaction_splits` s)
+                    """.trimIndent(),
+                )
+
+                db.execSQL("DROP TABLE IF EXISTS `transaction_splits`")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_splitGroupId` " +
+                        "ON `transactions` (`splitGroupId`)",
                 )
             }
         }

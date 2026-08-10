@@ -12,4 +12,8 @@
     <color name="widget_preview_income">#386A20</color>
     <color name="widget_preview_expense">#BA1A1A</color>
     <color name="widget_preview_outline">#79747E</color>
+    <color name="widget_preview_stroke">#1F79747E</color>
+    <color name="widget_preview_progress_track">#E7E0EC</color>
+    <color name="widget_preview_progress_fill">#386A20</color>
+    <color name="widget_preview_progress_fill_error">#BA1A1A</color>
 </resources>

@@ -10,8 +10,8 @@ import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.Money
+import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
-import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -62,10 +63,12 @@ class TransactionDetailViewModel @Inject constructor(
     val archivedCurrentAccount: StateFlow<Account?> = _archivedCurrent
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val splits: StateFlow<List<TransactionSplit>> = txnIdFlow
+    val splits: StateFlow<List<SplitPart>> = txnIdFlow
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
-            else transactionRepository.observeSplits(id)
+            else transactionRepository.observeSplitGroup(id).map { parts ->
+                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.fundId, it.note) }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -87,18 +90,18 @@ class TransactionDetailViewModel @Inject constructor(
         }
     }
 
-    suspend fun saveSplits(lines: List<TransactionSplit>): Result<Unit> {
+    suspend fun saveSplits(lines: List<SplitPart>): Result<Unit> {
         val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
-        val result = transactionRepository.setSplits(id, lines)
+        val result = transactionRepository.saveSplit(id, lines)
         if (result.isSuccess) {
             _txn.value = transactionRepository.getById(id)
         }
-        return result
+        return result.map { }
     }
 
     suspend fun clearSplits(): Result<Unit> {
         val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
-        val result = transactionRepository.clearSplits(id)
+        val result = transactionRepository.mergeSplitGroup(id)
         if (result.isSuccess) {
             _txn.value = transactionRepository.getById(id)
         }
@@ -140,11 +143,10 @@ class TransactionDetailViewModel @Inject constructor(
             }
             else -> t.receiptUri
         }
-        val amountPaise = if (t.amountLocked()) t.amountPaise else amount.paise
-        val lockedType = if (t.amountLocked()) t.type else type
+        val amountPaise = amount.paise
         val updated = t.copy(
             amountPaise = amountPaise,
-            type = lockedType,
+            type = type,
             occurredAt = occurredAt,
             accountId = account?.id ?: accountId,
             paymentMethod = methodLabel,

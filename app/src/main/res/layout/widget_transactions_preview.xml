@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="12dp"
+    android:padding="14dp"
     android:background="@drawable/widget_preview_card_surface">
 
     <TextView
@@ -12,14 +12,14 @@
         android:text="Recent"
         android:textColor="@color/widget_preview_on_surface"
         android:textStyle="bold"
-        android:textSize="13sp" />
+        android:textSize="14sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
+        android:paddingVertical="10dp"
         android:background="@drawable/widget_preview_row"
         android:orientation="horizontal"
         android:gravity="center_vertical">
@@ -35,15 +35,16 @@
                 android:layout_height="wrap_content"
                 android:text="Swiggy"
                 android:textColor="@color/widget_preview_on_surface"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="28 Jul"
                 android:textColor="@color/widget_preview_on_surface_variant"
-                android:textSize="9sp" />
+                android:textSize="10sp" />
         </LinearLayout>
 
         <TextView
@@ -52,15 +53,15 @@
             android:text="−₹420"
             android:textColor="@color/widget_preview_expense"
             android:textStyle="bold"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="6dp"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
+        android:paddingVertical="10dp"
         android:background="@drawable/widget_preview_row"
         android:orientation="horizontal"
         android:gravity="center_vertical">
@@ -76,15 +77,16 @@
                 android:layout_height="wrap_content"
                 android:text="Salary"
                 android:textColor="@color/widget_preview_on_surface"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="01 Jul"
                 android:textColor="@color/widget_preview_on_surface_variant"
-                android:textSize="9sp" />
+                android:textSize="10sp" />
         </LinearLayout>
 
         <TextView
@@ -93,15 +95,15 @@
             android:text="+₹58,000"
             android:textColor="@color/widget_preview_income"
             android:textStyle="bold"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="6dp"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
+        android:paddingVertical="10dp"
         android:background="@drawable/widget_preview_row"
         android:orientation="horizontal"
         android:gravity="center_vertical">
@@ -117,15 +119,16 @@
                 android:layout_height="wrap_content"
                 android:text="Amazon"
                 android:textColor="@color/widget_preview_on_surface"
-                android:textSize="12sp"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text="22 Jul"
                 android:textColor="@color/widget_preview_on_surface_variant"
-                android:textSize="9sp" />
+                android:textSize="10sp" />
         </LinearLayout>
 
         <TextView
@@ -134,18 +137,18 @@
             android:text="−₹1,299"
             android:textColor="@color/widget_preview_expense"
             android:textStyle="bold"
-            android:textSize="12sp" />
+            android:textSize="13sp" />
     </LinearLayout>
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="10dp"
         android:text="+ Add"
         android:textColor="@color/widget_preview_on_primary_container"
         android:textStyle="bold"
-        android:textSize="12sp"
+        android:textSize="13sp"
         android:gravity="center"
-        android:padding="8dp"
+        android:paddingVertical="10dp"
         android:background="@drawable/widget_preview_chip_primary" />
 </LinearLayout>

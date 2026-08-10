@@ -8,7 +8,6 @@ import com.krtky.financetracker.domain.model.Fund
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionSource
-import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.domain.model.TrustedSender
 
@@ -102,7 +101,6 @@ fun TransactionEntity.toDomain(
     category: Category? = null,
     fundName: String? = null,
     accountName: String? = null,
-    splitCount: Int = 0,
 ) = Transaction(
     id = id,
     type = parseTransactionType(type),
@@ -144,35 +142,7 @@ fun TransactionEntity.toDomain(
     categoryColor = category?.color,
     fundName = fundName,
     accountName = accountName ?: paymentMethod,
-    hasSplits = splitCount > 0,
-    splitCount = splitCount,
-)
-
-fun TransactionSplitEntity.toDomain(
-    categoryName: String? = null,
-    fundName: String? = null,
-) = TransactionSplit(
-    id = id,
-    transactionId = transactionId,
-    amountPaise = amountPaise,
-    categoryId = categoryId,
-    counterparty = counterparty,
-    fundId = fundId,
-    note = note,
-    sortOrder = sortOrder,
-    categoryName = categoryName,
-    fundName = fundName,
-)
-
-fun TransactionSplit.toEntity() = TransactionSplitEntity(
-    id = id,
-    transactionId = transactionId,
-    amountPaise = amountPaise,
-    categoryId = categoryId,
-    counterparty = counterparty?.takeIf { it.isNotBlank() },
-    fundId = fundId,
-    note = note?.takeIf { it.isNotBlank() },
-    sortOrder = sortOrder,
+    splitGroupId = splitGroupId,
 )
 
 fun Transaction.toEntity() = TransactionEntity(
@@ -214,4 +184,5 @@ fun Transaction.toEntity() = TransactionEntity(
     updatedAt = updatedAt,
     version = version,
     receiptUri = receiptUri,
+    splitGroupId = splitGroupId,
 )

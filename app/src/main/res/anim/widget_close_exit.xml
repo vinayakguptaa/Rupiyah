@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App shrinks and fades when returning to the home screen. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shareInterpolator="false">
+    <alpha
+        android:fromAlpha="1"
+        android:toAlpha="0"
+        android:duration="240"
+        android:interpolator="@android:interpolator/fast_out_linear_in" />
+    <scale
+        android:fromXScale="1"
+        android:toXScale="0.94"
+        android:fromYScale="1"
+        android:toYScale="0.94"
+        android:pivotX="50%"
+        android:pivotY="50%"
+        android:duration="280"
+        android:interpolator="@android:interpolator/fast_out_linear_in" />
+    <translate
+        android:fromYDelta="0"
+        android:toYDelta="4%p"
+        android:duration="280"
+        android:interpolator="@android:interpolator/fast_out_linear_in" />
+</set>

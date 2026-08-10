@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
-import com.krtky.financetracker.domain.model.TransactionSplit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,33 +31,40 @@ class SplitTransactionViewModel @Inject constructor(
     val funds = fundsState(transactionRepository)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val splits: StateFlow<List<TransactionSplit>> = txnIdFlow
+    val splits: StateFlow<List<SplitPart>> = txnIdFlow
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
-            else transactionRepository.observeSplits(id)
+            else transactionRepository.observeSplitGroup(id).map { parts ->
+                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.fundId, it.note) }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val parentAmountPaise: StateFlow<Long> = txnIdFlow
+        .flatMapLatest { id ->
+            if (id.isNullOrBlank()) flowOf(0L)
+            else transactionRepository.observeSplitGroup(id).map { parts ->
+                parts.sumOf { it.amountPaise }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     fun load(id: String) {
         txnIdFlow.value = id
         viewModelScope.launch { _txn.value = transactionRepository.getById(id) }
     }
 
-    suspend fun saveSplits(lines: List<TransactionSplit>): Result<Unit> {
+    suspend fun saveSplit(parts: List<SplitPart>): Result<Unit> {
         val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
-        val result = transactionRepository.setSplits(id, lines)
+        val result = transactionRepository.saveSplit(id, parts)
         if (result.isSuccess) {
             _txn.value = transactionRepository.getById(id)
         }
-        return result
+        return result.map { }
     }
 
-    suspend fun clearSplits(): Result<Unit> {
+    suspend fun mergeSplitGroup(): Result<Unit> {
         val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
-        val result = transactionRepository.clearSplits(id)
-        if (result.isSuccess) {
-            _txn.value = transactionRepository.getById(id)
-        }
-        return result
+        return transactionRepository.mergeSplitGroup(id)
     }
 }

@@ -142,6 +142,9 @@ class MainActivity : ComponentActivity() {
                 (it and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
                     android.content.res.Configuration.UI_MODE_NIGHT_YES
             }
+        // Matched open/close motion when launched from a home-screen widget
+        // (open enter is also applied via ActivityOptions in OpenAppAction).
+        applyWidgetActivityTransitions(intent)
         requestStartupPermissions()
         consumeIntent(intent)
         setContent {
@@ -505,8 +508,33 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        applyWidgetActivityTransitions(intent)
         consumeIntent(intent)
         intentTick.value++
+    }
+
+    /**
+     * Soft scale/fade when the activity is opened from a Glance widget and when it
+     * is finished back to the launcher. Open enter is also set via
+     * [ActivityOptions] in [com.krtky.financetracker.widget.OpenAppAction].
+     */
+    private fun applyWidgetActivityTransitions(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_FROM_WIDGET, false) != true) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(
+                OVERRIDE_TRANSITION_OPEN,
+                R.anim.widget_open_enter,
+                R.anim.widget_open_exit,
+            )
+            overrideActivityTransition(
+                OVERRIDE_TRANSITION_CLOSE,
+                R.anim.widget_close_enter,
+                R.anim.widget_close_exit,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(R.anim.widget_open_enter, R.anim.widget_open_exit)
+        }
     }
 
     private fun consumeIntent(intent: Intent?) {
@@ -532,6 +560,10 @@ class MainActivity : ComponentActivity() {
             needed += Manifest.permission.POST_NOTIFICATIONS
         }
         if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    companion object {
+        const val EXTRA_FROM_WIDGET = "from_widget"
     }
 }
 

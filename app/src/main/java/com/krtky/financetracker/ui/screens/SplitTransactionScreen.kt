@@ -57,8 +57,8 @@ import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.Money
+import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
-import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
@@ -91,6 +91,7 @@ fun SplitTransactionScreen(
     val categories by vm.categories.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
     val parent = txn
+    val parentAmount by vm.parentAmountPaise.collectAsStateWithLifecycle()
 
     if (parent == null) {
         Column(
@@ -125,14 +126,14 @@ fun SplitTransactionScreen(
     }
 
     SplitEditorScreen(
-        parentAmountPaise = parent.amountPaise,
+        parentAmountPaise = parentAmount,
         initialSplits = splits,
         categories = categories,
         funds = funds,
         onBack = onBack,
         allowClear = splits.isNotEmpty(),
-        onSave = { lines -> vm.saveSplits(lines) },
-        onClear = { vm.clearSplits() },
+        onSave = { lines -> vm.saveSplit(lines) },
+        onClear = { vm.mergeSplitGroup() },
     )
 }
 
@@ -144,13 +145,13 @@ fun SplitTransactionScreen(
 @Composable
 fun SplitEditorScreen(
     parentAmountPaise: Long,
-    initialSplits: List<TransactionSplit>,
+    initialSplits: List<SplitPart>,
     categories: List<Category>,
     funds: List<FundBalance>,
     onBack: () -> Unit,
     allowClear: Boolean = false,
     saveLabel: String = "Save splits",
-    onSave: suspend (List<TransactionSplit>) -> Result<Unit>,
+    onSave: suspend (List<SplitPart>) -> Result<Unit>,
     onClear: (suspend () -> Result<Unit>)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -165,7 +166,7 @@ fun SplitEditorScreen(
                 initialSplits.forEach { s ->
                     add(
                         SplitDraft(
-                            localId = s.id.ifBlank { UUID.randomUUID().toString() },
+                            localId = UUID.randomUUID().toString(),
                             amountText = if (s.amountPaise > 0) {
                                 "%.2f".format(Locale.US, s.amountPaise / 100.0)
                             } else {
@@ -261,14 +262,12 @@ fun SplitEditorScreen(
                                 saving = true
                                 error = null
                                 val lines = drafts.mapIndexed { index, d ->
-                                    TransactionSplit(
-                                        id = d.localId,
+                                    SplitPart(
                                         amountPaise = amounts[index],
                                         categoryId = d.categoryId,
                                         counterparty = d.counterparty.ifBlank { null },
                                         fundId = d.fundId,
                                         note = d.note.ifBlank { null },
-                                        sortOrder = index,
                                     )
                                 }
                                 val result = onSave(lines)

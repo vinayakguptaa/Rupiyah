@@ -142,41 +142,6 @@ data class NamedAmount(
     val netPaise: Long get() = debitPaise - creditPaise
 }
 
-/**
- * Allocation under a parent transaction. Parent stays bank truth (amount, account, date).
- * Sum of split amounts must equal parent amount. Reports use splits when present.
- */
-data class TransactionSplit(
-    val id: String = "",
-    val transactionId: String = "",
-    val amountPaise: Long,
-    val categoryId: Long? = null,
-    val counterparty: String? = null,
-    val fundId: Long? = null,
-    val note: String? = null,
-    val sortOrder: Int = 0,
-    val categoryName: String? = null,
-    val fundName: String? = null,
-)
-
-/**
- * One report row: either a split line or the unsplit parent.
- * Never use parent + splits together.
- */
-data class EffectiveAllocation(
-    val transactionId: String,
-    val type: TransactionType,
-    val amountPaise: Long,
-    val categoryId: Long?,
-    val counterparty: String?,
-    val fundId: Long?,
-    val occurredAt: Long,
-    val kind: TransactionKind,
-    val isSplit: Boolean = false,
-    val splitId: String? = null,
-    val note: String? = null,
-)
-
 /** Validation helpers for split editor (pure; unit-testable). */
 object SplitRules {
     /** Null if valid; otherwise a short user-facing reason. */
@@ -194,6 +159,20 @@ object SplitRules {
     fun remainingPaise(parentAmountPaise: Long, splitAmounts: List<Long>): Long =
         parentAmountPaise - splitAmounts.sum()
 }
+
+/**
+ * One line of a split: amount must be > 0; parts must sum to the parent.
+ *
+ * Splitting replaces the original transaction with standalone child rows
+ * that share a [Transaction.splitGroupId]; the parent is soft-deleted.
+ */
+data class SplitPart(
+    val amountPaise: Long,
+    val categoryId: Long? = null,
+    val counterparty: String? = null,
+    val fundId: Long? = null,
+    val note: String? = null,
+)
 
 data class Transaction(
     val id: String,
@@ -241,10 +220,8 @@ data class Transaction(
     val accountName: String? = null,
     /** Relative path under app files (`receipts/…`) or content URI string. */
     val receiptUri: String? = null,
-    /** True when this parent has one or more split lines. */
-    val hasSplits: Boolean = false,
-    /** Split line count (0 if unsplit). */
-    val splitCount: Int = 0,
+    /** Shared id for parts created by [com.krtky.financetracker.data.repository.TransactionRepository.splitTransaction]; null if not a split child. */
+    val splitGroupId: String? = null,
 ) {
     /** Display name for party / merchant. */
     fun displayName(): String? =
@@ -253,8 +230,6 @@ data class Transaction(
 
     /**
      * True when the parent still needs a category.
-     * Split parents are stamped [ClassificationStatus.CLASSIFIED] when any line has a
-     * category ([TransactionRepository.setSplits]); clear-splits re-opens PENDING if needed.
      */
     fun needsClassification(): Boolean =
         categoryId == null &&
@@ -268,8 +243,8 @@ data class Transaction(
 
     fun isTabTransfer(): Boolean = kind == TransactionKind.TAB_TRANSFER
 
-    /** Parent amount is bank truth and locked while splits exist. */
-    fun amountLocked(): Boolean = hasSplits || splitCount > 0
+    /** True when this row is one leg of a split group (created by splitting). */
+    fun isSplitPart(): Boolean = !splitGroupId.isNullOrBlank()
 }
 
 data class TrustedSender(

@@ -11,9 +11,9 @@ import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.domain.model.Money
+import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionSource
-import com.krtky.financetracker.domain.model.TransactionSplit
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -71,7 +71,7 @@ class AddCashViewModel @Inject constructor(
         addToFund: Boolean,
         occurredAt: Long = System.currentTimeMillis(),
         receiptLocalUri: Uri? = null,
-        splits: List<TransactionSplit> = emptyList(),
+        splits: List<SplitPart> = emptyList(),
     ): String? {
         val money = Money.fromRupeesString(amountText) ?: return null
         if (splits.isNotEmpty()) {
@@ -128,7 +128,7 @@ class AddCashViewModel @Inject constructor(
         }
         transactionRepository.insertManualWithSplits(
             txn = txn.copy(fundId = resolvedFundId),
-            splits = splits.map { it.copy(transactionId = id) },
+            parts = splits,
             addToFund = resolvedFundId != null,
         )
         userPreferences.setLastUsedDefaults(

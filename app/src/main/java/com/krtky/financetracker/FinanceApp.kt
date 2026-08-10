@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
+import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.notification.ClassificationNotifier
 import com.krtky.financetracker.workers.WorkScheduler
 import dagger.hilt.android.HiltAndroidApp
@@ -21,6 +22,7 @@ class FinanceApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var categoryRepository: CategoryRepository
     @Inject lateinit var accountRepository: AccountRepository
+    @Inject lateinit var transactionRepository: TransactionRepository
     @Inject lateinit var classificationNotifier: ClassificationNotifier
     @Inject lateinit var userPreferences: UserPreferences
 
@@ -41,6 +43,8 @@ class FinanceApp : Application(), Configuration.Provider {
             if (active.joinToString(",") != banks.joinToString(",")) {
                 userPreferences.setBankAccounts(active.joinToString(","))
             }
+            // Rebuild fund ledgers after a migration (split parents are now child rows).
+            runCatching { transactionRepository.repairAllFundLedgers() }
             // Email ingest removed from product path — SMS + CSV + manual only.
             // Prime widgets on cold start so they are not stuck on empty chrome.
             runCatching {

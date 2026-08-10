@@ -48,6 +48,7 @@ data class FundEntity(
         Index(value = ["fundId"]),
         Index(value = ["accountId"]),
         Index(value = ["transferGroupId"]),
+        Index(value = ["splitGroupId"]),
         Index(value = ["deletedAt"]),
     ]
 )
@@ -89,6 +90,8 @@ data class TransactionEntity(
     val version: Int = 1,
     /** Relative path under app files (`receipts/…`) or content URI string. */
     val receiptUri: String? = null,
+    /** Shared id for split-transaction parts; null if not a split child. */
+    val splitGroupId: String? = null,
 )
 
 @Entity(tableName = "fund_ledger")
@@ -101,26 +104,6 @@ data class FundLedgerEntity(
     val balanceAfterPaise: Long,
     val note: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-)
-
-/** Allocations under a parent transaction (Phase 3 splits). */
-@Entity(
-    tableName = "transaction_splits",
-    indices = [
-        Index(value = ["transactionId"]),
-        Index(value = ["categoryId"]),
-        Index(value = ["fundId"]),
-    ],
-)
-data class TransactionSplitEntity(
-    @PrimaryKey val id: String,
-    val transactionId: String,
-    val amountPaise: Long,
-    val categoryId: Long? = null,
-    val counterparty: String? = null,
-    val fundId: Long? = null,
-    val note: String? = null,
-    val sortOrder: Int = 0,
 )
 
 @Entity(

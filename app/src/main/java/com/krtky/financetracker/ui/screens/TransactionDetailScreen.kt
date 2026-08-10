@@ -384,7 +384,6 @@ fun TransactionDetailScreen(
     }
     val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
     val fundName = funds.firstOrNull { it.fund.id == t.fundId }?.fund?.name
-    val amountLocked = t.amountLocked() || splits.isNotEmpty()
     val canSplit = !t.isSelfTransfer()
 
     Scaffold(
@@ -589,7 +588,7 @@ fun TransactionDetailScreen(
                             }
                         }
                     }
-                    if (fundName != null && splits.isEmpty()) {
+                    if (fundName != null) {
                         InfoRow(
                             icon = Icons.Default.AccountBalance,
                             label = "Tab",
@@ -597,6 +596,7 @@ fun TransactionDetailScreen(
                         )
                     }
                     if (canSplit) {
+                        val groupSize = if (t.isSplitPart()) splits.size + 1 else splits.size
                         Surface(
                             shape = RoundedCornerShape(18.dp),
                             color = scheme.surfaceContainerHigh,
@@ -622,7 +622,7 @@ fun TransactionDetailScreen(
                                             } else {
                                                 stringResource(
                                                     R.string.split_lines_summary,
-                                                    splits.size,
+                                                    groupSize,
                                                 )
                                             },
                                             style = MaterialTheme.typography.bodySmall,
@@ -652,15 +652,15 @@ fun TransactionDetailScreen(
                                     ) {
                                         Column(Modifier.weight(1f)) {
                                             Text(
-                                                line.categoryName
-                                                    ?: line.counterparty
-                                                    ?: line.fundName
+                                                line.counterparty
+                                                    ?: categories.firstOrNull { it.id == line.categoryId }?.name
+                                                    ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
                                                     ?: "Line",
                                                 style = MaterialTheme.typography.bodyMedium,
                                             )
                                             val bits = buildList {
                                                 line.counterparty?.takeIf { it.isNotBlank() }?.let { add(it) }
-                                                line.fundName?.let { add(it) }
+                                                funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name?.let { add(it) }
                                                 line.note?.takeIf { it.isNotBlank() }?.let { add(it) }
                                             }
                                             if (bits.isNotEmpty()) {
@@ -676,6 +676,20 @@ fun TransactionDetailScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Medium,
                                         )
+                                    }
+                                }
+                                if (t.isSplitPart()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            haptics.select()
+                                            scope.launch {
+                                                vm.clearSplits()
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(18.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(stringResource(R.string.split_merge_action))
                                     }
                                 }
                             }
@@ -757,7 +771,7 @@ fun TransactionDetailScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Debit | Credit (locked while splits exist)
+                // Debit | Credit
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -770,10 +784,8 @@ fun TransactionDetailScreen(
                         selected = type == TransactionType.DEBIT,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            if (!amountLocked) {
-                                type = TransactionType.DEBIT
-                                haptics.select()
-                            }
+                            type = TransactionType.DEBIT
+                            haptics.select()
                         },
                     )
                     FormTypeSegment(
@@ -781,18 +793,9 @@ fun TransactionDetailScreen(
                         selected = type == TransactionType.CREDIT,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            if (!amountLocked) {
-                                type = TransactionType.CREDIT
-                                haptics.select()
-                            }
+                            type = TransactionType.CREDIT
+                            haptics.select()
                         },
-                    )
-                }
-                if (amountLocked) {
-                    Text(
-                        stringResource(R.string.split_lines_summary, splits.size.coerceAtLeast(t.splitCount)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
                     )
                 }
 
@@ -820,20 +823,15 @@ fun TransactionDetailScreen(
                     )
                 }
 
-                // Amount — app numpad only; locked while splits exist
+                // Amount — app numpad only
                 AmountRupeeField(
                     amount = amount,
                     onClick = {
-                        if (amountLocked) return@AmountRupeeField
                         haptics.select()
                         showAmountPad = true
                     },
                     shape = fieldShape,
-                    containerColor = if (amountLocked) {
-                        scheme.surfaceContainerHighest
-                    } else {
-                        fieldBg
-                    },
+                    containerColor = fieldBg,
                     amountStyle = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                     ),
@@ -1248,7 +1246,7 @@ fun TransactionDetailScreen(
         )
     }
 
-    if (showAmountPad && !amountLocked) {
+    if (showAmountPad) {
         AmountNumpadSheet(
             initialAmount = amount,
             title = "Edit amount",

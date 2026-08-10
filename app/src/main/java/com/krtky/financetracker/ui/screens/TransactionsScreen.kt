@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +76,7 @@ import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.util.downloadTransactionsCsv
 import com.krtky.financetracker.ui.viewmodel.TransactionsViewModel
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -105,6 +108,7 @@ fun TransactionsScreen(
     val haptics = rememberAppHaptics()
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val grouped = remember(items) { groupByMonth(items) }
 
     // Deep-link filters from Home (SavedStateHandle on transactions route)
@@ -407,7 +411,7 @@ fun TransactionsScreen(
                 .padding(bottom = NavContentInsets.bottom)
                 .padding(horizontal = Dimens.ScreenHorizontal),
             shape = MaterialTheme.shapes.extraLarge,
-            color = scheme.errorContainer,
+            color = scheme.surfaceContainerHigh,
             tonalElevation = 4.dp,
         ) {
             Row(
@@ -421,20 +425,40 @@ fun TransactionsScreen(
                     "${selectedIds.size} selected",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = scheme.onErrorContainer,
+                    color = scheme.onSurfaceVariant,
                 )
-                Button(
-                    onClick = {
-                        haptics.select()
-                        showDeleteConfirm = true
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = scheme.error,
-                        contentColor = scheme.onError,
-                    ),
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
-                    Text("Delete (${selectedIds.size})")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (selectedIds.size >= 2) {
+                        TextButton(
+                            onClick = {
+                                haptics.select()
+                                scope.launch {
+                                    val newId = vm.merge(selectedIds)
+                                    if (newId != null) {
+                                        selectedIds = emptySet()
+                                        onOpen(newId)
+                                    }
+                                }
+                            },
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ) {
+                            Text("Merge", color = scheme.primary, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Button(
+                        onClick = {
+                            haptics.select()
+                            showDeleteConfirm = true
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = scheme.error,
+                            contentColor = scheme.onError,
+                        ),
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Text("Delete (${selectedIds.size})")
+                    }
                 }
             }
         }

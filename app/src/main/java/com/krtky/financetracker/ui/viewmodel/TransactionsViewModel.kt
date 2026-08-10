@@ -94,4 +94,7 @@ class TransactionsViewModel @Inject constructor(
     fun delete(ids: Set<String>) = viewModelScope.launch {
         ids.forEach { transactionRepository.delete(it) }
     }
+
+    suspend fun merge(ids: Set<String>): String? =
+        transactionRepository.mergeTransactions(ids)
 }

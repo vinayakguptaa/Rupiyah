@@ -56,9 +56,10 @@
     <string name="empty_categories_action">Add transaction</string>
     <string name="split_action">Split</string>
     <string name="split_section_title">Splits</string>
-    <string name="split_lines_summary">%1$d lines · parent amount locked</string>
+    <string name="split_lines_summary">%1$d lines · separate transactions</string>
     <string name="split_edit">Edit splits</string>
     <string name="split_not_for_transfer">Self transfers cannot be split</string>
+    <string name="split_merge_action">Merge into one transaction</string>
     <string name="receipt_label">Receipt photo</string>
     <string name="receipt_attached">Receipt attached</string>
     <string name="receipt_none">No receipt</string>

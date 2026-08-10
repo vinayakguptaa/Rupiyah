@@ -8,7 +8,6 @@ import com.krtky.financetracker.data.local.db.CategoryEntity
 import com.krtky.financetracker.data.local.db.FundEntity
 import com.krtky.financetracker.data.local.db.FundLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
-import com.krtky.financetracker.data.local.db.TransactionSplitEntity
 import com.krtky.financetracker.data.local.db.TrustedSenderEntity
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
@@ -172,6 +171,7 @@ class BackupRepository @Inject constructor(
                                 put("isSkipped", t.isSkipped)
                                 put("kind", t.kind)
                                 put("transferGroupId", t.transferGroupId.orEmpty())
+                                put("splitGroupId", t.splitGroupId.orEmpty())
                                 put("rawDescription", t.rawDescription.orEmpty())
                                 put("classificationNotifiedAt", t.classificationNotifiedAt ?: -1L)
                                 put("latitude", t.latitude ?: 0.0)
@@ -187,21 +187,6 @@ class BackupRepository @Inject constructor(
                                 put("updatedAt", t.updatedAt)
                                 put("version", t.version)
                                 put("receiptUri", t.receiptUri.orEmpty())
-                            })
-                        }
-                    })
-                    val splits = db.transactionSplitDao().getAll()
-                    put("transaction_splits", buildJsonArray {
-                        splits.forEach { s ->
-                            add(buildJsonObject {
-                                put("id", s.id)
-                                put("transactionId", s.transactionId)
-                                put("amountPaise", s.amountPaise)
-                                put("categoryId", s.categoryId ?: -1L)
-                                put("counterparty", s.counterparty.orEmpty())
-                                put("fundId", s.fundId ?: -1L)
-                                put("note", s.note.orEmpty())
-                                put("sortOrder", s.sortOrder)
                             })
                         }
                     })
@@ -299,7 +284,6 @@ class BackupRepository @Inject constructor(
 
                 db.runInTransaction {
                     runBlocking {
-                        db.openHelper.writableDatabase.execSQL("DELETE FROM transaction_splits")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM transactions")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM categories")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM funds")
@@ -415,6 +399,8 @@ class BackupRepository @Inject constructor(
                                     kind = obj["kind"]?.jsonPrimitive?.content ?: "NORMAL",
                                     transferGroupId = obj["transferGroupId"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },
+                                    splitGroupId = obj["splitGroupId"]?.jsonPrimitive?.content
+                                        ?.takeIf { it.isNotBlank() },
                                     rawDescription = obj["rawDescription"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },
                                     classificationNotifiedAt = obj["classificationNotifiedAt"]
@@ -441,27 +427,6 @@ class BackupRepository @Inject constructor(
                                     receiptUri = obj["receiptUri"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },
                                 )
-                            )
-                        }
-
-                        // 8. Import splits (after parents)
-                        jsonObj["transaction_splits"]?.jsonArray?.forEach { item ->
-                            val obj = item.jsonObject
-                            val id = obj["id"]?.jsonPrimitive?.content.orEmpty()
-                            val txnId = obj["transactionId"]?.jsonPrimitive?.content.orEmpty()
-                            if (id.isBlank() || txnId.isBlank()) return@forEach
-                            db.transactionSplitDao().upsert(
-                                TransactionSplitEntity(
-                                    id = id,
-                                    transactionId = txnId,
-                                    amountPaise = obj["amountPaise"]?.jsonPrimitive?.long ?: 0L,
-                                    categoryId = obj["categoryId"]?.jsonPrimitive?.long?.takeIf { it != -1L },
-                                    counterparty = obj["counterparty"]?.jsonPrimitive?.content
-                                        ?.takeIf { it.isNotBlank() },
-                                    fundId = obj["fundId"]?.jsonPrimitive?.long?.takeIf { it != -1L },
-                                    note = obj["note"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
-                                    sortOrder = obj["sortOrder"]?.jsonPrimitive?.int ?: 0,
-                                ),
                             )
                         }
                     }

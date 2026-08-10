@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark Material 3-style widget picker previews (readable on dark launcher sheets) -->
+    <color name="widget_preview_surface">#1C1B1F</color>
+    <color name="widget_preview_surface_variant">#2B2930</color>
+    <color name="widget_preview_primary_container">#1B4332</color>
+    <color name="widget_preview_on_primary_container">#D8F3E4</color>
+    <color name="widget_preview_on_surface">#E6E1E5</color>
+    <color name="widget_preview_on_surface_variant">#CAC4D0</color>
+    <color name="widget_preview_income">#8BD47A</color>
+    <color name="widget_preview_expense">#FFB4AB</color>
+    <color name="widget_preview_outline">#948F99</color>
+    <color name="widget_preview_stroke">#33948F99</color>
+    <color name="widget_preview_progress_track">#3D3A42</color>
+    <color name="widget_preview_progress_fill">#81C995</color>
+    <color name="widget_preview_progress_fill_error">#FFB4AB</color>
+</resources>

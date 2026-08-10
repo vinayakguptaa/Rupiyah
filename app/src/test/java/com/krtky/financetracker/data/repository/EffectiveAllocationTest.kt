@@ -2,17 +2,20 @@ package com.krtky.financetracker.data.repository
 
 import com.google.common.truth.Truth.assertThat
 import com.krtky.financetracker.data.local.db.TransactionEntity
-import com.krtky.financetracker.data.local.db.TransactionSplitEntity
 import com.krtky.financetracker.domain.model.TransactionType
 import org.junit.Test
 
-/** Pure unit coverage for split → allocation expansion and report aggregation. */
+/**
+ * Pure unit coverage for split-part allocation expansion and report aggregation.
+ * Splits are parent-replacement rows sharing a splitGroupId; the parent itself is
+ * soft-deleted, so only the child rows contribute to reports.
+ */
 class EffectiveAllocationTest {
 
     @Test
     fun `unsplit parent becomes single allocation`() {
         val parent = sampleTxn(id = "p1", amount = 500_00L, type = "DEBIT", categoryId = 1L)
-        val allocs = expand(listOf(parent), emptyMap())
+        val allocs = expand(listOf(parent))
         assertThat(allocs).hasSize(1)
         assertThat(allocs[0].amountPaise).isEqualTo(500_00L)
         assertThat(allocs[0].isSplit).isFalse()
@@ -20,13 +23,15 @@ class EffectiveAllocationTest {
     }
 
     @Test
-    fun `splits replace parent amount and categories`() {
-        val parent = sampleTxn(id = "p1", amount = 1050_00L, type = "CREDIT", categoryId = null)
-        val splits = listOf(
-            TransactionSplitEntity("s1", "p1", 1000_00L, categoryId = 10L, counterparty = "FD"),
-            TransactionSplitEntity("s2", "p1", 50_00L, categoryId = 11L, counterparty = "Bank"),
+    fun `split children replace soft-deleted parent`() {
+        val parent = sampleTxn(
+            id = "p1", amount = 1050_00L, type = "CREDIT", categoryId = null, deletedAt = 2_000L,
         )
-        val allocs = expand(listOf(parent), mapOf("p1" to splits))
+        val children = listOf(
+            sampleChild(id = "s1", group = "p1", amount = 1000_00L, type = "CREDIT", categoryId = 10L, counterparty = "FD"),
+            sampleChild(id = "s2", group = "p1", amount = 50_00L, type = "CREDIT", categoryId = 11L, counterparty = "Bank"),
+        )
+        val allocs = expand(listOf(parent) + children)
         assertThat(allocs).hasSize(2)
         assertThat(allocs.sumOf { it.amountPaise }).isEqualTo(1050_00L)
         assertThat(allocs.all { it.isSplit }).isTrue()
@@ -41,7 +46,7 @@ class EffectiveAllocationTest {
             type = "DEBIT",
             kind = "SELF_TRANSFER",
         )
-        val allocs = expand(listOf(parent), emptyMap())
+        val allocs = expand(listOf(parent))
         assertThat(allocs).isEmpty()
     }
 
@@ -53,18 +58,18 @@ class EffectiveAllocationTest {
             type = "CREDIT",
             kind = "TAB_TRANSFER",
         )
-        val allocs = expand(listOf(parent), emptyMap())
+        val allocs = expand(listOf(parent))
         assertThat(allocs).isEmpty()
     }
 
     @Test
     fun `lifestyle excludes investment split lines`() {
-        val parent = sampleTxn(id = "p1", amount = 1050_00L, type = "CREDIT")
-        val splits = listOf(
-            TransactionSplitEntity("s1", "p1", 1000_00L, categoryId = 99L, counterparty = "Zerodha"),
-            TransactionSplitEntity("s2", "p1", 50_00L, categoryId = 5L, counterparty = "SBI"),
+        val parent = sampleTxn(id = "p1", amount = 1050_00L, type = "CREDIT", deletedAt = 2_000L)
+        val children = listOf(
+            sampleChild(id = "s1", group = "p1", amount = 1000_00L, type = "CREDIT", categoryId = 99L, counterparty = "Zerodha"),
+            sampleChild(id = "s2", group = "p1", amount = 50_00L, type = "CREDIT", categoryId = 5L, counterparty = "SBI"),
         )
-        val allocs = expand(listOf(parent), mapOf("p1" to splits))
+        val allocs = expand(listOf(parent) + children)
         val investmentIds = setOf(99L)
         val lifestyleDebits = allocs.filter {
             it.type == TransactionType.DEBIT &&
@@ -73,12 +78,12 @@ class EffectiveAllocationTest {
         // credit parent — lifestyle debits empty
         assertThat(lifestyleDebits).isEmpty()
 
-        val debitParent = sampleTxn(id = "d1", amount = 200_00L, type = "DEBIT")
-        val debitSplits = listOf(
-            TransactionSplitEntity("a", "d1", 150_00L, categoryId = 1L),
-            TransactionSplitEntity("b", "d1", 50_00L, categoryId = 99L),
+        val debitParent = sampleTxn(id = "d1", amount = 200_00L, type = "DEBIT", deletedAt = 2_000L)
+        val debitChildren = listOf(
+            sampleChild(id = "a", group = "d1", amount = 150_00L, categoryId = 1L),
+            sampleChild(id = "b", group = "d1", amount = 50_00L, categoryId = 99L),
         )
-        val debitAllocs = expand(listOf(debitParent), mapOf("d1" to debitSplits))
+        val debitAllocs = expand(listOf(debitParent) + debitChildren)
         val lifestyle = debitAllocs.filter {
             it.type == TransactionType.DEBIT &&
                 (it.categoryId == null || it.categoryId !in investmentIds)
@@ -93,12 +98,12 @@ class EffectiveAllocationTest {
     @Test
     fun `lifestyle credits exclude investment redemptions`() {
         val investmentIds = setOf(99L)
-        val parent = sampleTxn(id = "c1", amount = 1100_00L, type = "CREDIT")
-        val splits = listOf(
-            TransactionSplitEntity("s1", "c1", 1000_00L, categoryId = 99L, counterparty = "Zerodha"),
-            TransactionSplitEntity("s2", "c1", 100_00L, categoryId = 5L, counterparty = "Salary"),
+        val parent = sampleTxn(id = "c1", amount = 1100_00L, type = "CREDIT", deletedAt = 2_000L)
+        val children = listOf(
+            sampleChild(id = "s1", group = "c1", amount = 1000_00L, type = "CREDIT", categoryId = 99L, counterparty = "Zerodha"),
+            sampleChild(id = "s2", group = "c1", amount = 100_00L, type = "CREDIT", categoryId = 5L, counterparty = "Salary"),
         )
-        val allocs = expand(listOf(parent), mapOf("c1" to splits))
+        val allocs = expand(listOf(parent) + children)
         // Mirrors TransactionRepository.cashflowMetricsFromAllocations credit filter
         val credits = allocs.filter {
             it.type == TransactionType.CREDIT &&
@@ -111,6 +116,18 @@ class EffectiveAllocationTest {
         assertThat(redeemed.sumOf { it.amountPaise }).isEqualTo(1000_00L)
     }
 
+    @Test
+    fun `deleted split children are excluded`() {
+        val parent = sampleTxn(id = "p1", amount = 100_00L, type = "DEBIT", deletedAt = 2_000L)
+        val children = listOf(
+            sampleChild(id = "s1", group = "p1", amount = 60_00L, categoryId = 1L),
+            sampleChild(id = "s2", group = "p1", amount = 40_00L, categoryId = 2L, deletedAt = 3_000L),
+        )
+        val allocs = expand(listOf(parent) + children)
+        assertThat(allocs).hasSize(1)
+        assertThat(allocs[0].amountPaise).isEqualTo(60_00L)
+    }
+
     private data class Alloc(
         val amountPaise: Long,
         val categoryId: Long?,
@@ -119,10 +136,7 @@ class EffectiveAllocationTest {
         val counterparty: String?,
     )
 
-    private fun expand(
-        entities: List<TransactionEntity>,
-        splitsByTxn: Map<String, List<TransactionSplitEntity>>,
-    ): List<Alloc> {
+    private fun expand(entities: List<TransactionEntity>): List<Alloc> {
         val out = mutableListOf<Alloc>()
         for (e in entities) {
             if (e.deletedAt != null) continue
@@ -131,33 +145,41 @@ class EffectiveAllocationTest {
                 "CREDIT", "INCOME" -> TransactionType.CREDIT
                 else -> TransactionType.DEBIT
             }
-            val splits = splitsByTxn[e.id].orEmpty()
-            if (splits.isNotEmpty()) {
-                for (s in splits) {
-                    out.add(
-                        Alloc(
-                            amountPaise = s.amountPaise,
-                            categoryId = s.categoryId,
-                            type = type,
-                            isSplit = true,
-                            counterparty = s.counterparty,
-                        ),
-                    )
-                }
-            } else {
-                out.add(
-                    Alloc(
-                        amountPaise = e.amountPaise,
-                        categoryId = e.categoryId,
-                        type = type,
-                        isSplit = false,
-                        counterparty = e.counterparty ?: e.merchant,
-                    ),
-                )
-            }
+            out.add(
+                Alloc(
+                    amountPaise = e.amountPaise,
+                    categoryId = e.categoryId,
+                    type = type,
+                    isSplit = e.splitGroupId != null,
+                    counterparty = e.counterparty ?: e.merchant,
+                ),
+            )
         }
         return out
     }
+
+    private fun sampleChild(
+        id: String,
+        group: String,
+        amount: Long,
+        categoryId: Long? = null,
+        type: String = "DEBIT",
+        counterparty: String? = null,
+        deletedAt: Long? = null,
+    ) = TransactionEntity(
+        id = id,
+        type = type,
+        amountPaise = amount,
+        occurredAt = 1_000L,
+        recordedAt = 1_000L,
+        categoryId = categoryId,
+        counterparty = counterparty,
+        source = "MANUAL",
+        kind = "NORMAL",
+        splitGroupId = group,
+        updatedAt = 1_000L,
+        deletedAt = deletedAt,
+    )
 
     private fun sampleTxn(
         id: String,
@@ -165,6 +187,7 @@ class EffectiveAllocationTest {
         type: String,
         categoryId: Long? = null,
         kind: String = "NORMAL",
+        deletedAt: Long? = null,
     ) = TransactionEntity(
         id = id,
         type = type,
@@ -175,5 +198,6 @@ class EffectiveAllocationTest {
         source = "MANUAL",
         kind = kind,
         updatedAt = 1_000L,
+        deletedAt = deletedAt,
     )
 }

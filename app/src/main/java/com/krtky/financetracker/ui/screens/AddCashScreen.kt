@@ -69,7 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.Money
-import com.krtky.financetracker.domain.model.TransactionSplit
+import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.AmountNumpadSheet
 import com.krtky.financetracker.ui.components.AmountRupeeField
@@ -134,7 +134,7 @@ fun AddCashScreen(
     var moreExpanded by remember { mutableStateOf(false) }
     var appliedLastUsed by remember { mutableStateOf(false) }
     /** Draft splits composed on Add; saved with the parent on submit. */
-    var draftSplits by remember { mutableStateOf<List<TransactionSplit>>(emptyList()) }
+    var draftSplits by remember { mutableStateOf<List<SplitPart>>(emptyList()) }
     /** Full-screen split editor (not a sheet). */
     var editingSplits by remember { mutableStateOf(false) }
     // Default account: last used → default pay/digital → Cash → first account
@@ -743,7 +743,7 @@ fun AddCashScreen(
                                         if (draftSplits.isEmpty()) {
                                             "Optional · break amount across categories, names, or tabs"
                                         } else {
-                                            "${draftSplits.size} lines · parent amount locked on save"
+                                            "${draftSplits.size} lines · saved as separate transactions"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = scheme.onSurfaceVariant,
@@ -770,8 +770,7 @@ fun AddCashScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
-                                        line.categoryName
-                                            ?: line.counterparty
+                                        line.counterparty
                                             ?: categories.firstOrNull { it.id == line.categoryId }?.name
                                             ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
                                             ?: "Line",

@@ -427,62 +427,6 @@ interface PendingClassificationDao {
 }
 
 @Dao
-interface TransactionSplitDao {
-    @Query(
-        """
-        SELECT * FROM transaction_splits
-        WHERE transactionId = :transactionId
-        ORDER BY sortOrder ASC, id ASC
-        """,
-    )
-    fun observeForTransaction(transactionId: String): Flow<List<TransactionSplitEntity>>
-
-    @Query(
-        """
-        SELECT * FROM transaction_splits
-        WHERE transactionId = :transactionId
-        ORDER BY sortOrder ASC, id ASC
-        """,
-    )
-    suspend fun getForTransaction(transactionId: String): List<TransactionSplitEntity>
-
-    @Query("SELECT * FROM transaction_splits ORDER BY transactionId, sortOrder, id")
-    fun observeAll(): Flow<List<TransactionSplitEntity>>
-
-    @Query("SELECT * FROM transaction_splits ORDER BY transactionId, sortOrder, id")
-    suspend fun getAll(): List<TransactionSplitEntity>
-
-    @Query("SELECT * FROM transaction_splits WHERE fundId = :fundId")
-    suspend fun getForFund(fundId: Long): List<TransactionSplitEntity>
-
-    @Query(
-        """
-        SELECT transactionId, COUNT(*) AS cnt
-        FROM transaction_splits
-        GROUP BY transactionId
-        """,
-    )
-    fun observeSplitCounts(): Flow<List<SplitCountRow>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(entity: TransactionSplitEntity)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAll(entities: List<TransactionSplitEntity>)
-
-    @Query("DELETE FROM transaction_splits WHERE transactionId = :transactionId")
-    suspend fun deleteForTransaction(transactionId: String)
-
-    @Query("DELETE FROM transaction_splits WHERE id = :id")
-    suspend fun deleteById(id: String)
-}
-
-data class SplitCountRow(
-    val transactionId: String,
-    val cnt: Int,
-)
-
-@Dao
 interface SyncOutboxDao {
     @Insert
     suspend fun insert(entity: SyncOutboxEntity): Long

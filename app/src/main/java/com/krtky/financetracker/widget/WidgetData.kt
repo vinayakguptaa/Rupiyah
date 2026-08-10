@@ -52,23 +52,47 @@ internal fun monthLabel(now: Long = System.currentTimeMillis()): String =
 internal fun shortDate(ts: Long): String =
     SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(ts))
 
+/**
+ * MoM percent matching home [com.krtky.financetracker.ui.screens.HomeScreen] `pctChange`.
+ * Returns null only when both current and previous are zero (still shows 0% on hero — we return 0f).
+ */
+internal fun pctChangeValue(current: Long, previous: Long): Float {
+    if (previous == 0L && current == 0L) return 0f
+    if (previous == 0L) return 100f
+    return ((current - previous).toFloat() / previous.toFloat()) * 100f
+}
+
+/** Compact arrow label like hero: ↑12% / ↓8%. */
+internal fun pctChangeLabel(pct: Float): String {
+    val isUp = pct >= 0f
+    return "${if (isUp) "↑" else "↓"}${abs(pct).toInt()}%"
+}
+
+/** Legacy string form used by any other callers. */
 internal fun pctChange(current: Long, previous: Long): String {
     if (previous == 0L && current == 0L) return ""
-    if (previous == 0L) return "↑100%"
-    val pct = ((current - previous).toFloat() / previous.toFloat() * 100f)
-    val arrow = if (pct >= 0) "↑" else "↓"
-    return "$arrow${abs(pct).toInt()}%"
+    return pctChangeLabel(pctChangeValue(current, previous))
 }
+
+/** Full INR (with paise) — same as home hero via [com.krtky.financetracker.domain.model.Money]. */
+internal fun formatHeroMoney(paise: Long): String =
+    com.krtky.financetracker.domain.model.Money(paise).formatInr()
 
 data class OverviewSnapshot(
     val balance: String,
     val income: String,
     val expense: String,
+    /** e.g. "↑100%" — empty if no previous month to compare. */
     val incomePct: String,
     val expensePct: String,
-    val lastIncome: String,
-    val lastExpense: String,
-    val monthSubtitle: String,
+    val incomeIsUp: Boolean,
+    val expenseIsUp: Boolean,
+    /** Green when the change is favorable (income up / expense down). */
+    val incomeChangeGood: Boolean,
+    val expenseChangeGood: Boolean,
+    /** Full caption: "Compared to ₹X last month" or empty. */
+    val incomeCompared: String,
+    val expenseCompared: String,
 )
 
 data class TxnRow(
@@ -135,14 +159,17 @@ internal object WidgetDataLoader {
 
     private fun emptySnapshots() = WidgetSnapshots(
         overview = OverviewSnapshot(
-            balance = "₹0",
-            income = "₹0",
-            expense = "₹0",
+            balance = formatHeroMoney(0L),
+            income = formatHeroMoney(0L),
+            expense = formatHeroMoney(0L),
             incomePct = "",
             expensePct = "",
-            lastIncome = "",
-            lastExpense = "",
-            monthSubtitle = "Income − expenses · ${monthLabel()}",
+            incomeIsUp = true,
+            expenseIsUp = true,
+            incomeChangeGood = true,
+            expenseChangeGood = true,
+            incomeCompared = "",
+            expenseCompared = "",
         ),
         transactions = emptyList(),
         funds = emptyList(),
@@ -154,17 +181,25 @@ internal object WidgetDataLoader {
         monthlyTrend: List<MonthlyTrend>,
     ): OverviewSnapshot {
         val prev = monthlyTrend.getOrNull(monthlyTrend.lastIndex - 1)
-        val incomePct = prev?.let { pctChange(summary.incomePaise, it.incomePaise) }.orEmpty()
-        val expensePct = prev?.let { pctChange(summary.expensePaise, it.expensePaise) }.orEmpty()
+        val incomePctVal = prev?.let { pctChangeValue(summary.incomePaise, it.incomePaise) }
+        val expensePctVal = prev?.let { pctChangeValue(summary.expensePaise, it.expensePaise) }
+        val incomeIsUp = (incomePctVal ?: 0f) >= 0f
+        val expenseIsUp = (expensePctVal ?: 0f) >= 0f
+        val lastInc = prev?.let { formatHeroMoney(it.incomePaise) }
+        val lastExp = prev?.let { formatHeroMoney(it.expensePaise) }
         return OverviewSnapshot(
-            balance = formatWidgetMoney(summary.netPaise),
-            income = formatWidgetMoney(summary.incomePaise),
-            expense = formatWidgetMoney(summary.expensePaise),
-            incomePct = incomePct,
-            expensePct = expensePct,
-            lastIncome = prev?.let { formatWidgetMoney(it.incomePaise) }.orEmpty(),
-            lastExpense = prev?.let { formatWidgetMoney(it.expensePaise) }.orEmpty(),
-            monthSubtitle = "Income − expenses · ${monthLabel()}",
+            balance = formatHeroMoney(summary.netPaise),
+            income = formatHeroMoney(summary.incomePaise),
+            expense = formatHeroMoney(summary.expensePaise),
+            incomePct = incomePctVal?.let { pctChangeLabel(it) }.orEmpty(),
+            expensePct = expensePctVal?.let { pctChangeLabel(it) }.orEmpty(),
+            incomeIsUp = incomeIsUp,
+            expenseIsUp = expenseIsUp,
+            // Income: up is good; expense: up is bad
+            incomeChangeGood = incomeIsUp,
+            expenseChangeGood = !expenseIsUp,
+            incomeCompared = lastInc?.let { "Compared to $it last month" }.orEmpty(),
+            expenseCompared = lastExp?.let { "Compared to $it last month" }.orEmpty(),
         )
     }
 
