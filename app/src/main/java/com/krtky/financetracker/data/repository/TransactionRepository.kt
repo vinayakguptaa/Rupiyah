@@ -441,6 +441,9 @@ class TransactionRepository @Inject constructor(
         }
         SplitRules.validateSum(txn.amountPaise, parts.map { it.amountPaise })
             ?.let { throw IllegalArgumentException(it) }
+        if (parts.any { it.amountPaise <= 0L }) {
+            throw IllegalArgumentException("Each part must be greater than zero")
+        }
         val partyBase = txn.counterparty ?: txn.merchant
         val parentLabel = partyBase ?: "transaction"
         val firstId = parts.first().let { firstPart ->
@@ -845,7 +848,7 @@ class TransactionRepository @Inject constructor(
             .map { it.id }
             .toSet()
         val entities = txnDao.observeFiltered("", null, null, null, from, to, null).first()
-        val rows = entities.filter { it.deletedAt == null && !isExcludedFromCashflowKind(it.kind) }
+        val rows = entities.filter { !isExcludedFromCashflowKind(it.kind) }
         val lifestyle = rows.filter {
             !isCreditType(it.type) &&
                 (it.categoryId == null || it.categoryId !in investmentIds)
@@ -1114,7 +1117,7 @@ class TransactionRepository @Inject constructor(
         // Split parts are standalone rows, so fund linking is a direct row filter.
         val hits = txnDao.getAllNonDeleted()
             .asSequence()
-            .filter { it.deletedAt == null && it.kind != TransactionKind.SELF_TRANSFER.name }
+            .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
             .filter { it.fundId == fundId }
             .sortedWith(compareBy({ it.occurredAt }, { it.id }))
 

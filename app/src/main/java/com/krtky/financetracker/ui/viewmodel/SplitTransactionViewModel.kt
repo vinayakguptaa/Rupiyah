@@ -58,7 +58,9 @@ class SplitTransactionViewModel @Inject constructor(
         val id = _txn.value?.id ?: return Result.failure(IllegalStateException("No transaction"))
         val result = transactionRepository.saveSplit(id, parts)
         if (result.isSuccess) {
-            _txn.value = transactionRepository.getById(id)
+            val groupId = result.getOrThrow()
+            val parent = transactionRepository.getById(groupId)
+            _txn.value = parent
         }
         return result.map { }
     }

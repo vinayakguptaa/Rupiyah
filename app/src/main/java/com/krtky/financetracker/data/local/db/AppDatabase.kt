@@ -396,7 +396,10 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent(),
                 )
 
-                // Remainder child for any amount the split lines did not cover.
+                // Remainder child for any amount the split lines did not cover (positive or negative).
+                // If split lines sum != parent amount, create a remainder child so the group
+                // total matches the original parent amount. This catches data integrity issues
+                // where old split lines over- or under-summed.
                 db.execSQL(
                     """
                     INSERT INTO `transactions` (
@@ -424,7 +427,7 @@ abstract class AppDatabase : RoomDatabase() {
                         $now, 1, p.`receiptUri`, p.`id`
                     FROM `transactions` p
                     WHERE p.`id` IN (SELECT DISTINCT s.`transactionId` FROM `transaction_splits` s)
-                      AND p.`amountPaise` > COALESCE((
+                      AND p.`amountPaise` != COALESCE((
                             SELECT SUM(s.`amountPaise`) FROM `transaction_splits` s
                             WHERE s.`transactionId` = p.`id`
                       ), 0)
