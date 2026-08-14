@@ -28,35 +28,6 @@ class AdditionalDaoTest {
         db.close()
     }
 
-    // -- EmailIngestDao --
-
-    @Test
-    fun emailIngest_insertAndFindByMessageId() = runBlocking {
-        val dao = db.emailIngestDao()
-        dao.insert(EmailIngestLogEntity(messageId = "msg-1", sender = "bank@test.com", subject = "Payment", receivedAt = 1000L, processStatus = "NEW"))
-        val found = dao.findByMessageId("msg-1")
-        assertThat(found).isNotNull()
-        assertThat(found!!.sender).isEqualTo("bank@test.com")
-    }
-
-    @Test
-    fun emailIngest_ignoreDuplicateMessageId() = runBlocking {
-        val dao = db.emailIngestDao()
-        dao.insert(EmailIngestLogEntity(messageId = "dup", sender = "a@a.com", subject = "S1", receivedAt = 1L, processStatus = "NEW"))
-        val result = dao.insert(EmailIngestLogEntity(messageId = "dup", sender = "b@b.com", subject = "S2", receivedAt = 2L, processStatus = "NEW"))
-        assertThat(result).isEqualTo(-1L)
-    }
-
-    @Test
-    fun emailIngest_updateAndObserveRecent() = runBlocking {
-        val dao = db.emailIngestDao()
-        dao.insert(EmailIngestLogEntity(messageId = "m1", sender = "s@b.com", subject = "Subj", receivedAt = 1000L, processStatus = "NEW"))
-        val inserted = dao.findByMessageId("m1")!!
-        dao.update(inserted.copy(processStatus = "PARSED"))
-        val updated = dao.findByMessageId("m1")
-        assertThat(updated!!.processStatus).isEqualTo("PARSED")
-    }
-
     // -- LocationSampleDao --
 
     @Test

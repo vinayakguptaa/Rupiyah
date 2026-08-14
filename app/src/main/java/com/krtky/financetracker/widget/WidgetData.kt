@@ -104,10 +104,10 @@ data class TxnRow(
 
 data class FundRow(
     val name: String,
-    val remaining: String,
-    val limit: String,
-    val ratio: Float,
-    val overspent: Boolean,
+    /** Open balance: + they owe you, − you owe them. */
+    val balance: String,
+    val owedToMe: Boolean,
+    val settled: Boolean,
 )
 
 data class SpendRow(
@@ -216,10 +216,9 @@ internal object WidgetDataLoader {
 
     private fun toFundRow(fb: FundBalance): FundRow = FundRow(
         name = fb.fund.name.take(22),
-        remaining = formatWidgetMoney(fb.balancePaise),
-        limit = formatWidgetMoney(fb.limitPaise()),
-        ratio = fb.remainingRatio(),
-        overspent = fb.isOverspent(),
+        balance = formatWidgetMoney(fb.balancePaise),
+        owedToMe = fb.theyOweYou(),
+        settled = fb.isSettled(),
     )
 
     private fun buildSpending(categories: List<CategorySpend>): List<SpendRow> {

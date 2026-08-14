@@ -11,17 +11,14 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
-import com.krtky.financetracker.data.email.EmailSource
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.BackupRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.data.repository.TrustedSenderRepository
 import com.krtky.financetracker.data.sheets.SheetsSyncService
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.TrustedSender
 import com.krtky.financetracker.location.LocationTrackingService
 import com.krtky.financetracker.ui.UiMessenger
 import com.krtky.financetracker.ui.theme.ColorSchemeStyle
@@ -49,7 +46,6 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val secureStore: SecureStore,
     private val userPreferences: UserPreferences,
-    private val trustedSenderRepository: TrustedSenderRepository,
     private val categoryRepository: CategoryRepository,
     private val accountRepository: AccountRepository,
     private val transactionRepository: TransactionRepository,
@@ -62,8 +58,6 @@ class SettingsViewModel @Inject constructor(
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status
 
-    val senders = trustedSenderRepository.observeAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories = categoryRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     /** Net balances keyed by account/payment method label (Cash, HDFC, …). */
@@ -81,11 +75,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 combine(
-                    userPreferences.emailPollEnabled,
                     userPreferences.locationEnabled,
                     userPreferences.sheetsSyncEnabled,
-                    userPreferences.emailSource,
-                ) { e, l, s, source -> arrayOf(e, l, s, source) },
+                ) { l, s -> Pair(l, s) },
                 combine(
                     userPreferences.smsEnabled,
                     userPreferences.smsSenders,
@@ -101,16 +93,12 @@ class SettingsViewModel @Inject constructor(
                     listOf(banks, defPay, defDigital, dev, delay)
                 },
             ) { main, sms, extra -> Triple(main, sms, extra) }.collect { (main, sms, extra) ->
-                val e = main[0] as Boolean
-                val l = main[1] as Boolean
-                val s = main[2] as Boolean
-                val source = main[3] as EmailSource
+                val l = main.first
+                val s = main.second
                 val cur = _state.value
                 _state.value = cur.copy(
-                    emailPoll = e,
                     location = l,
                     sheetsSync = s,
-                    emailSource = source,
                     smsEnabled = sms.first,
                     smsSenders = sms.second,
                     smsKeywords = sms.third,
@@ -186,10 +174,6 @@ class SettingsViewModel @Inject constructor(
         llmEnabled = secureStore.llmEnabled,
         llmBaseUrl = secureStore.llmBaseUrl,
         llmModel = secureStore.llmModel,
-        gmail = secureStore.gmailAddress.orEmpty(),
-        gmailPassSet = !secureStore.gmailAppPassword.isNullOrBlank(),
-        gmailOAuthConnected = false,
-        gmailOAuthEmail = "",
         sheetId = secureStore.sheetsSpreadsheetId.orEmpty(),
         sheetTokenSet = !secureStore.sheetsAccessToken.isNullOrBlank(),
         googleWebClientId = secureStore.googleWebClientId.orEmpty(),
@@ -203,10 +187,6 @@ class SettingsViewModel @Inject constructor(
             llmEnabled = s.llmEnabled,
             llmBaseUrl = s.llmBaseUrl,
             llmModel = s.llmModel,
-            gmail = s.gmail,
-            gmailPassSet = s.gmailPassSet,
-            gmailOAuthConnected = s.gmailOAuthConnected,
-            gmailOAuthEmail = s.gmailOAuthEmail,
             sheetId = s.sheetId,
             sheetTokenSet = s.sheetTokenSet,
             googleWebClientId = s.googleWebClientId,
@@ -280,11 +260,11 @@ class SettingsViewModel @Inject constructor(
         notifySaved(
             when {
                 enabled && !secureStore.llmApiKey.isNullOrBlank() ->
-                    "AI helper on — you can use bank email & SMS import"
+                    "AI helper on — you can use SMS import"
                 enabled ->
                     "AI helper on — paste your API key to finish"
                 else ->
-                    "AI helper off — bank email & SMS auto-import turned off"
+                    "AI helper off — SMS auto-import turned off"
             },
         )
     }
@@ -303,9 +283,9 @@ class SettingsViewModel @Inject constructor(
         refreshSecureFields()
         notifySaved(
             if (secureStore.isLlmReady()) {
-                "AI helper ready — bank email & SMS import unlocked"
+                "AI helper ready — SMS import unlocked"
             } else {
-                "AI helper saved — add a key to unlock email & SMS import"
+                "AI helper saved — add a key to unlock SMS import"
             },
         )
     }
@@ -315,50 +295,13 @@ class SettingsViewModel @Inject constructor(
         secureStore.llmEnabled = false
         viewModelScope.launch { disableAutoImportForMissingAi() }
         refreshSecureFields()
-        notifySaved("AI key removed — bank email & SMS auto-import turned off")
+        notifySaved("AI key removed — SMS auto-import turned off")
     }
 
-    /** Stops SMS import when AI is no longer ready. Email watch removed. */
+    /** Stops SMS import when AI is no longer ready. */
     private suspend fun disableAutoImportForMissingAi() {
         userPreferences.setSmsEnabled(false)
-        if (userPreferences.emailPollEnabled.first()) {
-            userPreferences.setEmailPollEnabled(false)
-        }
-        _state.value = _state.value.copy(smsEnabled = false, emailPoll = false)
-    }
-
-    fun setEmailSource(source: EmailSource) = viewModelScope.launch {
-        userPreferences.setEmailSource(source)
-        notifySaved("Email import is no longer available — use SMS or CSV")
-    }
-
-    fun saveGmail(address: String, password: String?) {
-        secureStore.gmailAddress = address.trim().lowercase()
-        if (password != null) secureStore.gmailAppPassword = password.replace(" ", "").trim()
-        refreshSecureFields()
-        notifySaved("Email import removed — use SMS or CSV statement import")
-    }
-
-    suspend fun testGmail() {
-        _status.value = "Email import removed — use SMS or CSV"
-        uiMessenger.show("Email import removed — use SMS or CSV")
-    }
-
-    fun gmailSignInIntent(context: Context): Intent {
-        // Legacy no-op intent; UI for Gmail is retired.
-        return Intent()
-    }
-
-    suspend fun completeGmailSignIn(context: Context, data: Intent?): Boolean {
-        notifySaved("Email import removed — use SMS or CSV")
-        return false
-    }
-
-    fun disconnectGmailOAuth() {
-        secureStore.gmailAccessToken = null
-        secureStore.gmailOAuthEmail = null
-        refreshSecureFields()
-        notifySaved("Cleared saved Gmail session")
+        _state.value = _state.value.copy(smsEnabled = false)
     }
 
     fun saveSheets(id: String, token: String?) {
@@ -415,15 +358,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setEmailPoll(context: Context, v: Boolean) = viewModelScope.launch {
-        // Email monitor removed — never enable.
-        userPreferences.setEmailPollEnabled(false)
-        _state.value = _state.value.copy(emailPoll = false)
-        if (v) {
-            notifySaved("Email import removed — use SMS or CSV instead")
-        }
-    }
-
     fun setSheets(v: Boolean) = viewModelScope.launch { userPreferences.setSheetsSyncEnabled(v) }
 
     fun setLocation(context: Context, enabled: Boolean) {
@@ -437,17 +371,6 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
-
-    fun addSender(email: String, label: String) {
-        if (email.isBlank()) return
-        viewModelScope.launch {
-            trustedSenderRepository.upsert(
-                TrustedSender(emailPattern = email.trim(), walletLabel = label.ifBlank { "Wallet" }),
-            )
-        }
-    }
-
-    fun deleteSender(id: Long) = viewModelScope.launch { trustedSenderRepository.delete(id) }
 
     fun addCategory(name: String, icon: String = "category", color: Long = 0xFF0B6E4FL, quick: Boolean = true) {
         if (name.isBlank()) return
@@ -556,18 +479,6 @@ class SettingsViewModel @Inject constructor(
     fun setClassificationDelay(min: Long) = viewModelScope.launch {
         userPreferences.setClassificationDelayMin(min.coerceIn(0L, 240L))
         notifySaved("Classification delay updated")
-    }
-
-    suspend fun pollNow() {
-        val msg = "Email import removed — use SMS or CSV statement import"
-        _status.value = msg
-        uiMessenger.show(msg)
-    }
-
-    suspend fun processPaste(sender: String, subject: String, body: String) {
-        val msg = "Email paste removed — use SMS or CSV statement import"
-        _status.value = msg
-        uiMessenger.show(msg)
     }
 
     suspend fun syncSheetsNow() {

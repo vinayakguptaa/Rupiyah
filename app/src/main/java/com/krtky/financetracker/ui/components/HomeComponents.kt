@@ -285,9 +285,8 @@ fun FundsWaveSummary(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val totalRemaining = funds.sumOf { it.remainingOfLimitPaise() }
-    val totalLimit = funds.sumOf { it.limitPaise() }.coerceAtLeast(1L)
-    val overall = (totalRemaining.toFloat() / totalLimit.toFloat()).coerceIn(0f, 1f)
+    val netOpen = funds.sumOf { it.balancePaise }
+    val openCount = funds.count { it.balancePaise != 0L }
 
     Surface(
         onClick = onOpenFunds,
@@ -309,19 +308,11 @@ fun FundsWaveSummary(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    if (hidden) "\u2022\u2022\u2022\u2022" else totalRemaining.inr(),
+                    if (hidden) "\u2022\u2022\u2022\u2022" else netOpen.inr(),
                     style = MaterialTheme.typography.titleMedium,
-                    color = scheme.primary,
+                    color = if (netOpen != 0L) scheme.primary else scheme.onSurfaceVariant,
                 )
             }
-            LinearWavyProgressIndicator(
-                progress = { overall },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(WavyProgressIndicatorDefaults.LinearContainerHeight),
-                color = scheme.primary,
-                trackColor = scheme.secondaryContainer,
-            )
             if (funds.isEmpty()) {
                 Text(
                     stringResource(com.krtky.financetracker.R.string.home_no_funds_hint),
@@ -330,9 +321,8 @@ fun FundsWaveSummary(
                 )
             } else {
                 funds.take(5).forEach { fb ->
-                    val prog = fb.remainingRatio()
-                    val rem = fb.remainingOfLimitPaise()
-                    val limit = fb.limitPaise()
+                    val youOweThem = fb.youOweThem()
+                    val settled = fb.isSettled()
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -346,20 +336,27 @@ fun FundsWaveSummary(
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
-                                if (hidden) "\u2022\u2022\u2022\u2022" else "${rem.inr()} / ${limit.inr()}",
+                                if (hidden) {
+                                    "\u2022\u2022\u2022\u2022"
+                                } else {
+                                    when {
+                                        youOweThem -> "you owe ${(-fb.balancePaise).inr()}"
+                                        settled -> "settled"
+                                        else -> "they owe ${fb.balancePaise.inr()}"
+                                    }
+                                },
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = scheme.onSurfaceVariant,
+                                color = if (youOweThem) scheme.error else scheme.onSurfaceVariant,
                             )
                         }
-                        LinearWavyProgressIndicator(
-                            progress = { prog },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(WavyProgressIndicatorDefaults.LinearContainerHeight),
-                            color = scheme.tertiary,
-                            trackColor = scheme.surfaceContainerHighest,
-                        )
                     }
+                }
+                if (openCount == 0 && funds.isNotEmpty()) {
+                    Text(
+                        "All tabs settled",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
                 }
             }
         }

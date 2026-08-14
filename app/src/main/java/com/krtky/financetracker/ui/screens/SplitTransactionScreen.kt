@@ -104,7 +104,7 @@ fun SplitTransactionScreen(
         return
     }
 
-    if (parent.isSelfTransfer()) {
+    if (parent.isSelfTransfer() || parent.isTabTransfer()) {
         Scaffold(
             topBar = {
                 TopAppBar(

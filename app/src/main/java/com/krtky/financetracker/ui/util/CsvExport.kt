@@ -38,7 +38,7 @@ fun downloadTransactionsCsv(
 
     val header = listOf(
         "Date", "Time", "Type", "Amount (INR)", "Name", "Counterparty",
-        "Category", "Fund", "Account", "Cash vs Digital", "Note",
+        "Category", "Tab", "Account", "Cash vs Digital", "Note",
         "Place", "Source", "Transaction ID",
     )
     val rows = transactions.map { t ->

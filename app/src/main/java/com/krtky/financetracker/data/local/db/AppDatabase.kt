@@ -12,8 +12,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FundEntity::class,
         TransactionEntity::class,
         FundLedgerEntity::class,
-        TrustedSenderEntity::class,
-        EmailIngestLogEntity::class,
         LocationSampleEntity::class,
         PendingClassificationEntity::class,
         SyncOutboxEntity::class,
@@ -21,7 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,8 +28,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun fundDao(): FundDao
     abstract fun transactionDao(): TransactionDao
     abstract fun fundLedgerDao(): FundLedgerDao
-    abstract fun trustedSenderDao(): TrustedSenderDao
-    abstract fun emailIngestDao(): EmailIngestDao
     abstract fun locationSampleDao(): LocationSampleDao
     abstract fun pendingClassificationDao(): PendingClassificationDao
     abstract fun syncOutboxDao(): SyncOutboxDao
@@ -448,6 +444,17 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_transactions_splitGroupId` " +
                         "ON `transactions` (`splitGroupId`)",
                 )
+            }
+        }
+
+        /**
+         * Removes the retired bank-email surfaces: `trusted_senders` and
+         * `email_ingest_log` tables. Email capture is gone — SMS + CSV + manual only.
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `trusted_senders`")
+                db.execSQL("DROP TABLE IF EXISTS `email_ingest_log`")
             }
         }
 

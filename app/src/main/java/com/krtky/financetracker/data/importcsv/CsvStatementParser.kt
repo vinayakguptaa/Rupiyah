@@ -262,7 +262,10 @@ object CsvStatementParser {
             return null
         }
 
-        val signed = parseSignedMoneyPaise(amountRaw)
+        // Signed amount only when the sign is explicit (-, +, or parentheses).
+        // A plain positive "100" with no type column must NOT default to CREDIT:
+        // a spend would be imported as income (inflating balances).
+        val signed = if (hasExplicitSign(amountRaw)) parseSignedMoneyPaise(amountRaw) else null
         if (signed != null && signed != 0L) {
             return if (signed < 0) {
                 TransactionType.DEBIT to kotlin.math.abs(signed)
@@ -276,6 +279,20 @@ object CsvStatementParser {
         if (abs <= 0L) return null
         val type = typeFromHint(typeHint, description) ?: return null
         return type to abs
+    }
+
+    /** True when the amount carries an explicit sign or accounting parentheses. */
+    internal fun hasExplicitSign(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return false
+        var s = raw.trim()
+            .replace(",", "")
+            .replace("₹", "")
+            .replace("Rs.", "", ignoreCase = true)
+            .replace("Rs", "", ignoreCase = true)
+            .replace("INR", "", ignoreCase = true)
+            .replace(" ", "")
+        val parenNeg = s.startsWith("(") && s.endsWith(")")
+        return parenNeg || s.startsWith("+") || s.startsWith("-")
     }
 
     private fun typeFromHint(typeHint: String?, description: String?): TransactionType? {

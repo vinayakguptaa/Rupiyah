@@ -18,8 +18,6 @@ enum class AccountKind { BANK, CARD, CASH, WALLET }
 
 enum class FundEntryType { CREDIT, DEBIT, ADJUSTMENT }
 
-enum class EmailProcessStatus { NEW, PARSED, DUPLICATE, FAILED, IGNORED }
-
 data class Money(val paise: Long) {
     fun toRupees(): Double = paise / 100.0
     fun formatInr(): String {
@@ -246,13 +244,6 @@ data class Transaction(
     /** True when this row is one leg of a split group (created by splitting). */
     fun isSplitPart(): Boolean = !splitGroupId.isNullOrBlank()
 }
-
-data class TrustedSender(
-    val id: Long = 0,
-    val emailPattern: String,
-    val walletLabel: String,
-    val enabled: Boolean = true,
-)
 
 data class MonthlySummary(
     val incomePaise: Long,

@@ -26,14 +26,11 @@ import com.krtky.financetracker.data.local.db.CategoryEntity
 import com.krtky.financetracker.data.local.db.FundEntity
 import com.krtky.financetracker.data.local.db.FundLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
-import com.krtky.financetracker.data.local.db.TrustedSenderEntity
 import com.krtky.financetracker.ui.theme.ThemeMode
 import com.krtky.financetracker.ui.theme.ThemePreset
 import javax.inject.Inject
 
 data class OnboardingUiState(
-    val gmail: String = "",
-    val gmailPassSet: Boolean = false,
     val llmBaseUrl: String = "https://api.groq.com/openai/v1",
     val llmModel: String = "llama-3.3-70b-versatile",
     val llmApiKeySet: Boolean = false,
@@ -54,14 +51,6 @@ class OnboardingViewModel @Inject constructor(
 ) : ViewModel() {
     private val _state = MutableStateFlow(OnboardingUiState())
     val state: StateFlow<OnboardingUiState> = _state
-
-    fun setGmail(gmail: String) { _state.value = _state.value.copy(gmail = gmail) }
-
-    fun saveGmail(gmail: String, password: String?) {
-        secureStore.gmailAddress = gmail.trim().lowercase()
-        if (password != null) secureStore.gmailAppPassword = password.replace(" ", "").trim()
-        _state.value = _state.value.copy(gmailPassSet = !secureStore.gmailAppPassword.isNullOrBlank())
-    }
 
     fun setLlmBaseUrl(url: String) { _state.value = _state.value.copy(llmBaseUrl = url) }
     fun setLlmModel(model: String) { _state.value = _state.value.copy(llmModel = model) }
@@ -126,8 +115,6 @@ class OnboardingViewModel @Inject constructor(
                     secure["llm_api_key"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmApiKey = it }
                     secure["llm_base_url"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmBaseUrl = it }
                     secure["llm_model"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.llmModel = it }
-                    secure["gmail_address"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.gmailAddress = it }
-                    secure["gmail_app_password"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.gmailAppPassword = it }
                     secure["sheets_spreadsheet_id"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.sheetsSpreadsheetId = it }
                     secure["sheets_access_token"]?.jsonPrimitive?.content?.let { if (it.isNotBlank()) secureStore.sheetsAccessToken = it }
                 }
@@ -136,7 +123,6 @@ class OnboardingViewModel @Inject constructor(
                 val prefs = jsonObj["user_prefs"]?.jsonObject
                 if (prefs != null) {
                     prefs["location_enabled"]?.jsonPrimitive?.boolean?.let { userPreferences.setLocationEnabled(it) }
-                    prefs["email_poll_enabled"]?.jsonPrimitive?.boolean?.let { userPreferences.setEmailPollEnabled(it) }
                     prefs["sheets_sync_enabled"]?.jsonPrimitive?.boolean?.let { userPreferences.setSheetsSyncEnabled(it) }
                     prefs["classification_delay_min"]?.jsonPrimitive?.long?.let { userPreferences.setClassificationDelayMin(it) }
                     prefs["theme_mode"]?.jsonPrimitive?.content?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }?.let { userPreferences.setThemeMode(it) }
@@ -183,9 +169,6 @@ class OnboardingViewModel @Inject constructor(
                     prefs["dev_unlocked"]?.jsonPrimitive?.boolean?.let {
                         userPreferences.setDevUnlocked(it)
                     }
-                    prefs["last_email_poll_at"]?.jsonPrimitive?.long?.let {
-                        userPreferences.setLastEmailPollAt(it)
-                    }
                 }
 
                 // Database tables
@@ -195,18 +178,7 @@ class OnboardingViewModel @Inject constructor(
                         db.openHelper.writableDatabase.execSQL("DELETE FROM categories")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM funds")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM fund_ledger")
-                        db.openHelper.writableDatabase.execSQL("DELETE FROM trusted_senders")
 
-                        jsonObj["trusted_senders"]?.jsonArray?.forEach { item ->
-                            val obj = item.jsonObject
-                            db.trustedSenderDao().upsert(
-                                TrustedSenderEntity(
-                                    emailPattern = obj["emailPattern"]?.jsonPrimitive?.content.orEmpty(),
-                                    walletLabel = obj["walletLabel"]?.jsonPrimitive?.content ?: "Wallet",
-                                    enabled = obj["enabled"]?.jsonPrimitive?.boolean ?: true,
-                                )
-                            )
-                        }
                         jsonObj["categories"]?.jsonArray?.forEach { item ->
                             val obj = item.jsonObject
                             db.categoryDao().upsert(

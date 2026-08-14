@@ -311,13 +311,13 @@ fun HomeScreen(
                                 }
                             }
                             SetupCheckRow(
-                                done = setupChecklist.gmailDone,
-                                label = stringResource(R.string.home_setup_gmail),
+                                done = setupChecklist.aiReady,
+                                label = stringResource(R.string.home_setup_ai),
                                 onClick = { onOpenSettingsSection("llm") },
                             )
                             SetupCheckRow(
-                                done = setupChecklist.sendersDone,
-                                label = stringResource(R.string.home_setup_senders),
+                                done = setupChecklist.banksDone,
+                                label = stringResource(R.string.home_setup_banks),
                                 onClick = { onOpenSettingsSection("banks") },
                             )
                             SetupCheckRow(

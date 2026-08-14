@@ -81,4 +81,70 @@ class CsvStatementParserTest {
         assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
         assertThat(pair?.second).isEqualTo(5000L)
     }
+
+    @Test
+    fun `amount-only positive row without type hint is skipped not credited`() {
+        // B1 regression: a plain positive Amount with no type/debit/credit columns
+        // must NOT default to CREDIT.
+        val pair = CsvStatementParser.resolveDirectionAndAmount(
+            debitPaise = null,
+            creditPaise = null,
+            amountRaw = "120.00",
+            typeHint = null,
+            description = null,
+        )
+        assertThat(pair).isNull()
+    }
+
+    @Test
+    fun `amount-only positive row with debit keyword becomes DEBIT`() {
+        val pair = CsvStatementParser.resolveDirectionAndAmount(
+            debitPaise = null,
+            creditPaise = null,
+            amountRaw = "120.00",
+            typeHint = null,
+            description = "UPI-ZOMATO paid",
+        )
+        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.second).isEqualTo(120_00L)
+    }
+
+    @Test
+    fun `explicit negative amount is DEBIT`() {
+        val pair = CsvStatementParser.resolveDirectionAndAmount(
+            debitPaise = null,
+            creditPaise = null,
+            amountRaw = "-120.00",
+            typeHint = null,
+            description = null,
+        )
+        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.second).isEqualTo(120_00L)
+    }
+
+    @Test
+    fun `parenthesized amount is DEBIT`() {
+        val pair = CsvStatementParser.resolveDirectionAndAmount(
+            debitPaise = null,
+            creditPaise = null,
+            amountRaw = "(120.00)",
+            typeHint = null,
+            description = null,
+        )
+        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.second).isEqualTo(120_00L)
+    }
+
+    @Test
+    fun `explicit positive amount with type hint uses hint`() {
+        val pair = CsvStatementParser.resolveDirectionAndAmount(
+            debitPaise = null,
+            creditPaise = null,
+            amountRaw = "+85000.00",
+            typeHint = "CR",
+            description = null,
+        )
+        assertThat(pair?.first).isEqualTo(TransactionType.CREDIT)
+        assertThat(pair?.second).isEqualTo(8_500_000L)
+    }
 }

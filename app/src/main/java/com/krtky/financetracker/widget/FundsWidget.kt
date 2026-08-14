@@ -49,11 +49,11 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
     ) {
         WidgetTitle("Funds")
         Spacer(modifier = GlanceModifier.height(4.dp))
-        WidgetCaption("Remaining of limit")
+        WidgetCaption("Who owes whom")
         Spacer(modifier = GlanceModifier.height(10.dp))
 
         if (funds.isEmpty()) {
-            WidgetEmpty("No funds yet — open the app to create one")
+            WidgetEmpty("No tabs yet — open the app to create one")
         } else {
             funds.take(4).forEach { fund ->
                 Column(
@@ -78,9 +78,9 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
                             modifier = GlanceModifier.defaultWeight(),
                         )
                         Text(
-                            text = fund.remaining,
+                            text = fund.balance,
                             style = TextStyle(
-                                color = if (fund.overspent) colors.error else colors.primary,
+                                color = if (!fund.owedToMe && !fund.settled) colors.error else colors.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                             ),
@@ -89,17 +89,16 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
                     }
                     Spacer(modifier = GlanceModifier.height(2.dp))
                     Text(
-                        text = "of ${fund.limit}",
+                        text = when {
+                            fund.settled -> "settled"
+                            fund.owedToMe -> "they owe you"
+                            else -> "you owe them"
+                        },
                         style = TextStyle(
                             color = colors.onSurfaceVariant,
                             fontSize = 10.sp,
                         ),
                         maxLines = 1,
-                    )
-                    Spacer(modifier = GlanceModifier.height(6.dp))
-                    WidgetProgressBar(
-                        progress = fund.ratio,
-                        isError = fund.overspent,
                     )
                 }
                 Spacer(modifier = GlanceModifier.height(6.dp))

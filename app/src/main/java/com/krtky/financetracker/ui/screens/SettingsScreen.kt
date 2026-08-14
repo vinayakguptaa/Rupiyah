@@ -23,13 +23,11 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Quickreply
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.TableChart
@@ -72,7 +70,6 @@ fun SettingsScreen(
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val senders by vm.senders.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
     var versionTaps by remember { mutableIntStateOf(0) }
@@ -102,8 +99,7 @@ fun SettingsScreen(
         "categories", "accounts", "bank", "money", "wallet", "cash", "digital", "upi",
     )
     val showImport = matches(
-        "email", "sms", "gmail", "bank", "import", "message", "text", "inbox", "imap",
-        "sender", "trusted", "poll", "monitor",
+        "sms", "bank", "import", "message", "text",
     )
     val showLook = matches("appearance", "theme", "color", "dark", "light", "look", "font")
     val showSave = matches(
@@ -121,19 +117,6 @@ fun SettingsScreen(
         .map { it.trim() }
         .filter { it.isNotEmpty() }
         .size // mirrored from active accounts; archived not counted
-    val emailSubtitle = when {
-        !state.llmReady -> "Set up AI helper first, then connect Gmail"
-        state.gmailOAuthConnected -> {
-            val who = state.gmailOAuthEmail.ifBlank { "Google" }
-            if (state.emailPoll) "Connected ($who) · checking for new mail"
-            else "Connected ($who) · checks when you open the app"
-        }
-        state.gmailPassSet -> {
-            if (state.emailPoll) "Gmail password saved · checking for new mail"
-            else "Gmail password saved · checks when you open the app"
-        }
-        else -> "Connect Gmail to import spends automatically"
-    }
 
     val themeSubtitle = when (state.themeMode) {
         ThemeMode.MATERIAL_YOU -> "Wallpaper colors"
@@ -319,11 +302,11 @@ fun SettingsScreen(
                     title = "AI helper",
                     subtitle = when {
                         state.llmReady ->
-                            "Ready · required for bank email & SMS import"
+                            "Ready · required for SMS import"
                         state.llmEnabled ->
                             "Almost ready · add an API key"
                         else ->
-                            "Required to turn on bank email & SMS import"
+                            "Required to turn on SMS import"
                     },
                     icon = Icons.Default.Psychology,
                     onClick = { onOpenSection(SettingsSection.LLM) },
@@ -354,7 +337,7 @@ fun SettingsScreen(
                 if (matches("google", "client", "oauth", "sign", "setup", "more")) {
                     SettingsGroupRow(
                         title = "Google sign-in setup",
-                        subtitle = if (state.gmailOAuthConnected || state.sheetTokenSet) {
+                        subtitle = if (state.sheetTokenSet) {
                             "Connected · only change if sign-in fails"
                         } else {
                             "Only needed if “Connect with Google” fails"
@@ -378,14 +361,6 @@ fun SettingsScreen(
                     subtitle = "Prompts, delays, diagnostics",
                     icon = Icons.Default.Code,
                     onClick = { onOpenSection(SettingsSection.DEV) },
-                    iconContainer = scheme.primaryContainer,
-                    iconTint = scheme.onPrimaryContainer,
-                )
-                SettingsGroupRow(
-                    title = "Test email parser",
-                    subtitle = "Paste a sample email to try parsing",
-                    icon = Icons.Default.Quickreply,
-                    onClick = { onOpenSection(SettingsSection.PASTE) },
                     iconContainer = scheme.primaryContainer,
                     iconTint = scheme.onPrimaryContainer,
                     showDivider = true,

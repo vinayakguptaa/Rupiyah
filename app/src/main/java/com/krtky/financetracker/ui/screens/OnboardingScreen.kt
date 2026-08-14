@@ -36,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
@@ -344,7 +343,7 @@ private fun WelcomePage(onNext: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            "Your personal finance tracker.\nLog expenses, track envelopes, and watch your spending — all in one place.",
+            "Your personal finance tracker.\nLog debits and credits, track tabs, and watch your spending — all in one place.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,
@@ -424,129 +423,6 @@ private fun ImportBackupPage(onImport: () -> Unit, onNext: () -> Unit, imported:
                 shape = shapes.large,
             ) { Text("Continue") }
         }
-    }
-}
-
-// ── Page 3: Gmail ───────────────────────────────────────────────────────────
-
-@Composable
-private fun GmailPage(
-    gmail: String,
-    onGmailChange: (String) -> Unit,
-    gmailPassSet: Boolean,
-    onSaveGmail: (String, String?) -> Unit,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val shapes = MaterialTheme.shapes
-    var password by remember { mutableStateOf("") }
-    var showHelp by remember { mutableStateOf(false) }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Spacer(Modifier.height(48.dp))
-        Box(
-            Modifier
-                .size(80.dp)
-                .background(scheme.tertiaryContainer, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Default.Email,
-                contentDescription = null,
-                tint = scheme.onTertiaryContainer,
-                modifier = Modifier.size(40.dp),
-            )
-        }
-        Spacer(Modifier.height(24.dp))
-        Text(
-            "Gmail settings",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Why Gmail? Pull bank alerts into Activity automatically.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = scheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            stringResource(R.string.onboarding_optional_later),
-            style = MaterialTheme.typography.labelLarge,
-            textAlign = TextAlign.Center,
-            color = scheme.primary,
-        )
-        Spacer(Modifier.height(24.dp))
-
-        GroupedCard(padded = true) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Gmail IMAP", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { showHelp = true }) {
-                    Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help")
-                }
-            }
-            OutlinedTextField(
-                gmail,
-                { onGmailChange(it) },
-                label = { Text("Gmail address") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = shapes.medium,
-            )
-            OutlinedTextField(
-                password,
-                { password = it },
-                label = { Text(if (gmailPassSet) "App password (saved)" else "App password") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = shapes.medium,
-            )
-            Button(
-                onClick = {
-                    onSaveGmail(gmail, password.ifBlank { null })
-                    password = ""
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = shapes.large,
-            ) { Text("Save Gmail") }
-            if (gmailPassSet) {
-                Text("Gmail configured", color = scheme.primary, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-    }
-
-    if (showHelp) {
-        AlertDialog(
-            onDismissRequest = { showHelp = false },
-            title = { Text("Gmail App Password") },
-            text = {
-                Text(
-                    buildString {
-                        append("Google does NOT allow your normal Gmail password for IMAP.\n\n")
-                        append("Steps:\n")
-                        append("1. Open Google Account → Security\n")
-                        append("2. Turn on 2-Step Verification (required)\n")
-                        append("3. Open App passwords\n")
-                        append("4. Select app: Mail, device: Other → type Rupiyah\n")
-                        append("5. Tap Generate\n")
-                        append("6. Copy the 16-character password\n")
-                        append("7. Paste it above\n\n")
-                        append("Tip: Spaces are OK — the app strips them.")
-                    },
-                )
-            },
-            confirmButton = { TextButton(onClick = { showHelp = false }) { Text("Got it") } },
-        )
     }
 }
 
@@ -653,7 +529,7 @@ private fun NotificationPage(granted: Boolean, onRequest: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Rupiyah uses notifications to classify incoming transactions and alert you about new emails.",
+            "Rupiyah uses notifications to classify incoming transactions and alert you about new bank activity.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,

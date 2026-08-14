@@ -58,7 +58,7 @@
     <string name="split_section_title">Splits</string>
     <string name="split_lines_summary">%1$d lines · separate transactions</string>
     <string name="split_edit">Edit splits</string>
-    <string name="split_not_for_transfer">Self transfers cannot be split</string>
+    <string name="split_not_for_transfer">Transfers cannot be split</string>
     <string name="split_merge_action">Merge into one transaction</string>
     <string name="receipt_label">Receipt photo</string>
     <string name="receipt_attached">Receipt attached</string>
@@ -80,8 +80,8 @@
     <string name="cd_toggle_section_width">Toggle section width</string>
     <string name="home_pending_classify">%1$d to classify</string>
     <string name="home_setup_title">Finish setup</string>
-    <string name="home_setup_gmail">Set up AI helper (for SMS)</string>
-    <string name="home_setup_senders">Add a bank account</string>
+    <string name="home_setup_ai">Set up AI helper (for SMS)</string>
+    <string name="home_setup_banks">Add a bank account</string>
     <string name="home_setup_first_txn">Add your first transaction</string>
     <string name="home_setup_dismiss">Dismiss</string>
     <string name="home_net_this_month">Net this month</string>
@@ -99,6 +99,9 @@
     <string name="home_months_count">Last %1$d months</string>
     <string name="funds_spent">Debited</string>
     <string name="funds_total">Opening</string>
+    <string name="tab_they_owe">They owe you</string>
+    <string name="tab_you_owe">You owe them</string>
+    <string name="tab_open_count">Open tabs</string>
     <string name="cd_search_settings">Search settings</string>
     <string name="cd_download_csv">Download CSV</string>
     <string name="cd_search_transactions">Search transactions</string>
@@ -108,7 +111,6 @@
     <string name="classify_assign">Assign category</string>
 
     <string name="error_refresh_failed">Couldn\'t refresh</string>
-    <string name="error_gmail_unreachable">Couldn\'t reach Gmail</string>
     <string name="error_sheets_auth">Sheets auth expired</string>
 
     <!-- Home Screen Widgets -->
@@ -116,7 +118,7 @@
     <string name="widget_overview_description">Net balance with this month\'s income and expenses — same data as the home hero.</string>
     <string name="widget_transactions_description">Your 3 most recent transactions plus a one-tap add shortcut.</string>
     <string name="widget_add_button_description">One-tap shortcut to log a transaction in Rupiyah.</string>
-    <string name="widget_funds_description">Remaining balance for your top funds / envelopes.</string>
+    <string name="widget_funds_description">Open balances for your top tabs — who owes whom.</string>
     <string name="widget_spending_description">Top expense categories for the current month.</string>
     <string name="widget_overview_label">Rupiyah · Overview</string>
     <string name="widget_transactions_label">Rupiyah · Recent</string>

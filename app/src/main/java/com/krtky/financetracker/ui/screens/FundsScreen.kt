@@ -33,7 +33,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -51,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,7 +59,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.SpendRatioRing
 import com.krtky.financetracker.ui.components.chrome.ScreenHeader
 import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.theme.M3EMotion
@@ -101,15 +98,11 @@ fun FundsScreen(
         }
     }
 
-    // Remaining = cash in pots; spent bar = empty portion of fixed limits
-    val totalBudget = funds.sumOf { it.limitPaise() }
-    val totalRemaining = funds.sumOf { it.remainingOfLimitPaise() }
-    val totalSpent = (totalBudget - totalRemaining).coerceAtLeast(0L)
-    val spentRatio = if (totalBudget > 0) {
-        (totalSpent.toFloat() / totalBudget.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
+    // Open-balance hero: money outstanding across tabs, not an envelope budget.
+    val netOpen = funds.sumOf { it.balancePaise }
+    val theyOwe = funds.filter { it.theyOweYou() }.sumOf { it.balancePaise }
+    val youOwe = funds.filter { it.youOweThem() }.sumOf { -it.balancePaise }
+    val openTabCount = funds.count { it.balancePaise != 0L }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -123,62 +116,59 @@ fun FundsScreen(
             item {
                 ScreenHeader(
                     title = "Tabs",
-                    subtitle = "Envelope budgets you can credit and spend from",
+                    subtitle = "Loans, shared trips, or IOUs — who owes whom",
                 )
             }
 
-            // Hero: shared ring + Total / Spent / Remaining
+            // Hero: net open balance (they owe you / you owe them)
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.extraLarge,
                     color = scheme.surfaceContainerHigh,
                 ) {
-                    Row(
+                    Column(
                         Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.CardInnerGap),
                     ) {
-                        SpendRatioRing(
-                            ratio = spentRatio,
-                            size = 112.dp,
-                            stroke = 12.dp,
-                            progressColor = if (spentRatio >= 1f) scheme.error else scheme.primary,
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
                                 Text(
-                                    "${(spentRatio * 100).toInt()}%",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (spentRatio >= 1f) scheme.error else scheme.onSurface,
+                                    when {
+                                        netOpen > 0L -> "They owe you"
+                                        netOpen < 0L -> "You owe them"
+                                        else -> "All settled"
+                                    },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = scheme.onSurfaceVariant,
                                 )
                                 Text(
-                                    stringResource(R.string.funds_spent),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = scheme.onSurfaceVariant,
+                                    if (netOpen == 0L) "₹0" else netOpen.let { if (it < 0) -it else it }.inrCompact(),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.Bold,
                                 )
                             }
                         }
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(Dimens.CardInnerGap),
-                        ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FundStatChip(
-                                label = stringResource(R.string.funds_total),
-                                value = totalBudget.inrCompact(),
+                                label = stringResource(R.string.tab_they_owe),
+                                value = theyOwe.inrCompact(),
                                 icon = Icons.Default.AccountBalanceWallet,
+                                modifier = Modifier.weight(1f),
                             )
                             FundStatChip(
-                                label = stringResource(R.string.funds_spent),
-                                value = totalSpent.inrCompact(),
+                                label = stringResource(R.string.tab_you_owe),
+                                value = youOwe.inrCompact(),
                                 icon = Icons.Default.CreditCard,
+                                modifier = Modifier.weight(1f),
                             )
                             FundStatChip(
-                                label = "Remaining",
-                                value = totalRemaining.inrCompact(),
+                                label = stringResource(R.string.tab_open_count),
+                                value = openTabCount.toString(),
                                 icon = Icons.Default.AccountBalanceWallet,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
@@ -374,10 +364,11 @@ private fun FundStatChip(
     label: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         color = scheme.surfaceContainerHighest,
     ) {
@@ -395,7 +386,7 @@ private fun FundStatChip(
     }
 }
 
-/** Original envelope-style fund card: colored header + remaining + usage bar. */
+/** Open-balance tab card: who owes whom, not an envelope budget bar. */
 @Composable
 private fun BudgetStyleFundCard(
     fund: FundBalance,
@@ -404,14 +395,11 @@ private fun BudgetStyleFundCard(
     onOpen: () -> Unit,
     onAdjust: () -> Unit,
 ) {
-    val limit = fund.limitPaise()
-    val left = fund.remainingOfLimitPaise() // cash in pot
-    val spentRatio = fund.spentRatio() // empty portion of limit
-    val overspent = fund.isOverspent()
     val scheme = MaterialTheme.colorScheme
-    val cardHeader = if (overspent) scheme.error else headerColor
-    val cardOnHeader = if (overspent) scheme.onError else onHeaderColor
-    val progressColor = if (overspent) scheme.error else headerColor
+    val youOweThem = fund.youOweThem()
+    val settled = fund.isSettled()
+    val cardHeader = if (youOweThem) scheme.error else headerColor
+    val cardOnHeader = if (youOweThem) scheme.onError else onHeaderColor
 
     Surface(
         onClick = onOpen,
@@ -441,10 +429,10 @@ private fun BudgetStyleFundCard(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            if (overspent) {
-                                "Over by ${(-fund.balancePaise).coerceAtLeast(0L).inr()} · of ${limit.inr()}"
-                            } else {
-                                "${left.inr()} left of ${limit.inr()}"
+                            when {
+                                youOweThem -> "You owe ${(-fund.balancePaise).inr()}"
+                                settled -> "Settled"
+                                else -> "They owe ${fund.balancePaise.inr()}"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = cardOnHeader.copy(alpha = 0.9f),
@@ -453,7 +441,6 @@ private fun BudgetStyleFundCard(
                     Surface(
                         onClick = onAdjust,
                         shape = CircleShape,
-                        // Soft wash of the header content color so the icon stays legible
                         color = cardOnHeader.copy(alpha = 0.18f),
                     ) {
                         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
@@ -468,24 +455,18 @@ private fun BudgetStyleFundCard(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Used", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                     Text(
-                        "${(spentRatio * 100).toInt()}%",
+                        if (settled) "No money open" else "Open balance",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (settled) "₹0" else fund.balancePaise.let { if (it < 0) -it else it }.inr(),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (overspent) scheme.error else scheme.onSurface,
+                        color = if (youOweThem) scheme.error else scheme.onSurface,
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { spentRatio.coerceAtMost(1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                    color = progressColor,
-                    trackColor = scheme.surfaceContainerHighest,
-                    strokeCap = StrokeCap.Round,
-                )
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "In ${fund.creditedPaise.inr()} · Out ${fund.debitedPaise.inr()}",

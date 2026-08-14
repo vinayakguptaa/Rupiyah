@@ -99,7 +99,7 @@ fun FundDetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
-                fund?.fund?.name ?: "Fund",
+                fund?.fund?.name ?: "Tab",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
@@ -127,7 +127,7 @@ fun FundDetailScreen(
                 }
             }
             IconButton(onClick = { confirmDelete = true }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete fund", tint = scheme.error)
+                Icon(Icons.Default.Delete, contentDescription = "Delete tab", tint = scheme.error)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -139,32 +139,31 @@ fun FundDetailScreen(
                 M3LoadingIndicator()
             }
         } else {
-            val overspent = fund!!.isOverspent()
+            val youOweThem = fund!!.youOweThem()
+            val settled = fund!!.isSettled()
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
-                color = if (overspent) scheme.errorContainer else scheme.primaryContainer,
+                color = if (youOweThem) scheme.errorContainer else scheme.primaryContainer,
             ) {
-                val onC = if (overspent) scheme.onErrorContainer else scheme.onPrimaryContainer
+                val onC = if (youOweThem) scheme.onErrorContainer else scheme.onPrimaryContainer
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        if (overspent) "Overspent" else "Left in fund",
+                        when {
+                            youOweThem -> "You owe them"
+                            settled -> "Settled"
+                            else -> "They owe you"
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         color = onC.copy(alpha = 0.75f),
                     )
                     Text(
-                        fund!!.balancePaise.inr(),
+                        if (settled) "₹0" else fund!!.balancePaise.let { if (it < 0) -it else it }.inr(),
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = onC,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "${fund!!.remainingOfLimitPaise().inr()} left of ${fund!!.limitPaise().inr()} · ${(fund!!.spentRatio() * 100).toInt()}% used",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = onC.copy(alpha = 0.8f),
-                    )
-                    Spacer(Modifier.height(4.dp))
                     Text(
                         "In ${fund!!.creditedPaise.inr()} · Out ${fund!!.debitedPaise.inr()}",
                         style = MaterialTheme.typography.bodySmall,
@@ -238,8 +237,8 @@ fun FundDetailScreen(
 
     if (confirmDelete) {
         DeleteConfirmSheet(
-            title = "Delete fund?",
-            message = "This archives the fund. Existing transactions keep their history.",
+            title = "Archive tab?",
+            message = "This archives the tab. Existing transactions keep their history.",
             onDismiss = { confirmDelete = false },
             onConfirmDelete = {
                 scope.launch {
@@ -247,7 +246,7 @@ fun FundDetailScreen(
                     confirmDelete = false
                 }
             },
-            deleteLabel = "Delete fund",
+            deleteLabel = "Archive tab",
         )
     }
 

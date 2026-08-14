@@ -8,7 +8,6 @@ import com.krtky.financetracker.data.local.db.CategoryEntity
 import com.krtky.financetracker.data.local.db.FundEntity
 import com.krtky.financetracker.data.local.db.FundLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
-import com.krtky.financetracker.data.local.db.TrustedSenderEntity
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.ui.theme.ColorSchemeStyle
@@ -37,7 +36,6 @@ import javax.inject.Singleton
 class BackupRepository @Inject constructor(
     private val secureStore: SecureStore,
     private val userPreferences: UserPreferences,
-    private val trustedSenderRepository: TrustedSenderRepository,
     private val transactionRepository: TransactionRepository,
     private val db: AppDatabase,
 ) {
@@ -45,8 +43,11 @@ class BackupRepository @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 val json = buildJsonObject {
-                    // v3: accounts + splits first-class; email poll forced off on restore
-                    put("version", 3)
+                    // v4: email ingest removed — `secure_store` drops Gmail secrets,
+                    // `user_prefs` drops email_poll/source, `trusted_senders` gone.
+                    // Restore is tolerant (reads known keys only), so this is a marker,
+                    // not a gate.
+                    put("version", 4)
                     put("secure_store", buildJsonObject {
                         put("llm_api_key", secureStore.llmApiKey.orEmpty())
                         put("llm_enabled", secureStore.llmEnabled)
@@ -58,8 +59,6 @@ class BackupRepository @Inject constructor(
                     })
                     put("user_prefs", buildJsonObject {
                         put("location_enabled", userPreferences.locationEnabled.first())
-                        put("email_poll_enabled", false)
-                        put("email_source", "IMAP")
                         put("sheets_sync_enabled", userPreferences.sheetsSyncEnabled.first())
                         put("classification_delay_min", userPreferences.classificationDelayMin.first())
                         put("theme_mode", userPreferences.themeMode.first().name)
@@ -83,17 +82,6 @@ class BackupRepository @Inject constructor(
                         // App state
                         put("onboarding_completed", userPreferences.onboardingCompleted.first())
                         put("dev_unlocked", userPreferences.devUnlocked.first())
-                        put("last_email_poll_at", userPreferences.getLastEmailPollAt())
-                    })
-                    val senders = trustedSenderRepository.observeAll().first()
-                    put("trusted_senders", buildJsonArray {
-                        senders.forEach { s ->
-                            add(buildJsonObject {
-                                put("emailPattern", s.emailPattern)
-                                put("walletLabel", s.walletLabel)
-                                put("enabled", s.enabled)
-                            })
-                        }
                     })
                     val categories = db.categoryDao().getAll()
                     put("categories", buildJsonArray {
@@ -226,8 +214,6 @@ class BackupRepository @Inject constructor(
                 val prefs = jsonObj["user_prefs"]?.jsonObject
                 if (prefs != null) {
                     prefs["location_enabled"]?.jsonPrimitive?.boolean?.let { userPreferences.setLocationEnabled(it) }
-                    // Always leave email poll off after restore
-                    userPreferences.setEmailPollEnabled(false)
                     prefs["sheets_sync_enabled"]?.jsonPrimitive?.boolean?.let { userPreferences.setSheetsSyncEnabled(it) }
                     prefs["classification_delay_min"]?.jsonPrimitive?.long?.let { userPreferences.setClassificationDelayMin(it) }
                     prefs["theme_mode"]?.jsonPrimitive?.content?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }?.let { userPreferences.setThemeMode(it) }
@@ -277,9 +263,6 @@ class BackupRepository @Inject constructor(
                     prefs["dev_unlocked"]?.jsonPrimitive?.boolean?.let {
                         userPreferences.setDevUnlocked(it)
                     }
-                    prefs["last_email_poll_at"]?.jsonPrimitive?.long?.let {
-                        userPreferences.setLastEmailPollAt(it)
-                    }
                 }
 
                 db.runInTransaction {
@@ -289,19 +272,6 @@ class BackupRepository @Inject constructor(
                         db.openHelper.writableDatabase.execSQL("DELETE FROM funds")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM fund_ledger")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM accounts")
-                        db.openHelper.writableDatabase.execSQL("DELETE FROM trusted_senders")
-
-                        // 4. Import Senders
-                        jsonObj["trusted_senders"]?.jsonArray?.forEach { item ->
-                            val obj = item.jsonObject
-                            db.trustedSenderDao().upsert(
-                                TrustedSenderEntity(
-                                    emailPattern = obj["emailPattern"]?.jsonPrimitive?.content.orEmpty(),
-                                    walletLabel = obj["walletLabel"]?.jsonPrimitive?.content ?: "Wallet",
-                                    enabled = obj["enabled"]?.jsonPrimitive?.boolean ?: true
-                                )
-                            )
-                        }
 
                         // 5. Import Categories
                         jsonObj["categories"]?.jsonArray?.forEach { item ->

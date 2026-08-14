@@ -262,7 +262,7 @@ fun TransactionFilterBar(
                     val fundOptions = listOf("All funds") + funds.map { it.name }
                     val fundValue = funds.firstOrNull { it.id == draftFund }?.name ?: "All funds"
                     FilterDropdownField(
-                        label = "Fund",
+                        label = "Tab",
                         value = fundValue,
                         options = fundOptions,
                         onSelect = { pick ->

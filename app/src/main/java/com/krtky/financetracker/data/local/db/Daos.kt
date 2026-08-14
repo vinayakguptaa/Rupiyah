@@ -360,36 +360,6 @@ interface FundLedgerDao {
 }
 
 @Dao
-interface TrustedSenderDao {
-    @Query("SELECT * FROM trusted_senders ORDER BY walletLabel, emailPattern")
-    fun observeAll(): Flow<List<TrustedSenderEntity>>
-
-    @Query("SELECT * FROM trusted_senders WHERE enabled = 1")
-    suspend fun getEnabled(): List<TrustedSenderEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(entity: TrustedSenderEntity): Long
-
-    @Query("DELETE FROM trusted_senders WHERE id = :id")
-    suspend fun delete(id: Long)
-}
-
-@Dao
-interface EmailIngestDao {
-    @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(entity: EmailIngestLogEntity): Long
-
-    @Query("SELECT * FROM email_ingest_log WHERE messageId = :messageId LIMIT 1")
-    suspend fun findByMessageId(messageId: String): EmailIngestLogEntity?
-
-    @Update
-    suspend fun update(entity: EmailIngestLogEntity)
-
-    @Query("SELECT * FROM email_ingest_log ORDER BY createdAt DESC LIMIT 100")
-    fun observeRecent(): Flow<List<EmailIngestLogEntity>>
-}
-
-@Dao
 interface LocationSampleDao {
     @Insert
     suspend fun insert(entity: LocationSampleEntity): Long

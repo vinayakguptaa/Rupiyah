@@ -88,16 +88,4 @@ class MappersTest {
         assertThat(entity.fundId).isEqualTo(2)
         assertThat(entity.note).isEqualTo("Salary")
     }
-
-    @Test
-    fun `TrustedSenderEntity roundtrip`() {
-        val entity = TrustedSenderEntity(id = 1, emailPattern = "alerts@bank.com", walletLabel = "Bank", enabled = true)
-        val domain = entity.toDomain()
-        assertThat(domain.emailPattern).isEqualTo("alerts@bank.com")
-        assertThat(domain.walletLabel).isEqualTo("Bank")
-        assertThat(domain.enabled).isTrue()
-
-        val back = domain.toEntity()
-        assertThat(back.emailPattern).isEqualTo("alerts@bank.com")
-    }
 }

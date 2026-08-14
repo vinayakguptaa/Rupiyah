@@ -106,33 +106,6 @@ data class FundLedgerEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(
-    tableName = "trusted_senders",
-    indices = [Index(value = ["emailPattern"], unique = true)]
-)
-data class TrustedSenderEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val emailPattern: String,
-    val walletLabel: String,
-    val enabled: Boolean = true,
-)
-
-@Entity(
-    tableName = "email_ingest_log",
-    indices = [Index(value = ["messageId"], unique = true)]
-)
-data class EmailIngestLogEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val messageId: String,
-    val sender: String,
-    val subject: String?,
-    val receivedAt: Long,
-    val processStatus: String,
-    val parseError: String? = null,
-    val transactionId: String? = null,
-    val createdAt: Long = System.currentTimeMillis(),
-)
-
 @Entity(tableName = "location_samples")
 data class LocationSampleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

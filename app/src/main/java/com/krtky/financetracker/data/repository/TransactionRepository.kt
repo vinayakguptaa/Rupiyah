@@ -85,7 +85,8 @@ class TransactionRepository @Inject constructor(
             txnDao.observeAll(),
             categoryDao.observeAll(),
             fundDao.observeActive(),
-            accountDao.observeActive(),
+            // All accounts (incl. archived) so history rows keep their account name.
+            accountDao.observeAll(),
         ) { txns, cats, funds, accounts ->
             mapTxns(txns, cats, funds, accounts)
         }
@@ -120,7 +121,7 @@ class TransactionRepository @Inject constructor(
             txnDao.observeFiltered(query, type?.name, categoryId, fundId, fromTs, toTs, accountId),
             categoryDao.observeAll(),
             fundDao.observeActive(),
-            accountDao.observeActive(),
+            accountDao.observeAll(),
         ) { txns, cats, funds, accounts ->
             mapTxns(txns, cats, funds, accounts)
         }
@@ -169,7 +170,7 @@ class TransactionRepository @Inject constructor(
             txnDao.observeAll(),
             categoryDao.observeAll(),
             fundDao.observeActive(),
-            accountDao.observeActive(),
+            accountDao.observeAll(),
         ) { txns, cats, funds, accounts ->
             val me = txns.firstOrNull { it.id == transactionId } ?: return@combine emptyList()
             val groupId = me.splitGroupId ?: return@combine emptyList()
@@ -918,24 +919,39 @@ class TransactionRepository @Inject constructor(
         }
 
     /**
-     * Net balance per account name (credits − debits), including self-transfer legs.
-     * Prefers [Transaction.accountName]; falls back to payment method labels.
+     * Net balance per account label (credits − debits + opening), matching the
+     * Accounts-screen formula in [com.krtky.financetracker.data.repository.AccountRepository].
+     * Legacy rows that only carry a paymentMethod label are folded into their account
+     * by name; rows with no matching account group under "Digital".
      */
     fun observeAccountBalances(): Flow<Map<String, Long>> =
-        observeTransactions().map { txns ->
-            txns.groupBy { t ->
-                when {
-                    !t.accountName.isNullOrBlank() -> t.accountName.trim()
-                    t.isCash || t.paymentMethod.equals("Cash", true) -> "Cash"
-                    t.paymentMethod.isNullOrBlank() -> "Digital"
-                    t.paymentMethod.equals("UPI", true) -> "Digital"
-                    else -> t.paymentMethod.trim()
+        combine(
+            accountDao.observeAll(),
+            txnDao.observeAll(),
+        ) { accounts, txns ->
+            val live = txns.filter { it.deletedAt == null }
+            val knownLower = accounts.map { it.name.trim().lowercase() }.toSet()
+            val byAccount = accounts.associate { acc ->
+                val mine = live.filter {
+                    it.accountId == acc.id ||
+                        (it.accountId == null &&
+                            it.paymentMethod?.equals(acc.name, ignoreCase = true) == true)
                 }
-            }.mapValues { (_, items) ->
-                items.sumOf { t ->
-                    if (t.type == TransactionType.CREDIT) t.amountPaise else -t.amountPaise
-                }
+                val net = mine.sumOf { signedPaise(it) }
+                acc.name.trim() to (acc.openingBalancePaise + net)
+            }.toMutableMap()
+
+            // Legacy rows whose paymentMethod matches no account (e.g. "UPI",
+            // "Digital", unknown senders) — keep Home's total honest.
+            val unmatched = live.filter { t ->
+                t.accountId == null &&
+                    (t.paymentMethod.isNullOrBlank() || t.paymentMethod!!.trim().lowercase() !in knownLower)
             }
+            if (unmatched.isNotEmpty()) {
+                val digital = unmatched.sumOf { signedPaise(it) }
+                byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digital
+            }
+            byAccount
         }
 
     /**
@@ -1194,6 +1210,10 @@ class TransactionRepository @Inject constructor(
         val t = type.uppercase()
         return t == TransactionType.DEBIT.name || t == "EXPENSE"
     }
+
+    /** Signed amount for balance math: credits +, debits −. */
+    private fun signedPaise(t: TransactionEntity): Long =
+        if (isCreditType(t.type)) t.amountPaise else -t.amountPaise
 
     private fun <T> mostCommonOrFirst(items: List<T?>): T? {
         if (items.isEmpty()) return null

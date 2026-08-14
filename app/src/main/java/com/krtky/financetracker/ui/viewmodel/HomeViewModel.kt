@@ -29,8 +29,8 @@ import javax.inject.Inject
 
 data class SetupChecklistState(
     val visible: Boolean = false,
-    val gmailDone: Boolean = false, // kept for UI compatibility → means AI ready
-    val sendersDone: Boolean = false, // kept → means banks configured
+    val aiReady: Boolean = false,
+    val banksDone: Boolean = false,
     val firstTxnDone: Boolean = false,
 )
 
@@ -115,8 +115,8 @@ class HomeViewModel @Inject constructor(
         val allDone = (aiReady || smsOn || firstTxnDone) && banksDone && firstTxnDone
         SetupChecklistState(
             visible = !dismissed && !allDone,
-            gmailDone = aiReady,
-            sendersDone = banksDone,
+            aiReady = aiReady,
+            banksDone = banksDone,
             firstTxnDone = firstTxnDone,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SetupChecklistState())

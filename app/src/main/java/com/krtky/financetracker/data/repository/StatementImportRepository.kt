@@ -86,9 +86,22 @@ class StatementImportRepository @Inject constructor(
         val existing = loadCandidates(account)
         val categories = categoryRepository.getAll()
 
+        // B2: within-file candidate consumption. Two statement lines that both
+        // HIGH-match the SAME existing txn must not both skip-merge: the first
+        // consumes the candidate, later same-key lines are downgraded to IMPORT.
+        val consumedIds = mutableSetOf<String>()
         val rows = parsed.rows.map { row ->
             val match = ImportDedupe.match(row, existing)
-            val defaultAction = when (match.confidence) {
+            val alreadyConsumed = match.existing?.id?.let { it in consumedIds } == true
+            val effectiveConfidence = when {
+                match.confidence != DedupeConfidence.HIGH -> match.confidence
+                alreadyConsumed -> DedupeConfidence.LOW
+                else -> {
+                    match.existing?.id?.let { consumedIds.add(it) }
+                    DedupeConfidence.HIGH
+                }
+            }
+            val defaultAction = when (effectiveConfidence) {
                 DedupeConfidence.HIGH -> ImportRowAction.SKIP_MERGE
                 DedupeConfidence.MEDIUM -> ImportRowAction.SKIP_MERGE
                 DedupeConfidence.LOW -> ImportRowAction.IMPORT
@@ -96,8 +109,12 @@ class StatementImportRepository @Inject constructor(
             ImportPreviewRow(
                 id = UUID.randomUUID().toString(),
                 parsed = row,
-                confidence = match.confidence,
-                matchReason = match.reason,
+                confidence = effectiveConfidence,
+                matchReason = if (alreadyConsumed) {
+                    "Same amount & date as an earlier line — imported as new"
+                } else {
+                    match.reason
+                },
                 matchedTxnId = match.existing?.id,
                 matchedSummary = match.existing?.let { summarize(it) },
                 action = defaultAction,

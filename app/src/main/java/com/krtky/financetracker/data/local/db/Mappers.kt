@@ -9,7 +9,6 @@ import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionSource
 import com.krtky.financetracker.domain.model.TransactionType
-import com.krtky.financetracker.domain.model.TrustedSender
 
 fun CategoryEntity.toDomain() = Category(
     id = id,
@@ -67,20 +66,6 @@ fun Fund.toEntity() = FundEntity(
     archived = archived,
     createdAt = createdAt,
     budgetPaise = budgetPaise,
-)
-
-fun TrustedSenderEntity.toDomain() = TrustedSender(
-    id = id,
-    emailPattern = emailPattern,
-    walletLabel = walletLabel,
-    enabled = enabled,
-)
-
-fun TrustedSender.toEntity() = TrustedSenderEntity(
-    id = id,
-    emailPattern = emailPattern,
-    walletLabel = walletLabel,
-    enabled = enabled,
 )
 
 /** Map stored type string (DEBIT/CREDIT or legacy EXPENSE/INCOME) to domain. */

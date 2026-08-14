@@ -47,7 +47,13 @@ class AccountRepository @Inject constructor(
         return combine(accountsFlow, txnDao.observeAll()) { accounts, txns ->
             accounts.map { entity ->
                 val account = entity.toDomain()
-                val mine = txns.filter { it.accountId == account.id && it.deletedAt == null }
+                // Same membership as TransactionDao.getForAccount: an explicit accountId
+                // match, OR legacy rows that only carry the account's paymentMethod label.
+                val mine = txns.filter {
+                    it.deletedAt == null &&
+                        (it.accountId == account.id ||
+                            (it.accountId == null && it.paymentMethod?.equals(account.name, ignoreCase = true) == true))
+                }
                 val net = mine.sumOf { t ->
                     val type = t.type.uppercase()
                     val signed = when {

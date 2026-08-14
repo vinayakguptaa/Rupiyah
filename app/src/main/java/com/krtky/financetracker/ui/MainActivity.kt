@@ -168,9 +168,7 @@ class MainActivity : ComponentActivity() {
             var onboardingCompleted by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
                 if (!userPreferences.onboardingCompleted.first()) {
-                    val hasData = !secureStore.gmailAddress.isNullOrBlank()
-                        || !secureStore.gmailOAuthEmail.isNullOrBlank()
-                        || !secureStore.llmApiKey.isNullOrBlank()
+                    val hasData = !secureStore.llmApiKey.isNullOrBlank()
                         || db.transactionDao().observeAll().first().isNotEmpty()
                     if (hasData) userPreferences.setOnboardingCompleted(true)
                 }

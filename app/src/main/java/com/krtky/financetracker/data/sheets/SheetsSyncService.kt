@@ -54,7 +54,7 @@ class SheetsSyncService @Inject constructor(
 
     private val txnHeaders = listOf(
         "Transaction ID", "Date", "Time", "Type", "Amount", "Merchant", "Category",
-        "Subcategory", "Fund", "Payment Method", "Cash vs Digital", "Note",
+        "Subcategory", "Tab", "Payment Method", "Cash vs Digital", "Note",
         "Latitude", "Longitude", "Place", "Source", "Email Ref", "Deleted",
         "Updated At", "Month",
     )

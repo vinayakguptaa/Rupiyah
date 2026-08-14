@@ -384,7 +384,7 @@ fun TransactionDetailScreen(
     }
     val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
     val fundName = funds.firstOrNull { it.fund.id == t.fundId }?.fund?.name
-    val canSplit = !t.isSelfTransfer()
+    val canSplit = !t.isSelfTransfer() && !t.isTabTransfer()
 
     Scaffold(
         containerColor = scheme.background,
@@ -1033,7 +1033,7 @@ fun TransactionDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "Fund",
+                            "Tab",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )

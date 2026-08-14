@@ -10,7 +10,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import com.krtky.financetracker.data.email.EmailSource
 import com.krtky.financetracker.ui.theme.ColorSchemeStyle
 import com.krtky.financetracker.ui.theme.ContrastLevel
 import com.krtky.financetracker.ui.theme.DarkModePref
@@ -28,12 +27,8 @@ class UserPreferences @Inject constructor(
 ) {
     private object Keys {
         val locationEnabled = booleanPreferencesKey("location_enabled")
-        val emailPollEnabled = booleanPreferencesKey("email_poll_enabled")
-        /** [EmailSource] name: IMAP (default) or GMAIL_OAUTH. */
-        val emailSource = stringPreferencesKey("email_source")
         val sheetsSyncEnabled = booleanPreferencesKey("sheets_sync_enabled")
         val classificationDelayMin = longPreferencesKey("classification_delay_min")
-        val lastEmailPollAt = longPreferencesKey("last_email_poll_at")
         val displayName = stringPreferencesKey("display_name")
         val profileEmail = stringPreferencesKey("profile_email")
         val profilePhone = stringPreferencesKey("profile_phone")
@@ -66,10 +61,6 @@ class UserPreferences @Inject constructor(
     }
 
     val locationEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.locationEnabled] ?: false }
-    val emailPollEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.emailPollEnabled] ?: false }
-    val emailSource: Flow<EmailSource> = context.dataStore.data.map {
-        EmailSource.fromStored(it[Keys.emailSource])
-    }
     val sheetsSyncEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.sheetsSyncEnabled] ?: false }
     val classificationDelayMin: Flow<Long> = context.dataStore.data.map { it[Keys.classificationDelayMin] ?: 15L }
     val displayName: Flow<String> = context.dataStore.data.map { it[Keys.displayName].orEmpty() }
@@ -137,24 +128,12 @@ class UserPreferences @Inject constructor(
         context.dataStore.edit { it[Keys.locationEnabled] = v }
     }
 
-    suspend fun setEmailPollEnabled(v: Boolean) {
-        context.dataStore.edit { it[Keys.emailPollEnabled] = v }
-    }
-
-    suspend fun setEmailSource(source: EmailSource) {
-        context.dataStore.edit { it[Keys.emailSource] = source.name }
-    }
-
     suspend fun setSheetsSyncEnabled(v: Boolean) {
         context.dataStore.edit { it[Keys.sheetsSyncEnabled] = v }
     }
 
     suspend fun setClassificationDelayMin(v: Long) {
         context.dataStore.edit { it[Keys.classificationDelayMin] = v }
-    }
-
-    suspend fun setLastEmailPollAt(v: Long) {
-        context.dataStore.edit { it[Keys.lastEmailPollAt] = v }
     }
 
     suspend fun setProfile(name: String, email: String, phone: String) {
@@ -302,7 +281,4 @@ class UserPreferences @Inject constructor(
         }
         return banks.firstOrNull() ?: "Digital"
     }
-
-    suspend fun getLastEmailPollAt(): Long =
-        context.dataStore.data.map { it[Keys.lastEmailPollAt] ?: 0L }.first()
 }

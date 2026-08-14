@@ -73,8 +73,6 @@ object WorkScheduler {
         val wm = WorkManager.getInstance(context)
         val net = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-        // Email poll intentionally not scheduled — capture is SMS + CSV + manual.
-        wm.cancelUniqueWork("email_poll")
         wm.enqueueUniquePeriodicWork(
             "classification_notify",
             ExistingPeriodicWorkPolicy.UPDATE,

@@ -280,7 +280,7 @@ private fun OverlayClassifierContent(
                 }
             }
             Text(
-                "Fund",
+                "Tab",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = scheme.onSurfaceVariant,

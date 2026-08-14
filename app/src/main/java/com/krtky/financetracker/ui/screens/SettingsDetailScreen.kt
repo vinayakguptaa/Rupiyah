@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -65,7 +64,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.krtky.financetracker.data.email.EmailSource
 import com.krtky.financetracker.data.prefs.SecureStore
 import androidx.compose.ui.res.stringResource
 import com.krtky.financetracker.R
@@ -100,7 +98,6 @@ fun SettingsDetailScreen(
     val sectionEnum = SettingsSection.fromRoute(section)
     // No BackHandler — NavHost owns system/predictive back so Android 14+ animation works.
     val state by vm.state.collectAsStateWithLifecycle()
-    val senders by vm.senders.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val accountBalances by vm.accountBalances.collectAsStateWithLifecycle()
     val managedAccountBalances by vm.managedAccountBalances.collectAsStateWithLifecycle()
@@ -115,8 +112,6 @@ fun SettingsDetailScreen(
     var llmKey by remember(state.llmApiKeySet) { mutableStateOf("") }
     var llmBase by remember(state.llmBaseUrl) { mutableStateOf(state.llmBaseUrl) }
     var llmModel by remember(state.llmModel) { mutableStateOf(state.llmModel) }
-    var gmail by remember(state.gmail) { mutableStateOf(state.gmail) }
-    var gmailPass by remember { mutableStateOf("") }
     var sheetId by remember(state.sheetId) { mutableStateOf(state.sheetId) }
     var sheetToken by remember { mutableStateOf("") }
     var googleClientId by remember(state.googleWebClientId) { mutableStateOf(state.googleWebClientId) }
@@ -124,11 +119,6 @@ fun SettingsDetailScreen(
     var themePrimary by remember { mutableStateOf(state.themeCustomPrimary) }
     var themeSecondary by remember { mutableStateOf(state.themeCustomSecondary) }
     var themeTertiary by remember { mutableStateOf(state.themeCustomTertiary) }
-    var senderEmail by remember { mutableStateOf("") }
-    var senderLabel by remember { mutableStateOf("") }
-    var pasteSender by remember { mutableStateOf("") }
-    var pasteSubject by remember { mutableStateOf("") }
-    var pasteBody by remember { mutableStateOf("") }
     var newCategory by remember { mutableStateOf("") }
     var newCategoryIcon by remember { mutableStateOf("category") }
     var newCategoryColor by remember { mutableStateOf(0xFF0B6E4FL) }
@@ -138,8 +128,6 @@ fun SettingsDetailScreen(
     var showBankSheet by remember { mutableStateOf(false) }
     var newBankName by remember { mutableStateOf("") }
     var bankPendingArchiveId by remember { mutableStateOf<Long?>(null) }
-    var showSenderSheet by remember { mutableStateOf(false) }
-    var senderPendingDelete by remember { mutableStateOf<Long?>(null) }
     var smsSenders by remember(state.smsSenders) { mutableStateOf(state.smsSenders) }
     var smsKeywords by remember(state.smsKeywords) { mutableStateOf(state.smsKeywords) }
     var defaultPay by remember(state.defaultPaymentMethod) { mutableStateOf(state.defaultPaymentMethod) }
@@ -185,13 +173,6 @@ fun SettingsDetailScreen(
     ) { result ->
         if (result.data != null) {
             scope.launch { vm.completeGoogleSignIn(context, result.data) }
-        }
-    }
-    val gmailSignInLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.data != null) {
-            scope.launch { vm.completeGmailSignIn(context, result.data) }
         }
     }
     val smsPermissionLauncher = rememberLauncherForActivityResult(
@@ -314,16 +295,16 @@ fun SettingsDetailScreen(
 
             "llm" -> {
                 SettingsBlock(
-                    title = "Required for bank email & SMS",
+                    title = "Required for SMS import",
                     helpTitle = "AI helper",
-                    helpMessage = "Bank emails and SMS need AI to read amounts and merchants. You can still add spends by hand without AI. Keys stay on this phone.",
+                    helpMessage = "Bank SMS needs AI to read amounts and merchants. You can still add spends by hand without AI. Keys stay on this phone.",
                 ) {
                     SettingsToggleRow(
                         title = "Use AI helper",
                         subtitle = when {
-                            state.llmReady -> "On · bank email & SMS import unlocked"
+                            state.llmReady -> "On · SMS import unlocked"
                             state.llmEnabled -> "On — paste an API key below to finish"
-                            else -> "Off · turn on to import bank emails & SMS"
+                            else -> "Off · turn on to import bank SMS"
                         },
                         checked = state.llmEnabled,
                         onCheckedChange = { vm.setLlmEnabled(it) },
@@ -332,7 +313,7 @@ fun SettingsDetailScreen(
                         text = when {
                             state.llmReady -> "Ready · ${state.llmModel}"
                             state.llmEnabled -> "Almost done — add your API key"
-                            else -> "Not ready — bank auto-import is locked"
+                            else -> "Not ready — SMS auto-import is locked"
                         },
                         positive = state.llmReady,
                     )
@@ -341,7 +322,7 @@ fun SettingsDetailScreen(
                     SettingsBlock(
                         title = "API key",
                         helpTitle = "API key",
-                        helpMessage = "Pick Groq (often free tier) or OpenAI, paste your key, then Save. Without a key, bank email and SMS import stay off.",
+                        helpMessage = "Pick Groq (often free tier) or OpenAI, paste your key, then Save. Without a key, SMS import stays off.",
                     ) {
                         Text(
                             "Pick a service, paste your key, then Save.",
@@ -586,7 +567,7 @@ fun SettingsDetailScreen(
                     helpMessage = "Most people never need this. If “Connect with Google” fails, a developer may need to paste a Web Client ID from Google Cloud Console.\n\n" +
                         "1. Open console.cloud.google.com\n" +
                         "2. Create or pick a project\n" +
-                        "3. Enable Gmail API and Sheets API\n" +
+                        "3. Enable Sheets API\n" +
                         "4. Credentials → OAuth client ID → Web application\n" +
                         "5. Paste the Client ID below (ends with .apps.googleusercontent.com)",
                 ) {
@@ -603,37 +584,6 @@ fun SettingsDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = shapes.large,
                     ) { Text("Save") }
-                }
-
-                SettingsBlock(
-                    title = "Gmail connection status",
-                    helpTitle = "Gmail",
-                    helpMessage = "Read-only access. Only mail from trusted banks is used.",
-                ) {
-                    SettingsStatusText(
-                        text = if (state.gmailOAuthConnected) {
-                            "Connected as ${state.gmailOAuthEmail.ifBlank { "Google account" }}"
-                        } else {
-                            "Not connected"
-                        },
-                        positive = state.gmailOAuthConnected,
-                    )
-                    SettingsButtonStack {
-                        if (state.gmailOAuthConnected) {
-                            OutlinedButton(
-                                onClick = { vm.disconnectGmailOAuth() },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = shapes.large,
-                            ) { Text("Disconnect Gmail") }
-                        }
-                        Button(
-                            onClick = { gmailSignInLauncher.launch(vm.gmailSignInIntent(context)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = shapes.large,
-                        ) {
-                            Text(if (state.gmailOAuthConnected) "Reconnect Gmail" else "Connect Gmail")
-                        }
-                    }
                 }
 
                 SettingsBlock(
@@ -831,7 +781,7 @@ fun SettingsDetailScreen(
                 SettingsBlock(
                     title = "System prompt",
                     helpTitle = "LLM system prompt",
-                    helpMessage = "Instructions sent when the model extracts transactions from email or SMS. Reset restores the built-in default.",
+                    helpMessage = "Instructions sent when the model extracts transactions from SMS. Reset restores the built-in default.",
                 ) {
                     OutlinedTextField(
                         systemPrompt,
@@ -875,16 +825,6 @@ fun SettingsDetailScreen(
                         shape = shapes.large,
                     ) { Text("Save delay") }
                 }
-                SettingsBlock(title = "Test parser") {
-                    OutlinedTextField(pasteSender, { pasteSender = it }, label = { Text("From") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                    OutlinedTextField(pasteSubject, { pasteSubject = it }, label = { Text("Subject") }, modifier = Modifier.fillMaxWidth(), shape = shapes.medium)
-                    OutlinedTextField(pasteBody, { pasteBody = it }, label = { Text("Body") }, modifier = Modifier.fillMaxWidth(), minLines = 4, shape = shapes.medium)
-                    Button(
-                        onClick = { scope.launch { vm.processPaste(pasteSender, pasteSubject, pasteBody) } },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.large,
-                    ) { Text("Process email") }
-                }
                 SettingsBlock(
                     title = "Diagnostics",
                     helpTitle = "Diagnostics",
@@ -892,12 +832,7 @@ fun SettingsDetailScreen(
                 ) {
                     Text("Package: com.krtky.financetracker", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Text("LLM configured: ${state.llmApiKeySet}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                    Text(
-                        "Gmail: source=${state.emailSource} imap=${state.gmailPassSet} oauth=${state.gmailOAuthConnected}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                    Text("Email monitor: ${state.emailPoll}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    Text("SMS on: ${state.smsEnabled}", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     Button(
                         onClick = { vm.lockDev() },
                         modifier = Modifier.fillMaxWidth(),
@@ -1143,63 +1078,6 @@ fun SettingsDetailScreen(
         }
     }
 
-    if (showSenderSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSenderSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("Add a trusted bank email", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(
-                    "Only emails from this address (or containing this text) will be turned into spends.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                )
-                OutlinedTextField(
-                    senderEmail,
-                    { senderEmail = it },
-                    label = { Text("Email address or part of it") },
-                    placeholder = { Text("alerts@hdfcbank.net or hdfcbank") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.medium,
-                )
-                OutlinedTextField(
-                    senderLabel,
-                    { senderLabel = it },
-                    label = { Text("Short name for this bank") },
-                    placeholder = { Text("e.g. HDFC, PhonePe") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shapes.medium,
-                )
-                SettingsButtonStack {
-                    Button(
-                        onClick = {
-                            vm.addSender(senderEmail, senderLabel)
-                            senderEmail = ""
-                            senderLabel = ""
-                            showSenderSheet = false
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.extraLarge,
-                        enabled = senderEmail.isNotBlank(),
-                    ) { Text("Add") }
-                    OutlinedButton(
-                        onClick = { showSenderSheet = false },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = shapes.extraLarge,
-                    ) { Text("Cancel") }
-                }
-            }
-        }
-    }
-
     categoryPendingDelete?.let { id ->
         DeleteConfirmSheet(
             title = "Delete category?",
@@ -1226,17 +1104,6 @@ fun SettingsDetailScreen(
                     defaultDigital = ""
                 }
                 bankPendingArchiveId = null
-            },
-        )
-    }
-    senderPendingDelete?.let { id ->
-        DeleteConfirmSheet(
-            title = "Remove sender?",
-            message = "Messages from this pattern will no longer be processed.",
-            onDismiss = { senderPendingDelete = null },
-            onConfirmDelete = {
-                vm.deleteSender(id)
-                senderPendingDelete = null
             },
         )
     }
