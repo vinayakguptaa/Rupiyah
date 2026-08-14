@@ -104,11 +104,11 @@ class TransactionDaoTest {
     }
 
     @Test
-    fun findByEmailMessageId() = runBlocking {
+    fun findBySmsMessageId() = runBlocking {
         dao.insert(
-            TransactionEntity(id = "e1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "EMAIL", classificationStatus = "PENDING", updatedAt = 1L, emailMessageId = "msg-1")
+            TransactionEntity(id = "e1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "SMS", classificationStatus = "PENDING", updatedAt = 1L, smsMessageId = "msg-1")
         )
-        val found = dao.findByEmailMessageId("msg-1")
+        val found = dao.findBySmsMessageId("msg-1")
         assertThat(found).isNotNull()
         assertThat(found!!.id).isEqualTo("e1")
     }

@@ -250,7 +250,7 @@ class TransactionRepository @Inject constructor(
                     enqueueSync(child.id)
                 }
             }
-            val partyBase = parent.counterparty ?: parent.merchant
+            val partyBase = parent.counterparty
             val parentLabel = partyBase ?: "transaction"
             parts.forEachIndexed { index, part ->
                 val party = part.counterparty?.trim()?.takeIf { it.isNotBlank() } ?: partyBase
@@ -266,12 +266,10 @@ class TransactionRepository @Inject constructor(
                     currency = parent.currency,
                     occurredAt = parent.occurredAt,
                     recordedAt = System.currentTimeMillis(),
-                    merchant = party,
                     counterparty = party,
                     categoryId = part.categoryId,
                     fundId = part.fundId,
                     accountId = parent.accountId,
-                    paymentMethod = parent.paymentMethod,
                     isCash = parent.isCash,
                     source = TransactionSource.MANUAL,
                     note = partNote.ifBlank { null },
@@ -366,7 +364,6 @@ class TransactionRepository @Inject constructor(
         val total = loaded.sumOf { it.amountPaise }
         if (total <= 0L) return null
         val occurredAt = loaded.maxOf { it.occurredAt }
-        val paymentMethod = mostCommonOrFirst(loaded.map { it.paymentMethod })
         val categoryId = if (loaded.map { it.categoryId }.distinct().size == 1) {
             loaded.first().categoryId
         } else {
@@ -377,7 +374,7 @@ class TransactionRepository @Inject constructor(
         } else {
             null
         }
-        val names = loaded.mapNotNull { it.counterparty ?: it.merchant }
+        val names = loaded.mapNotNull { it.counterparty }
         val party = when {
             names.isEmpty() -> "Merged (${loaded.size})"
             names.distinct().size == 1 -> names.first()
@@ -391,8 +388,7 @@ class TransactionRepository @Inject constructor(
             append("Merged from ${loaded.size} transactions")
             if (joinedNotes.isNotBlank()) append(" · $joinedNotes")
         }
-        val isCash = paymentMethod.equals("Cash", true) ||
-            (paymentMethod == null && loaded.all { it.isCash })
+        val isCash = loaded.all { it.isCash }
 
         return db.withTransaction {
             val merged = Transaction(
@@ -402,12 +398,10 @@ class TransactionRepository @Inject constructor(
                 currency = loaded.first().currency,
                 occurredAt = occurredAt,
                 recordedAt = System.currentTimeMillis(),
-                merchant = party,
                 counterparty = party,
                 categoryId = categoryId,
                 fundId = fundId,
                 accountId = loaded.first().accountId,
-                paymentMethod = paymentMethod,
                 isCash = isCash,
                 source = TransactionSource.MANUAL,
                 note = note,
@@ -445,7 +439,7 @@ class TransactionRepository @Inject constructor(
         if (parts.any { it.amountPaise <= 0L }) {
             throw IllegalArgumentException("Each part must be greater than zero")
         }
-        val partyBase = txn.counterparty ?: txn.merchant
+        val partyBase = txn.counterparty
         val parentLabel = partyBase ?: "transaction"
         val firstId = parts.first().let { firstPart ->
             val party = firstPart.counterparty?.trim()?.takeIf { it.isNotBlank() } ?: partyBase
@@ -457,13 +451,12 @@ class TransactionRepository @Inject constructor(
             val child = txn.copy(
                 id = UUID.randomUUID().toString(),
                 amountPaise = firstPart.amountPaise,
-                merchant = party,
                 counterparty = party,
                 categoryId = firstPart.categoryId,
                 fundId = firstPart.fundId,
                 note = partNote.ifBlank { null },
                 splitGroupId = groupId,
-                emailMessageId = null,
+                smsMessageId = null,
                 externalRefId = null,
                 receiptUri = txn.receiptUri,
                 classificationStatus = if (firstPart.categoryId != null) {
@@ -484,13 +477,12 @@ class TransactionRepository @Inject constructor(
             val child = txn.copy(
                 id = UUID.randomUUID().toString(),
                 amountPaise = part.amountPaise,
-                merchant = party,
                 counterparty = party,
                 categoryId = part.categoryId,
                 fundId = part.fundId,
                 note = partNote.ifBlank { null },
                 splitGroupId = groupId,
-                emailMessageId = null,
+                smsMessageId = null,
                 externalRefId = null,
                 receiptUri = null,
                 classificationStatus = if (part.categoryId != null) {
@@ -507,7 +499,7 @@ class TransactionRepository @Inject constructor(
     suspend fun insertManual(txn: Transaction, addToFund: Boolean = false): String {
         val id = txn.id.ifBlank { UUID.randomUUID().toString() }
         val now = System.currentTimeMillis()
-        val hash = contentHash(txn.type, txn.amountPaise, txn.occurredAt, txn.merchant, txn.externalRefId, "manual-$id")
+        val hash = contentHash(txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, "manual-$id")
         val entity = txn.copy(
             id = id,
             contentHash = hash,
@@ -525,11 +517,11 @@ class TransactionRepository @Inject constructor(
         return id
     }
 
-    suspend fun insertFromEmail(txn: Transaction): String? {
+    suspend fun insertFromSms(txn: Transaction): String? {
         val hash = txn.contentHash ?: contentHash(
-            txn.type, txn.amountPaise, txn.occurredAt, txn.merchant, txn.externalRefId, txn.emailMessageId
+            txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, txn.smsMessageId
         )
-        if (txn.emailMessageId != null && txnDao.findByEmailMessageId(txn.emailMessageId) != null) return null
+        if (txn.smsMessageId != null && txnDao.findBySmsMessageId(txn.smsMessageId) != null) return null
         val duplicate = txn.externalRefId?.takeIf { it.isNotBlank() }?.let { txnDao.findByExternalRefId(it) }
             ?: txnDao.findSimilar(
                 type = txn.type.name,
@@ -539,14 +531,13 @@ class TransactionRepository @Inject constructor(
                 targetTs = txn.occurredAt,
             )
         if (duplicate != null) {
-            // Email is the richer source, so it replaces an earlier SMS record.
-            if (duplicate.source == TransactionSource.SMS.name && txn.source == TransactionSource.EMAIL) {
+            // A new SMS parse can be richer than an earlier one — refresh in place.
+            if (duplicate.source == TransactionSource.SMS.name) {
                 txnDao.update(
                     duplicate.copy(
-                        source = TransactionSource.EMAIL.name,
-                        emailMessageId = txn.emailMessageId ?: duplicate.emailMessageId,
+                        source = TransactionSource.SMS.name,
+                        smsMessageId = txn.smsMessageId ?: duplicate.smsMessageId,
                         externalRefId = txn.externalRefId ?: duplicate.externalRefId,
-                        merchant = txn.merchant ?: duplicate.merchant,
                         counterparty = txn.counterparty ?: duplicate.counterparty,
                         updatedAt = System.currentTimeMillis(),
                         sheetsSynced = false,
@@ -575,17 +566,14 @@ class TransactionRepository @Inject constructor(
             type = txn.type,
             amountPaise = txn.amountPaise,
             occurredAt = txn.occurredAt,
-            merchant = txn.merchant,
+            party = txn.counterparty,
             externalRef = txn.externalRefId,
             extra = "import-${txn.accountId}-${txn.rawDescription?.take(40).orEmpty()}",
         )
         if (txnDao.findByContentHash(hash) != null) return null
         txn.externalRefId?.takeIf { it.isNotBlank() }?.let { ref ->
             val existing = txnDao.findByExternalRefId(ref)
-            if (existing != null &&
-                (existing.accountId == txn.accountId ||
-                    existing.paymentMethod.equals(txn.paymentMethod, true))
-            ) {
+            if (existing != null && existing.accountId == txn.accountId) {
                 return null
             }
         }
@@ -613,16 +601,16 @@ class TransactionRepository @Inject constructor(
     }
 
     /** Non-deleted domain transactions for an account (dedupe candidates). */
-    suspend fun getForAccount(accountId: Long, accountName: String): List<Transaction> {
+    suspend fun getForAccount(accountId: Long): List<Transaction> {
         val cats = categoryDao.getAll().associate { it.id to it.toDomain() }
         val funds = fundDao.getAll().associate { it.id to it.name }
         val accounts = accountDao.getAll().associate { it.id to it.name }
-        return txnDao.getForAccount(accountId, accountName).map { e ->
+        return txnDao.getForAccount(accountId).map { e ->
             val cat = e.categoryId?.let { cats[it] }
             e.toDomain(
                 category = cat,
                 fundName = e.fundId?.let { funds[it] },
-                accountName = e.accountId?.let { accounts[it] } ?: e.paymentMethod,
+                accountName = e.accountId?.let { accounts[it] },
             )
         }
     }
@@ -743,7 +731,6 @@ class TransactionRepository @Inject constructor(
             occurredAt = occurredAt,
             recordedAt = now,
             accountId = fromAccountId,
-            paymentMethod = fromLabel,
             isCash = from.kind == "CASH",
             source = TransactionSource.MANUAL,
             note = note ?: "Self transfer to $toLabel",
@@ -760,7 +747,6 @@ class TransactionRepository @Inject constructor(
             occurredAt = occurredAt,
             recordedAt = now,
             accountId = toAccountId,
-            paymentMethod = toLabel,
             isCash = to.kind == "CASH",
             source = TransactionSource.MANUAL,
             note = note ?: "Self transfer from $fromLabel",
@@ -880,7 +866,7 @@ class TransactionRepository @Inject constructor(
             }
             .sortedByDescending { it.totalPaise }
         val investByName = (investDebits + investCredits)
-            .groupBy { (it.counterparty ?: it.merchant)?.trim().orEmpty().ifBlank { "Unnamed" } }
+            .groupBy { it.counterparty?.trim().orEmpty().ifBlank { "Unnamed" } }
             .map { (name, items) ->
                 NamedAmount(
                     name = name,
@@ -912,17 +898,14 @@ class TransactionRepository @Inject constructor(
     fun observeCategoryUsage(): Flow<Map<Long, Long>> =
         txnDao.observeCategoryUsage().map { rows -> rows.associate { it.id to it.useCount } }
 
-    /** paymentMethod label -> use count. */
-    fun observePaymentMethodUsage(): Flow<Map<String, Long>> =
-        txnDao.observePaymentMethodUsage().map { rows ->
-            rows.associate { it.id to it.useCount }
-        }
+    /** accountId -> use count (most used first from DAO). */
+    fun observeAccountUsage(): Flow<Map<Long, Long>> =
+        txnDao.observeAccountUsage().map { rows -> rows.associate { it.id to it.useCount } }
 
     /**
      * Net balance per account label (credits − debits + opening), matching the
      * Accounts-screen formula in [com.krtky.financetracker.data.repository.AccountRepository].
-     * Legacy rows that only carry a paymentMethod label are folded into their account
-     * by name; rows with no matching account group under "Digital".
+     * Rows with no owning account group under "Digital".
      */
     fun observeAccountBalances(): Flow<Map<String, Long>> =
         combine(
@@ -930,23 +913,21 @@ class TransactionRepository @Inject constructor(
             txnDao.observeAll(),
         ) { accounts, txns ->
             val live = txns.filter { it.deletedAt == null }
-            val knownLower = accounts.map { it.name.trim().lowercase() }.toSet()
             val byAccount = accounts.associate { acc ->
-                val mine = live.filter {
-                    it.accountId == acc.id ||
-                        (it.accountId == null &&
-                            it.paymentMethod?.equals(acc.name, ignoreCase = true) == true)
-                }
+                val mine = live.filter { it.accountId == acc.id }
                 val net = mine.sumOf { signedPaise(it) }
                 acc.name.trim() to (acc.openingBalancePaise + net)
             }.toMutableMap()
 
-            // Legacy rows whose paymentMethod matches no account (e.g. "UPI",
-            // "Digital", unknown senders) — keep Home's total honest.
-            val unmatched = live.filter { t ->
-                t.accountId == null &&
-                    (t.paymentMethod.isNullOrBlank() || t.paymentMethod!!.trim().lowercase() !in knownLower)
-            }
+            // Rows with no owning account (e.g. legacy unlinked spends) — keep Home's
+            // total honest.
+            //
+            // NOTE: "Digital" here is a DISPLAY-ONLY pseudo-bucket, not a real
+            // `accounts` row. It aggregates every row with no owning account so the
+            // Home total stays complete, but it is deliberately absent from the
+            // Accounts screen (which lists real accounts only). Each *named* account's
+            // balance agrees exactly between Home and the Accounts screen.
+            val unmatched = live.filter { it.accountId == null }
             if (unmatched.isNotEmpty()) {
                 val digital = unmatched.sumOf { signedPaise(it) }
                 byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digital
@@ -1024,15 +1005,6 @@ class TransactionRepository @Inject constructor(
     suspend fun deleteFund(fundId: Long) {
         val fund = fundDao.getById(fundId) ?: return
         fundDao.update(fund.copy(archived = true))
-    }
-
-    /**
-     * @deprecated Prefer [setFundBudget] (absolute amount). Kept as absolute set so
-     * old "adjust" UI that passes a full rupee amount resets the baseline correctly.
-     */
-    suspend fun adjustFund(fundId: Long, amountPaise: Long, note: String?) {
-        // Treat as SET amount (not delta) — matches "edit fund and set amount"
-        setFundBudget(fundId, amountPaise.coerceAtLeast(0L))
     }
 
     /**
@@ -1201,26 +1173,15 @@ class TransactionRepository @Inject constructor(
         }
     }
 
-    private fun isCreditType(type: String): Boolean {
-        val t = type.uppercase()
-        return t == TransactionType.CREDIT.name || t == "INCOME"
-    }
+    private fun isCreditType(type: String): Boolean =
+        type.uppercase() == TransactionType.CREDIT.name
 
-    private fun isDebitType(type: String): Boolean {
-        val t = type.uppercase()
-        return t == TransactionType.DEBIT.name || t == "EXPENSE"
-    }
+    private fun isDebitType(type: String): Boolean =
+        type.uppercase() == TransactionType.DEBIT.name
 
     /** Signed amount for balance math: credits +, debits −. */
     private fun signedPaise(t: TransactionEntity): Long =
         if (isCreditType(t.type)) t.amountPaise else -t.amountPaise
-
-    private fun <T> mostCommonOrFirst(items: List<T?>): T? {
-        if (items.isEmpty()) return null
-        val counted = items.filterNotNull().groupingBy { it }.eachCount()
-        if (counted.isEmpty()) return null
-        return counted.maxByOrNull { it.value }?.key
-    }
 
     private suspend fun scheduleClassification(transactionId: String, delayMin: Long = 15) {
         pendingDao.upsert(
@@ -1240,12 +1201,12 @@ class TransactionRepository @Inject constructor(
             type: TransactionType,
             amountPaise: Long,
             occurredAt: Long,
-            merchant: String?,
+            party: String?,
             externalRef: String?,
             extra: String?,
         ): String {
             val bucket = occurredAt / 120_000
-            val raw = listOf(type.name, amountPaise, bucket, merchant.orEmpty(), externalRef.orEmpty(), extra.orEmpty())
+            val raw = listOf(type.name, amountPaise, bucket, party.orEmpty(), externalRef.orEmpty(), extra.orEmpty())
                 .joinToString("|")
             val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
             return digest.joinToString("") { "%02x".format(it) }

@@ -17,7 +17,7 @@ enum class TransactionSortOrder(val label: String) {
 }
 
 private val displayName: (Transaction) -> String = { t ->
-    (t.counterparty ?: t.merchant ?: t.note ?: "").trim().lowercase()
+    (t.counterparty ?: t.note ?: "").trim().lowercase()
 }
 
 fun List<Transaction>.sortedWithOrder(order: TransactionSortOrder): List<Transaction> = when (order) {

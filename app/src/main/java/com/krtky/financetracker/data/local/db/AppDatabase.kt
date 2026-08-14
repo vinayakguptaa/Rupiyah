@@ -19,8 +19,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    version = 10,
-    exportSchema = false,
+    version = 11,
+    exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
@@ -455,6 +455,134 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS `trusted_senders`")
                 db.execSQL("DROP TABLE IF EXISTS `email_ingest_log`")
+            }
+        }
+
+        /**
+         * Collapses the legacy dual-party / dual-account fields into single ones and
+         * renames the email-carryover id:
+         * - `counterparty` becomes the single party field (`merchant` dropped).
+         * - `accountId` becomes the single account field (`paymentMethod` dropped;
+         *   v6→7 already linked paymentMethod rows to accounts by name).
+         * - `emailMessageId` → `smsMessageId` (SMS is the only ingest that stores it).
+         * - Any lingering legacy `EXPENSE`/`INCOME` type strings are normalised to
+         *   `DEBIT`/`CREDIT`.
+         *
+         * SQLite has no column drop/rename, so the table is rebuilt. The `externalRefId`
+         * unique-by-paymentMethod index becomes a plain index (dedupe is scoped to the
+         * contentHash unique key; refs may now repeat across accounts without a clash).
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transactions_new` (
+                        `id` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `amountPaise` INTEGER NOT NULL,
+                        `currency` TEXT NOT NULL,
+                        `occurredAt` INTEGER NOT NULL,
+                        `recordedAt` INTEGER NOT NULL,
+                        `counterparty` TEXT,
+                        `categoryId` INTEGER,
+                        `fundId` INTEGER,
+                        `accountId` INTEGER,
+                        `source` TEXT NOT NULL,
+                        `note` TEXT,
+                        `isCash` INTEGER NOT NULL,
+                        `classificationStatus` TEXT NOT NULL,
+                        `isSkipped` INTEGER NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `transferGroupId` TEXT,
+                        `rawDescription` TEXT,
+                        `classificationNotifiedAt` INTEGER,
+                        `latitude` REAL,
+                        `longitude` REAL,
+                        `placeName` TEXT,
+                        `locationAccuracy` REAL,
+                        `locationMatchedAt` INTEGER,
+                        `smsMessageId` TEXT,
+                        `externalRefId` TEXT,
+                        `contentHash` TEXT,
+                        `sheetsSynced` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `updatedAt` INTEGER NOT NULL,
+                        `version` INTEGER NOT NULL,
+                        `receiptUri` TEXT,
+                        `splitGroupId` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions_new` (
+                        id, type, amountPaise, currency, occurredAt, recordedAt,
+                        counterparty, categoryId, fundId, accountId, source, note, isCash,
+                        classificationStatus, isSkipped, kind, transferGroupId, rawDescription,
+                        classificationNotifiedAt, latitude, longitude, placeName, locationAccuracy,
+                        locationMatchedAt, smsMessageId, externalRefId, contentHash, sheetsSynced,
+                        deletedAt, updatedAt, version, receiptUri, splitGroupId
+                    )
+                    SELECT
+                        id,
+                        CASE
+                            WHEN type = 'EXPENSE' THEN 'DEBIT'
+                            WHEN type = 'INCOME' THEN 'CREDIT'
+                            ELSE type
+                        END,
+                        amountPaise, currency, occurredAt, recordedAt,
+                        COALESCE(NULLIF(TRIM(counterparty), ''), merchant),
+                        categoryId, fundId, accountId, source, note, isCash,
+                        classificationStatus, isSkipped, kind, transferGroupId, rawDescription,
+                        classificationNotifiedAt, latitude, longitude, placeName, locationAccuracy,
+                        locationMatchedAt, emailMessageId, externalRefId, contentHash, sheetsSynced,
+                        deletedAt, updatedAt, version, receiptUri, splitGroupId
+                    FROM `transactions`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `transactions`")
+                db.execSQL("ALTER TABLE `transactions_new` RENAME TO `transactions`")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_smsMessageId` " +
+                        "ON `transactions` (`smsMessageId`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_contentHash` " +
+                        "ON `transactions` (`contentHash`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_externalRefId` " +
+                        "ON `transactions` (`externalRefId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_occurredAt` " +
+                        "ON `transactions` (`occurredAt`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_categoryId` " +
+                        "ON `transactions` (`categoryId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_fundId` " +
+                        "ON `transactions` (`fundId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId` " +
+                        "ON `transactions` (`accountId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_transferGroupId` " +
+                        "ON `transactions` (`transferGroupId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_splitGroupId` " +
+                        "ON `transactions` (`splitGroupId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_deletedAt` " +
+                        "ON `transactions` (`deletedAt`)",
+                )
             }
         }
 

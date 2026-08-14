@@ -44,7 +44,7 @@ class ClassificationNotifier @Inject constructor(
                 "Payments",
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Instant alerts when a payment email is detected"
+                description = "Instant alerts when a payment is detected"
                 enableVibration(true)
                 enableLights(true)
                 lightColor = Color.GREEN
@@ -56,29 +56,28 @@ class ClassificationNotifier @Inject constructor(
 
     suspend fun notifyPayment(
         transactionId: String,
-        emailSubject: String? = null,
-        emailSender: String? = null,
+        sourceLabel: String? = null,
     ) {
         ensureChannel()
         val txn = transactionRepository.getById(transactionId) ?: return
         val amount = Money(txn.amountPaise).formatInr()
-        val party = (txn.counterparty ?: txn.merchant)?.trim().orEmpty()
+        val party = txn.counterparty?.trim().orEmpty()
         val isIn = txn.type == TransactionType.CREDIT
         val title = if (isIn) "Received $amount" else "Paid $amount"
         val line = when {
             party.isNotBlank() && isIn -> "From $party"
             party.isNotBlank() -> "To $party"
-            else -> txn.paymentMethod ?: "Payment"
+            else -> txn.accountName ?: "Payment"
         }
         val place = txn.placeName?.takeIf { it.isNotBlank() }
         val summary = buildString {
             append(line)
-            if (!txn.paymentMethod.isNullOrBlank()) append(" · ${txn.paymentMethod}")
+            if (!txn.accountName.isNullOrBlank()) append(" · ${txn.accountName}")
             if (place != null) append(" · $place")
         }
         val big = buildString {
             append(summary)
-            if (!emailSubject.isNullOrBlank()) append("\n").append(emailSubject.trim())
+            if (!sourceLabel.isNullOrBlank()) append("\n").append(sourceLabel.trim())
             if (!txn.note.isNullOrBlank()) append("\nNote: ").append(txn.note)
             append("\nTap to classify · Reply to add a note")
         }

@@ -176,7 +176,7 @@ class StatementImportRepository @Inject constructor(
     }
 
     private suspend fun loadCandidates(account: Account): List<Transaction> =
-        transactionRepository.getForAccount(account.id, account.name)
+        transactionRepository.getForAccount(account.id)
 
     private suspend fun insertImportRow(
         account: Account,
@@ -189,10 +189,9 @@ class StatementImportRepository @Inject constructor(
         val isCash = account.kind.name == "CASH" || account.name.equals("Cash", true)
         val id = UUID.randomUUID().toString()
         val ref = row.externalRef?.takeIf { it.isNotBlank() }
-        // Avoid unique-index collisions on externalRefId + paymentMethod
         if (ref != null) {
             val clash = txnDao.findByExternalRefId(ref)
-            if (clash != null && clash.paymentMethod.equals(account.name, true)) {
+            if (clash != null && clash.accountId == account.id) {
                 return false
             }
         }
@@ -201,11 +200,9 @@ class StatementImportRepository @Inject constructor(
             type = row.type,
             amountPaise = row.amountPaise,
             occurredAt = row.occurredAt,
-            merchant = row.counterparty,
             counterparty = row.counterparty,
             categoryId = catId,
             accountId = account.id,
-            paymentMethod = account.name,
             source = TransactionSource.IMPORT,
             note = row.note,
             isCash = isCash,
@@ -227,7 +224,7 @@ class StatementImportRepository @Inject constructor(
 
     private fun summarize(t: Transaction): String {
         val dir = if (t.type == TransactionType.DEBIT) "Debit" else "Credit"
-        val name = t.displayName() ?: t.paymentMethod ?: "Txn"
+        val name = t.displayName() ?: t.accountName ?: "Txn"
         return "$dir · ${t.amountPaise / 100.0} · $name"
     }
 }

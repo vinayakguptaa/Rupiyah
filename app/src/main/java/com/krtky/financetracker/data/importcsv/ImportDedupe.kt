@@ -64,7 +64,7 @@ object ImportDedupe {
         for (c in near.sortedBy { abs(it.occurredAt - row.occurredAt) }) {
             val descScore = descriptionSimilarity(
                 row.description ?: row.counterparty,
-                c.rawDescription ?: c.counterparty ?: c.merchant ?: c.note,
+                c.rawDescription ?: c.counterparty ?: c.note,
             )
             if (descScore >= 0.72f || (ref != null && c.externalRefId.isNullOrBlank())) {
                 // Strong description match, or we're attaching a new ref to a near twin
@@ -92,7 +92,7 @@ object ImportDedupe {
         if (best != null) {
             val descScore = descriptionSimilarity(
                 row.description ?: row.counterparty,
-                best.rawDescription ?: best.counterparty ?: best.merchant ?: best.note,
+                best.rawDescription ?: best.counterparty ?: best.note,
             )
             return DedupeMatch(
                 DedupeConfidence.MEDIUM,
@@ -163,8 +163,7 @@ fun shouldEnrichExisting(existing: Transaction, row: ParsedCsvRow): Boolean {
             (row.description!!.length > (existing.rawDescription?.length ?: 0) + 8))
     val richerRef = !row.externalRef.isNullOrBlank() && existing.externalRefId.isNullOrBlank()
     val richerParty = !row.counterparty.isNullOrBlank() &&
-        existing.counterparty.isNullOrBlank() &&
-        existing.merchant.isNullOrBlank()
+        existing.counterparty.isNullOrBlank()
     return richerDesc || richerRef || richerParty
 }
 
@@ -180,9 +179,7 @@ fun enrichTransaction(existing: Transaction, row: ParsedCsvRow): Transaction {
         externalRefId = existing.externalRefId?.takeIf { it.isNotBlank() }
             ?: row.externalRef?.takeIf { it.isNotBlank() },
         counterparty = existing.counterparty?.takeIf { it.isNotBlank() }
-            ?: existing.merchant?.takeIf { it.isNotBlank() }
             ?: row.counterparty,
-        merchant = existing.merchant ?: row.counterparty,
         note = existing.note?.takeIf { it.isNotBlank() } ?: row.note,
         updatedAt = System.currentTimeMillis(),
         sheetsSynced = false,

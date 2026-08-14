@@ -21,13 +21,11 @@ import kotlinx.coroutines.flow.stateIn
 
 /** Cash / Digital bucket or exact bank/wallet / account name. */
 fun matchesPaymentFilter(txn: Transaction, pay: String): Boolean {
-    val isCash = txn.isCash ||
-        txn.paymentMethod.equals("Cash", true) ||
-        txn.accountName.equals("Cash", true)
+    val isCash = txn.isCash || txn.accountName.equals("Cash", true)
     return when {
         pay.equals("Cash", true) -> isCash
         pay.equals("Digital", true) -> !isCash
-        else -> txn.accountName.equals(pay, true) || txn.paymentMethod.equals(pay, true)
+        else -> txn.accountName.equals(pay, true)
     }
 }
 
@@ -92,40 +90,18 @@ fun observeFilterAccountNames(
     transactionRepository: TransactionRepository,
 ): Flow<List<String>> = combine(
     accountRepository.observeAll(),
-    transactionRepository.observePaymentMethodUsage(),
+    transactionRepository.observeAccountUsage(),
 ) { accounts, usage ->
     accounts
         .filter { it.kind != AccountKind.CASH && !it.name.equals("Cash", true) }
         .sortedWith(
             compareBy<com.krtky.financetracker.domain.model.Account> { it.archived }
-                .thenByDescending { usage[it.name] ?: 0L }
+                .thenByDescending { usage[it.id] ?: 0L }
                 .thenBy { it.sortOrder }
                 .thenBy { it.name },
         )
         .map { it.name }
         .distinct()
-}
-
-/** @deprecated Prefer [filterAccountNamesState] / AccountRepository. */
-fun observeBankAccounts(
-    userPreferences: UserPreferences,
-    transactionRepository: TransactionRepository,
-    includeUsageExtras: Boolean,
-): Flow<List<String>> = combine(
-    userPreferences.bankAccounts,
-    transactionRepository.observePaymentMethodUsage(),
-) { raw, usage ->
-    val configured = userPreferences.parseBankList(raw)
-    val sortedConfigured = configured.sortedByDescending { usage[it] ?: 0L }
-    if (!includeUsageExtras) return@combine sortedConfigured
-    val extras = usage.keys
-        .filter { name ->
-            !name.equals("Cash", true) &&
-                !name.equals("Digital", true) &&
-                configured.none { it.equals(name, true) }
-        }
-        .sortedByDescending { usage[it] ?: 0L }
-    (sortedConfigured + extras).distinct()
 }
 
 fun ViewModel.categoriesState(
@@ -150,15 +126,6 @@ fun ViewModel.activeBankNamesState(accountRepository: AccountRepository): StateF
             list.filter { it.kind != AccountKind.CASH && !it.name.equals("Cash", true) }
                 .map { it.name }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-/** @deprecated Prefer [filterAccountNamesState] or [activeBankNamesState]. */
-fun ViewModel.bankAccountsState(
-    userPreferences: UserPreferences,
-    transactionRepository: TransactionRepository,
-    includeUsageExtras: Boolean,
-): StateFlow<List<String>> =
-    observeBankAccounts(userPreferences, transactionRepository, includeUsageExtras)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
 fun ViewModel.fundsState(transactionRepository: TransactionRepository) =

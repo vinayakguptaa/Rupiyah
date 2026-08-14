@@ -319,7 +319,7 @@ private fun LazyListScope.recentActivityItems(
             key = { _, t -> t.id },
         ) { _, t ->
             val scheme = MaterialTheme.colorScheme
-            val party = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Transaction"
+            val party = t.counterparty ?: t.note ?: t.accountName ?: "Transaction"
             val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
             val catColor = categoryColor(t.categoryColor)
             TransactionCard(
@@ -328,7 +328,7 @@ private fun LazyListScope.recentActivityItems(
                     t.occurredAt.formatDateTime(),
                     t.categoryName,
                     t.note?.take(28),
-                    t.paymentMethod,
+                    t.accountName,
                 ).joinToString(" · "),
                 amount = "$sign${t.amountPaise.inr()}",
                 amountColor = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,

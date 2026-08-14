@@ -1,6 +1,11 @@
-package com.krtky.financetracker.data.email
+package com.krtky.financetracker.data.sms
 
-object EmailRedactor {
+/**
+ * Redacts account / card numbers before sending SMS body text to the LLM helper.
+ * (Renamed from the email-era `EmailRedactor`; SMS is the only ingest that parses
+ * free-form bank text now.)
+ */
+object SmsRedactor {
     private val account = Regex("""\b\d{9,18}\b""")
     private val card = Regex("""\b(?:\d[ -]*?){13,19}\b""")
 

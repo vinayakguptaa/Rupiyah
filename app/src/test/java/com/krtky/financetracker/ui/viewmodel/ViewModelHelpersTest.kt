@@ -7,26 +7,26 @@ import org.junit.Test
 
 class ViewModelHelpersTest {
 
-    private fun txn(paymentMethod: String? = null, isCash: Boolean = false) =
-        Transaction(id = "1", type = TransactionType.DEBIT, amountPaise = 100L, occurredAt = 1L, paymentMethod = paymentMethod, isCash = isCash)
+    private fun txn(accountName: String? = null, isCash: Boolean = false) =
+        Transaction(id = "1", type = TransactionType.DEBIT, amountPaise = 100L, occurredAt = 1L, accountName = accountName, isCash = isCash)
 
     @Test
     fun `matchesPaymentFilter matches Cash exactly`() {
-        val t = txn(paymentMethod = "Cash", isCash = true)
+        val t = txn(accountName = "Cash", isCash = true)
         assertThat(matchesPaymentFilter(t, "Cash")).isTrue()
         assertThat(matchesPaymentFilter(t, "Digital")).isFalse()
     }
 
     @Test
     fun `matchesPaymentFilter matches Digital`() {
-        val t = txn(paymentMethod = "UPI")
+        val t = txn(accountName = "UPI")
         assertThat(matchesPaymentFilter(t, "Digital")).isTrue()
         assertThat(matchesPaymentFilter(t, "Cash")).isFalse()
     }
 
     @Test
     fun `matchesPaymentFilter matches exact payment method`() {
-        val t = txn(paymentMethod = "HDFC")
+        val t = txn(accountName = "HDFC")
         assertThat(matchesPaymentFilter(t, "HDFC")).isTrue()
         assertThat(matchesPaymentFilter(t, "ICICI")).isFalse()
     }

@@ -151,7 +151,7 @@ class EffectiveAllocationTest {
                     categoryId = e.categoryId,
                     type = type,
                     isSplit = e.splitGroupId != null,
-                    counterparty = e.counterparty ?: e.merchant,
+                    counterparty = e.counterparty,
                 ),
             )
         }

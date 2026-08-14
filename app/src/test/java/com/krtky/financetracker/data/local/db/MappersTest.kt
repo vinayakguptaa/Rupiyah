@@ -51,26 +51,27 @@ class MappersTest {
         val entity = TransactionEntity(
             id = "txn-1", type = "DEBIT", amountPaise = 5_00_00L, occurredAt = now, recordedAt = now,
             source = "MANUAL", classificationStatus = "PENDING", updatedAt = now,
-            merchant = "Swiggy", paymentMethod = "UPI", note = "Dinner",
+            counterparty = "Swiggy", note = "Dinner",
         )
         val domain = entity.toDomain()
         assertThat(domain.id).isEqualTo("txn-1")
         assertThat(domain.type).isEqualTo(TransactionType.DEBIT)
         assertThat(domain.amountPaise).isEqualTo(5_00_00L)
-        assertThat(domain.merchant).isEqualTo("Swiggy")
-        assertThat(domain.paymentMethod).isEqualTo("UPI")
+        assertThat(domain.counterparty).isEqualTo("Swiggy")
         assertThat(domain.note).isEqualTo("Dinner")
     }
 
     @Test
-    fun `TransactionEntity toDomain uses counterparty fallback`() {
+    fun `TransactionEntity toDomain maps sms source and smsMessageId`() {
         val now = System.currentTimeMillis()
         val entity = TransactionEntity(
-            id = "txn-2", type = "DEBIT", amountPaise = 1000L, occurredAt = now, recordedAt = now,
-            source = "MANUAL", classificationStatus = "CLASSIFIED", updatedAt = now,
-            merchant = "Amazon", counterparty = null,
+            id = "txn-2", type = "CREDIT", amountPaise = 1000L, occurredAt = now, recordedAt = now,
+            source = "SMS", classificationStatus = "CLASSIFIED", updatedAt = now,
+            smsMessageId = "msg-42", counterparty = "Amazon",
         )
         val domain = entity.toDomain()
+        assertThat(domain.source).isEqualTo(TransactionSource.SMS)
+        assertThat(domain.smsMessageId).isEqualTo("msg-42")
         assertThat(domain.counterparty).isEqualTo("Amazon")
     }
 
@@ -78,12 +79,12 @@ class MappersTest {
     fun `Transaction toEntity maps all fields`() {
         val txn = Transaction(
             id = "txn-3", type = TransactionType.CREDIT, amountPaise = 1_00_00_00L,
-            occurredAt = 1_000_000L, source = TransactionSource.EMAIL, paymentMethod = "HDFC",
+            occurredAt = 1_000_000L, source = TransactionSource.SMS, accountName = "HDFC",
             categoryId = 1, fundId = 2, note = "Salary",
         )
         val entity = txn.toEntity()
         assertThat(entity.type).isEqualTo("CREDIT")
-        assertThat(entity.source).isEqualTo("EMAIL")
+        assertThat(entity.source).isEqualTo("SMS")
         assertThat(entity.categoryId).isEqualTo(1)
         assertThat(entity.fundId).isEqualTo(2)
         assertThat(entity.note).isEqualTo("Salary")

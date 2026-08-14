@@ -106,14 +106,11 @@ interface TransactionDao {
         """
         SELECT * FROM transactions
         WHERE deletedAt IS NULL
-          AND (
-            accountId = :accountId
-            OR (accountId IS NULL AND paymentMethod = :accountName COLLATE NOCASE)
-          )
+          AND accountId = :accountId
         ORDER BY occurredAt DESC
         """
     )
-    suspend fun getForAccount(accountId: Long, accountName: String): List<TransactionEntity>
+    suspend fun getForAccount(accountId: Long): List<TransactionEntity>
 
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getById(id: String): TransactionEntity?
@@ -122,7 +119,7 @@ interface TransactionDao {
         """
         SELECT * FROM transactions
         WHERE deletedAt IS NULL
-          AND (:query = '' OR merchant LIKE '%' || :query || '%' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR paymentMethod LIKE '%' || :query || '%' OR rawDescription LIKE '%' || :query || '%')
+          AND (:query = '' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR rawDescription LIKE '%' || :query || '%')
           AND (:type IS NULL OR type = :type)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
           AND (:fundId IS NULL OR fundId = :fundId)
@@ -155,8 +152,8 @@ interface TransactionDao {
     )
     suspend fun softDelete(id: String, deletedAt: Long = System.currentTimeMillis())
 
-    @Query("SELECT * FROM transactions WHERE emailMessageId = :messageId LIMIT 1")
-    suspend fun findByEmailMessageId(messageId: String): TransactionEntity?
+    @Query("SELECT * FROM transactions WHERE smsMessageId = :messageId LIMIT 1")
+    suspend fun findBySmsMessageId(messageId: String): TransactionEntity?
 
     @Query("SELECT * FROM transactions WHERE contentHash = :hash LIMIT 1")
     suspend fun findByContentHash(hash: String): TransactionEntity?
@@ -185,7 +182,7 @@ interface TransactionDao {
                SUM(amountPaise) AS totalPaise
         FROM transactions t
         WHERE deletedAt IS NULL
-          AND type IN ('DEBIT', 'EXPENSE')
+          AND type = 'DEBIT'
           AND (kind IS NULL OR kind = 'NORMAL')
           AND occurredAt >= :fromTs AND occurredAt <= :toTs
         GROUP BY categoryId
@@ -207,17 +204,6 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT paymentMethod AS id, COUNT(*) AS useCount
-        FROM transactions
-        WHERE deletedAt IS NULL AND paymentMethod IS NOT NULL AND paymentMethod != ''
-        GROUP BY paymentMethod
-        ORDER BY useCount DESC
-        """
-    )
-    fun observePaymentMethodUsage(): Flow<List<UsageCountStringRow>>
-
-    @Query(
-        """
         SELECT accountId AS id, COUNT(*) AS useCount
         FROM transactions
         WHERE deletedAt IS NULL AND accountId IS NOT NULL
@@ -230,8 +216,8 @@ interface TransactionDao {
     @Query(
         """
         SELECT strftime('%Y-%m', occurredAt / 1000, 'unixepoch', 'localtime') AS monthKey,
-               COALESCE(SUM(CASE WHEN type IN ('CREDIT', 'INCOME') THEN amountPaise ELSE 0 END), 0) AS incomePaise,
-               COALESCE(SUM(CASE WHEN type IN ('DEBIT', 'EXPENSE') THEN amountPaise ELSE 0 END), 0) AS expensePaise
+               COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amountPaise ELSE 0 END), 0) AS incomePaise,
+               COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN amountPaise ELSE 0 END), 0) AS expensePaise
         FROM transactions
         WHERE deletedAt IS NULL
           AND (kind IS NULL OR kind = 'NORMAL')
@@ -299,11 +285,6 @@ data class MonthlyTrendRow(
 
 data class UsageCountRow(
     val id: Long,
-    val useCount: Long,
-)
-
-data class UsageCountStringRow(
-    val id: String,
     val useCount: Long,
 )
 

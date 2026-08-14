@@ -105,7 +105,7 @@ fun ClassifyTransactionSheet(
             val t = txn
             if (t != null) {
                 val sign = if (t.type == TransactionType.DEBIT) "−" else "+"
-                val party = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Payment"
+                val party = t.counterparty ?: t.accountName ?: "Payment"
                 val amountColor =
                     if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary
                 Surface(

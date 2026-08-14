@@ -30,28 +30,19 @@ class FundBalanceTest {
     }
 
     @Test
-    fun `remainingRatio returns correct ratio`() {
-        assertThat(fb(balancePaise = 5_00_00L).remainingRatio()).isEqualTo(0.5f)
+    fun `they owe you when positive`() {
+        assertThat(fb(balancePaise = 3_00_00L).theyOweYou()).isTrue()
+        assertThat(fb(balancePaise = 3_00_00L).youOweThem()).isFalse()
     }
 
     @Test
-    fun `remainingRatio clamps to 0-1`() {
-        assertThat(fb(balancePaise = -1_00_00L).remainingRatio()).isEqualTo(0f)
-        assertThat(fb(balancePaise = 20_00_00L).remainingRatio()).isEqualTo(1f)
+    fun `you owe them when negative`() {
+        assertThat(fb(balancePaise = -100L).youOweThem()).isTrue()
+        assertThat(fb(balancePaise = -100L).theyOweYou()).isFalse()
     }
 
     @Test
-    fun `spentRatio is inverse of remainingRatio`() {
-        assertThat(fb(balancePaise = 3_00_00L).spentRatio()).isWithin(0.001f).of(0.7f)
-    }
-
-    @Test
-    fun `isOverspent when balance negative`() {
-        assertThat(fb(balancePaise = -100L).isOverspent()).isTrue()
-    }
-
-    @Test
-    fun `settled tab is not overspent`() {
+    fun `settled tab is neither owed nor owing`() {
         assertThat(
             FundBalance(
                 fund = fund,
@@ -59,22 +50,7 @@ class FundBalanceTest {
                 creditedPaise = 10_00_00L,
                 debitedPaise = 10_00_00L,
                 openingPaise = 0L,
-            ).isOverspent(),
-        ).isFalse()
-        assertThat(
-            FundBalance(
-                fund = fund,
-                balancePaise = 0L,
-                creditedPaise = 0L,
-                debitedPaise = 0L,
-                openingPaise = 0L,
             ).isSettled(),
         ).isTrue()
-    }
-
-    @Test
-    fun `isOverspent false when they owe you`() {
-        assertThat(fb(balancePaise = 3_00_00L).isOverspent()).isFalse()
-        assertThat(fb(balancePaise = 3_00_00L).theyOweYou()).isTrue()
     }
 }

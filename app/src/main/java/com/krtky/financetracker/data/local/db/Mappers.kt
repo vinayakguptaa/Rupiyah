@@ -68,10 +68,10 @@ fun Fund.toEntity() = FundEntity(
     budgetPaise = budgetPaise,
 )
 
-/** Map stored type string (DEBIT/CREDIT or legacy EXPENSE/INCOME) to domain. */
+/** Map stored type string (DEBIT/CREDIT) to domain. */
 fun parseTransactionType(raw: String): TransactionType = when (raw.uppercase()) {
-    "DEBIT", "EXPENSE" -> TransactionType.DEBIT
-    "CREDIT", "INCOME" -> TransactionType.CREDIT
+    "DEBIT" -> TransactionType.DEBIT
+    "CREDIT" -> TransactionType.CREDIT
     else -> runCatching { TransactionType.valueOf(raw) }.getOrDefault(TransactionType.DEBIT)
 }
 
@@ -93,12 +93,10 @@ fun TransactionEntity.toDomain(
     currency = currency,
     occurredAt = occurredAt,
     recordedAt = recordedAt,
-    merchant = merchant,
-    counterparty = counterparty ?: merchant,
+    counterparty = counterparty,
     categoryId = categoryId,
     fundId = fundId,
     accountId = accountId,
-    paymentMethod = paymentMethod,
     source = runCatching { TransactionSource.valueOf(source) }.getOrDefault(TransactionSource.MANUAL),
     note = note,
     isCash = isCash,
@@ -114,7 +112,7 @@ fun TransactionEntity.toDomain(
     placeName = placeName,
     locationAccuracy = locationAccuracy,
     locationMatchedAt = locationMatchedAt,
-    emailMessageId = emailMessageId,
+    smsMessageId = smsMessageId,
     externalRefId = externalRefId,
     contentHash = contentHash,
     sheetsSynced = sheetsSynced,
@@ -126,7 +124,7 @@ fun TransactionEntity.toDomain(
     categoryIcon = category?.icon,
     categoryColor = category?.color,
     fundName = fundName,
-    accountName = accountName ?: paymentMethod,
+    accountName = accountName,
     splitGroupId = splitGroupId,
 )
 
@@ -137,12 +135,10 @@ fun Transaction.toEntity() = TransactionEntity(
     currency = currency,
     occurredAt = occurredAt,
     recordedAt = recordedAt,
-    merchant = merchant,
-    counterparty = counterparty ?: merchant,
+    counterparty = counterparty,
     categoryId = categoryId,
     fundId = fundId,
     accountId = accountId,
-    paymentMethod = paymentMethod,
     source = source.name,
     note = note,
     isCash = isCash,
@@ -161,7 +157,7 @@ fun Transaction.toEntity() = TransactionEntity(
     placeName = placeName,
     locationAccuracy = locationAccuracy,
     locationMatchedAt = locationMatchedAt,
-    emailMessageId = emailMessageId,
+    smsMessageId = smsMessageId,
     externalRefId = externalRefId,
     contentHash = contentHash,
     sheetsSynced = sheetsSynced,

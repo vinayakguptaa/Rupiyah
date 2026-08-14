@@ -1,4 +1,4 @@
-package com.krtky.financetracker.email
+package com.krtky.financetracker.system
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,7 +8,7 @@ import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Reschedule background work after boot / update.
- * Email monitor removed — capture is SMS + CSV + manual only.
+ * (Moved out of the retired `email` package — capture is SMS + CSV + manual only.)
  */
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {

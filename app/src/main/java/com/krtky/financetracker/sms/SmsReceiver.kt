@@ -4,10 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import com.krtky.financetracker.data.email.TransactionParser
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.data.sms.TransactionParser
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.location.LocationRepository
 import com.krtky.financetracker.notification.ClassificationNotifier
@@ -47,8 +47,8 @@ class SmsReceiver : BroadcastReceiver() {
                 val receivedAt = System.currentTimeMillis()
                 val txn = parser.parseSms(sender, body, receivedAt) ?: return@launch
                 val withLoc = attachLocation(txn)
-                val id = transactionRepository.insertFromEmail(withLoc)
-                if (id != null) notifier.notifyPayment(id, "SMS payment", sender)
+                val id = transactionRepository.insertFromSms(withLoc)
+                if (id != null) notifier.notifyPayment(id, "SMS payment")
             } finally {
                 pending.finish()
                 scope.cancel()

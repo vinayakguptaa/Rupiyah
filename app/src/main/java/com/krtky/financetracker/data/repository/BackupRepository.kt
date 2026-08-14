@@ -43,11 +43,9 @@ class BackupRepository @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 val json = buildJsonObject {
-                    // v4: email ingest removed — `secure_store` drops Gmail secrets,
-                    // `user_prefs` drops email_poll/source, `trusted_senders` gone.
-                    // Restore is tolerant (reads known keys only), so this is a marker,
-                    // not a gate.
-                    put("version", 4)
+                    // v5: single party/account fields + SMS id (merchant/paymentMethod/emailMessageId dropped).
+                    // Restore is tolerant (reads known keys only), so this is a marker, not a gate.
+                    put("version", 5)
                     put("secure_store", buildJsonObject {
                         put("llm_api_key", secureStore.llmApiKey.orEmpty())
                         put("llm_enabled", secureStore.llmEnabled)
@@ -146,12 +144,10 @@ class BackupRepository @Inject constructor(
                                 put("currency", t.currency)
                                 put("occurredAt", t.occurredAt)
                                 put("recordedAt", t.recordedAt)
-                                put("merchant", t.merchant.orEmpty())
                                 put("counterparty", t.counterparty.orEmpty())
                                 put("categoryId", t.categoryId ?: -1L)
                                 put("fundId", t.fundId ?: -1L)
                                 put("accountId", t.accountId ?: -1L)
-                                put("paymentMethod", t.paymentMethod.orEmpty())
                                 put("source", t.source)
                                 put("note", t.note.orEmpty())
                                 put("isCash", t.isCash)
@@ -167,7 +163,7 @@ class BackupRepository @Inject constructor(
                                 put("placeName", t.placeName.orEmpty())
                                 put("locationAccuracy", (t.locationAccuracy ?: 0f).toDouble())
                                 put("locationMatchedAt", t.locationMatchedAt ?: -1L)
-                                put("emailMessageId", t.emailMessageId.orEmpty())
+                                put("smsMessageId", t.smsMessageId.orEmpty())
                                 put("externalRefId", t.externalRefId.orEmpty())
                                 put("contentHash", t.contentHash.orEmpty())
                                 put("sheetsSynced", t.sheetsSynced)
@@ -352,14 +348,11 @@ class BackupRepository @Inject constructor(
                                         ?: System.currentTimeMillis(),
                                     recordedAt = obj["recordedAt"]?.jsonPrimitive?.long
                                         ?: System.currentTimeMillis(),
-                                    merchant = obj["merchant"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
                                     counterparty = obj["counterparty"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },
                                     categoryId = catId,
                                     fundId = fId,
                                     accountId = accId,
-                                    paymentMethod = obj["paymentMethod"]?.jsonPrimitive?.content
-                                        ?.takeIf { it.isNotBlank() },
                                     source = obj["source"]?.jsonPrimitive?.content ?: "MANUAL",
                                     note = obj["note"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
                                     isCash = obj["isCash"]?.jsonPrimitive?.boolean ?: false,
@@ -383,7 +376,7 @@ class BackupRepository @Inject constructor(
                                         ?.toFloat()?.takeIf { it != 0f },
                                     locationMatchedAt = obj["locationMatchedAt"]?.jsonPrimitive?.long
                                         ?.takeIf { it != -1L },
-                                    emailMessageId = obj["emailMessageId"]?.jsonPrimitive?.content
+                                    smsMessageId = obj["smsMessageId"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },
                                     externalRefId = obj["externalRefId"]?.jsonPrimitive?.content
                                         ?.takeIf { it.isNotBlank() },

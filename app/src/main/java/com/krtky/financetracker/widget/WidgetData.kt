@@ -42,8 +42,7 @@ internal fun formatWidgetMoney(paise: Long): String {
 
 internal fun txnDisplayName(txn: Transaction): String =
     txn.counterparty?.takeIf { it.isNotBlank() }
-        ?: txn.merchant?.takeIf { it.isNotBlank() }
-        ?: txn.paymentMethod?.takeIf { it.isNotBlank() }
+        ?: txn.accountName?.takeIf { it.isNotBlank() }
         ?: "Transaction"
 
 internal fun monthLabel(now: Long = System.currentTimeMillis()): String =

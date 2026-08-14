@@ -213,14 +213,14 @@ fun CategoryDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(txns, key = { it.id }) { t ->
-                    val party = t.counterparty ?: t.merchant ?: t.note ?: "Transaction"
+                    val party = t.counterparty ?: t.note ?: "Transaction"
                     val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
                     val catColor = categoryColor(t.categoryColor)
                     TransactionCard(
                         title = party,
                         subtitle = listOfNotNull(
                             t.occurredAt.formatDateTime(),
-                            t.paymentMethod,
+                            t.accountName,
                         ).joinToString(" · "),
                         amount = "$sign${t.amountPaise.inr()}",
                         amountColor = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,

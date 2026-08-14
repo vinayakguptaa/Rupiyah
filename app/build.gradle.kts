@@ -126,6 +126,12 @@ configurations.configureEach {
     }
 }
 
+// Export Room schema JSON so future migrations can be authored/verified against the
+// actual v11 schema (history only exists from this version forward).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // Material3 color roles + motion foundations
     val composeBom = platform("androidx.compose:compose-bom:2025.10.00")

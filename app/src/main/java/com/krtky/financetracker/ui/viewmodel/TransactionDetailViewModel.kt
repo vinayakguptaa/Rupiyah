@@ -79,14 +79,7 @@ class TransactionDetailViewModel @Inject constructor(
             _txn.value = t
             val accId = t?.accountId
             currentAccountId.value = accId
-            _archivedCurrent.value = if (accId != null) {
-                val acc = accountRepository.getById(accId)
-                if (acc != null && acc.archived) acc else null
-            } else {
-                // Legacy: try paymentMethod name even if archived
-                val name = t?.paymentMethod?.takeIf { it.isNotBlank() && !it.equals("Digital", true) }
-                name?.let { accountRepository.getByName(it) }?.takeIf { it.archived }
-            }
+            _archivedCurrent.value = accId?.let { accountRepository.getById(it) }?.takeIf { it.archived }
         }
     }
 
@@ -127,7 +120,7 @@ class TransactionDetailViewModel @Inject constructor(
         val location = if (useCurrentLocation) locationRepository.captureCurrent() else null
         val account = accountId?.let { accountRepository.getById(it) }
         val methodLabel = account?.name
-            ?: t.paymentMethod
+            ?: t.accountName
             ?: "Cash"
         val isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH"
         val catName = categories.value.firstOrNull { it.id == categoryId }?.name
@@ -149,14 +142,12 @@ class TransactionDetailViewModel @Inject constructor(
             type = type,
             occurredAt = occurredAt,
             accountId = account?.id ?: accountId,
-            paymentMethod = methodLabel,
             isCash = isCash,
             categoryId = categoryId,
             categoryName = catName,
             fundId = resolvedFundId,
             note = note.ifBlank { null },
             counterparty = counterparty.ifBlank { null },
-            merchant = counterparty.ifBlank { t.merchant },
             latitude = location?.latitude ?: t.latitude,
             longitude = location?.longitude ?: t.longitude,
             placeName = location?.placeName ?: t.placeName,

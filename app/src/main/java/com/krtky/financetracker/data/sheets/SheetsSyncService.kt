@@ -55,7 +55,7 @@ class SheetsSyncService @Inject constructor(
     private val txnHeaders = listOf(
         "Transaction ID", "Date", "Time", "Type", "Amount", "Merchant", "Category",
         "Subcategory", "Tab", "Payment Method", "Cash vs Digital", "Note",
-        "Latitude", "Longitude", "Place", "Source", "Email Ref", "Deleted",
+        "Latitude", "Longitude", "Place", "Source", "SMS Ref", "Deleted",
         "Updated At", "Month",
     )
 
@@ -124,6 +124,7 @@ class SheetsSyncService @Inject constructor(
 
         setupWorkbook(sheetId, token, forceCharts = false)
         val existingRows = transactionRows(sheetId, token)
+        val accountNames = db.accountDao().observeAll().first().associate { it.id to it.name }
 
         var count = 0
         for (txn in dirty) {
@@ -143,18 +144,18 @@ class SheetsSyncService @Inject constructor(
                 tf.format(Date(txn.occurredAt)),
                 txn.type,
                 Money(txn.amountPaise).toRupees().toString(),
-                txn.merchant.orEmpty(),
+                txn.counterparty.orEmpty(),
                 cats?.name.orEmpty(),
                 "",
                 fund?.name.orEmpty(),
-                txn.paymentMethod.orEmpty(),
+                txn.accountId?.let { accountNames[it] }.orEmpty(),
                 if (txn.isCash) "Cash" else "Digital",
                 txn.note.orEmpty(),
                 txn.latitude?.toString().orEmpty(),
                 txn.longitude?.toString().orEmpty(),
                 txn.placeName.orEmpty(),
                 txn.source,
-                txn.emailMessageId.orEmpty(),
+                txn.smsMessageId.orEmpty(),
                 "FALSE",
                 txn.updatedAt.toString(),
                 monthFmt.format(Date(txn.occurredAt)),

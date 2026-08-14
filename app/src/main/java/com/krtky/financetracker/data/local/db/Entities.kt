@@ -40,9 +40,9 @@ data class FundEntity(
 @Entity(
     tableName = "transactions",
     indices = [
-        Index(value = ["emailMessageId"], unique = true),
+        Index(value = ["smsMessageId"], unique = true),
         Index(value = ["contentHash"], unique = true),
-        Index(value = ["externalRefId", "paymentMethod"], unique = true),
+        Index(value = ["externalRefId"]),
         Index(value = ["occurredAt"]),
         Index(value = ["categoryId"]),
         Index(value = ["fundId"]),
@@ -54,18 +54,16 @@ data class FundEntity(
 )
 data class TransactionEntity(
     @PrimaryKey val id: String,
-    /** DEBIT | CREDIT (legacy rows migrated from EXPENSE | INCOME). */
+    /** DEBIT | CREDIT. */
     val type: String,
     val amountPaise: Long,
     val currency: String = "INR",
     val occurredAt: Long,
     val recordedAt: Long,
-    val merchant: String? = null,
     val counterparty: String? = null,
     val categoryId: Long? = null,
     val fundId: Long? = null,
     val accountId: Long? = null,
-    val paymentMethod: String? = null,
     val source: String,
     val note: String? = null,
     val isCash: Boolean = false,
@@ -81,7 +79,7 @@ data class TransactionEntity(
     val placeName: String? = null,
     val locationAccuracy: Float? = null,
     val locationMatchedAt: Long? = null,
-    val emailMessageId: String? = null,
+    val smsMessageId: String? = null,
     val externalRefId: String? = null,
     val contentHash: String? = null,
     val sheetsSynced: Boolean = false,

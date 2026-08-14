@@ -47,17 +47,13 @@ class AccountRepository @Inject constructor(
         return combine(accountsFlow, txnDao.observeAll()) { accounts, txns ->
             accounts.map { entity ->
                 val account = entity.toDomain()
-                // Same membership as TransactionDao.getForAccount: an explicit accountId
-                // match, OR legacy rows that only carry the account's paymentMethod label.
                 val mine = txns.filter {
-                    it.deletedAt == null &&
-                        (it.accountId == account.id ||
-                            (it.accountId == null && it.paymentMethod?.equals(account.name, ignoreCase = true) == true))
+                    it.deletedAt == null && it.accountId == account.id
                 }
                 val net = mine.sumOf { t ->
                     val type = t.type.uppercase()
                     val signed = when {
-                        type == "CREDIT" || type == "INCOME" -> t.amountPaise
+                        type == "CREDIT" -> t.amountPaise
                         else -> -t.amountPaise
                     }
                     signed
@@ -194,11 +190,6 @@ class AccountRepository @Inject constructor(
             .sortedBy { it.sortOrder }
             .map { it.name }
 
-    @Deprecated("Use syncFromBankList", ReplaceWith("syncFromBankList(extraBankNames)"))
-    suspend fun seedDefaultsIfEmpty(extraBankNames: List<String> = emptyList()) {
-        syncFromBankList(extraBankNames)
-    }
-
     /**
      * Resolve account id from free-text payment label.
      * Matches existing accounts only (including archived) so history stays linked.
@@ -230,15 +221,11 @@ class AccountRepository @Inject constructor(
     }
 
     companion object {
-        fun isDebitType(type: String): Boolean {
-            val t = type.uppercase()
-            return t == TransactionType.DEBIT.name || t == "EXPENSE"
-        }
+        fun isDebitType(type: String): Boolean =
+            type.uppercase() == TransactionType.DEBIT.name
 
-        fun isCreditType(type: String): Boolean {
-            val t = type.uppercase()
-            return t == TransactionType.CREDIT.name || t == "INCOME"
-        }
+        fun isCreditType(type: String): Boolean =
+            type.uppercase() == TransactionType.CREDIT.name
 
         fun isSelfTransferKind(kind: String?): Boolean =
             kind?.uppercase() == TransactionKind.SELF_TRANSFER.name

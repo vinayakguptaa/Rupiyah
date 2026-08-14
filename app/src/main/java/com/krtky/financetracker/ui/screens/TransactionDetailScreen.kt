@@ -243,7 +243,7 @@ fun TransactionDetailScreen(
     LaunchedEffect(txn, accounts, archivedCurrent, defaultDigital, defaultPay) {
         txn?.let {
             note = it.note.orEmpty()
-            counterparty = it.counterparty ?: it.merchant.orEmpty()
+            counterparty = it.counterparty.orEmpty()
             categoryId = it.categoryId
             fundId = it.fundId
             addToFund = it.fundId != null || it.type == TransactionType.CREDIT
@@ -251,11 +251,11 @@ fun TransactionDetailScreen(
             type = it.type
             selectedAccountId = when {
                 it.accountId != null -> it.accountId
-                it.isCash || it.paymentMethod.equals("Cash", true) ->
+                it.isCash || it.accountName.equals("Cash", true) ->
                     accounts.firstOrNull { a -> a.name.equals("Cash", true) }?.id
                         ?: archivedCurrent?.takeIf { a -> a.name.equals("Cash", true) }?.id
                 else -> {
-                    val pm = it.paymentMethod.orEmpty()
+                    val pm = it.accountName.orEmpty()
                     accounts.firstOrNull { a -> a.name.equals(pm, true) }?.id
                         ?: archivedCurrent?.id
                         ?: accounts.firstOrNull { a -> a.name.equals(defaultDigital, true) }?.id
@@ -287,7 +287,7 @@ fun TransactionDetailScreen(
         if (receiptLocalUri != null || receiptCleared) return@remember true
         val amountPaise = amount.toDoubleOrNull()?.let { (it * 100.0).roundToLong() }
             ?: return@remember amount.isNotBlank()
-        val originalParty = t.counterparty ?: t.merchant.orEmpty()
+        val originalParty = t.counterparty.orEmpty()
         val origCal = Calendar.getInstance().apply { timeInMillis = t.occurredAt }
         val sameTime =
             selectedYear == origCal.get(Calendar.YEAR) &&
@@ -375,11 +375,11 @@ fun TransactionDetailScreen(
     // Only intercept when editing so info mode keeps system predictive-back animation.
     BackHandler(enabled = editing) { exitEditOrScreen() }
 
-    val partyTitle = t.counterparty ?: t.merchant ?: t.paymentMethod ?: "Transaction"
+    val partyTitle = t.counterparty ?: t.accountName ?: "Transaction"
     val amountSign = if (t.type == TransactionType.DEBIT) "-" else "+"
     val infoPayment = when {
-        t.isCash || t.paymentMethod.equals("Cash", true) -> "Cash"
-        !t.paymentMethod.isNullOrBlank() -> t.paymentMethod!!
+        t.isCash || t.accountName.equals("Cash", true) -> "Cash"
+        !t.accountName.isNullOrBlank() -> t.accountName!!
         else -> "Digital"
     }
     val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
@@ -1215,7 +1215,7 @@ fun TransactionDetailScreen(
                 // Reset fields from loaded txn and return to info view
                 txn?.let {
                     note = it.note.orEmpty()
-                    counterparty = it.counterparty ?: it.merchant.orEmpty()
+                    counterparty = it.counterparty.orEmpty()
                     categoryId = it.categoryId
                     fundId = it.fundId
                     addToFund = it.fundId != null || it.type == TransactionType.CREDIT
@@ -1223,7 +1223,7 @@ fun TransactionDetailScreen(
                     type = it.type
                     selectedAccountId = it.accountId
                         ?: accounts.firstOrNull { a ->
-                            a.name.equals(it.paymentMethod, true) ||
+                            a.name.equals(it.accountName, true) ||
                                 (it.isCash && a.name.equals("Cash", true))
                         }?.id
                         ?: archivedCurrent?.id

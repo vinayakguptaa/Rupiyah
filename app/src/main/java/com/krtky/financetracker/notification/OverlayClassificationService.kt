@@ -232,7 +232,7 @@ private fun OverlayClassifierContent(
             )
             txn?.let {
                 val sign = if (isExpense) "−" else "+"
-                val party = it.counterparty ?: it.merchant ?: "Payment"
+                val party = it.counterparty ?: "Payment"
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.extraLarge,

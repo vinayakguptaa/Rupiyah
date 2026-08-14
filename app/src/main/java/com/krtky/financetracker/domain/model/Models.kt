@@ -3,7 +3,7 @@ package com.krtky.financetracker.domain.model
 /** Ledger direction — Debit out / Credit in. Forms use these labels (not Expense/Income). */
 enum class TransactionType { DEBIT, CREDIT }
 
-enum class TransactionSource { EMAIL, SMS, MANUAL, IMPORT }
+enum class TransactionSource { SMS, MANUAL, IMPORT }
 
 enum class ClassificationStatus { PENDING, CLASSIFIED, SKIPPED }
 
@@ -96,24 +96,12 @@ data class FundBalance(
     /** Optional opening balance you set. */
     val openingPaise: Long = 0L,
 ) {
-    /** Magnitude for display bars (never zero for ratio math). */
+    /** Magnitude for display bars / default adjust amount (never zero for ratio math). */
     fun limitPaise(): Long = when {
         fund.budgetPaise > 0L -> fund.budgetPaise
         openingPaise > 0L -> openingPaise
         else -> maxOf(kotlin.math.abs(balancePaise), debitedPaise + creditedPaise, 1L)
     }
-
-    fun remainingOfLimitPaise(): Long = balancePaise.coerceAtLeast(0L)
-
-    fun remainingRatio(): Float {
-        val limit = limitPaise().toFloat()
-        if (limit <= 0f) return 0f
-        return (remainingOfLimitPaise().toFloat() / limit).coerceIn(0f, 1f)
-    }
-
-    fun spentRatio(): Float = (1f - remainingRatio()).coerceIn(0f, 1f)
-
-    fun isOverspent(): Boolean = balancePaise < 0L
 
     fun theyOweYou(): Boolean = balancePaise > 0L
     fun youOweThem(): Boolean = balancePaise < 0L
@@ -179,15 +167,11 @@ data class Transaction(
     val currency: String = "INR",
     val occurredAt: Long,
     val recordedAt: Long = System.currentTimeMillis(),
-    /** Legacy; prefer [counterparty]. Kept for SMS/email raw party text. */
-    val merchant: String? = null,
-    /** UI label: Name — merchant, person, venue. */
+    /** UI label: party / merchant / person / venue. */
     val counterparty: String? = null,
     val categoryId: Long? = null,
     val fundId: Long? = null,
     val accountId: Long? = null,
-    /** Legacy free-text account label; prefer [accountId]. */
-    val paymentMethod: String? = null,
     val source: TransactionSource = TransactionSource.MANUAL,
     val note: String? = null,
     val isCash: Boolean = false,
@@ -202,7 +186,7 @@ data class Transaction(
     val placeName: String? = null,
     val locationAccuracy: Float? = null,
     val locationMatchedAt: Long? = null,
-    val emailMessageId: String? = null,
+    val smsMessageId: String? = null,
     val externalRefId: String? = null,
     val contentHash: String? = null,
     val sheetsSynced: Boolean = false,
@@ -224,7 +208,6 @@ data class Transaction(
     /** Display name for party / merchant. */
     fun displayName(): String? =
         counterparty?.takeIf { it.isNotBlank() }
-            ?: merchant?.takeIf { it.isNotBlank() }
 
     /**
      * True when the parent still needs a category.
