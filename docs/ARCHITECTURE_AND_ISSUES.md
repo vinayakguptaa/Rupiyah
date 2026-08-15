@@ -188,7 +188,7 @@ These block safe change and explain the "too many jobs per screen" UX complaints
 
 - **No `1→2` migration** — latent `IllegalStateException` if a v1 install ever upgrades.
 - **`MIGRATION_4_5` rebuilds `transactions` and recreates the unique `externalRefId` + `paymentMethod` index** — that index is later made obsolete by the v10→11 collapse to a single `accountId` (the rationale is documented in `MIGRATION_10_11`, `AppDatabase.kt:471-473`). *(Clarity — resolved.)*
-- **Schema JSON history only from v11** — older migrations can't be authored against exported schema.
+- **Schema JSON history: v10 and v11 exported** — older migrations can be authored against v10 schema (v1-v9 gaps remain).
 
 ### 6.6 Dependencies & permissions (low)
 
@@ -210,7 +210,7 @@ These block safe change and explain the "too many jobs per screen" UX complaints
 
 - `TransactionParser` reads `e.merchant`/`e.paymentMethod` from the LLM's `ExtractedTransaction` model (`LlmClient.kt:21,26`) — these are LLM response fields, not persistence.
 - `SmsRedactor.kt:4-6` comment says "Renamed from the email-era `EmailRedactor`" — self-documenting, acceptable to keep.
-- `SettingsUiState.kt:13` comment says "Email/SMS auto-import also needs [llmApiKeySet]" — drop "Email/".
+- `SettingsUiState.kt:13` comment updated to "SMS auto-import also needs [llmApiKeySet]" — email reference removed.
 
 All of the above are parse-scaffolding/parameter/comment echoes, not persistence-layer fields.
 
@@ -225,7 +225,7 @@ All of the above are parse-scaffolding/parameter/comment echoes, not persistence
 2. (Completed) Redundant cashflow methods consolidated into `homeCashflowSnapshot()`; N2 AccountsViewModel bank‑prefs sync also completed (§6.1, §6.3).
 
 **P3 — Schema hygiene:**
-3. Export schema JSON for v10 (generate via Room schema export or note limitation in §6.5).
+3. (Completed) Schema JSON for v10 exported at `app/schemas/com.krtky.financetracker.data.local.db.AppDatabase/10.json`. Note: v1→2 migration doesn't exist, so v1 schema cannot be validated unless a v1 database is provided.
 
 ---
 
