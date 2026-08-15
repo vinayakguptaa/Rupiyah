@@ -40,7 +40,7 @@ class TransactionRepositoryTest {
     @Test
     fun `monthBounds returns start and end of current month`() {
         val now = System.currentTimeMillis()
-        val (from, to) = TransactionRepository.monthBounds(now)
+        val (from, to) = CashflowRepository.monthBounds(now)
         assertThat(from).isLessThan(to)
 
         val cal = Calendar.getInstance().apply { timeInMillis = from }
@@ -61,7 +61,7 @@ class TransactionRepositoryTest {
             set(2025, Calendar.MARCH, 15, 10, 30, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val (from, to) = TransactionRepository.monthBounds(cal.timeInMillis)
+        val (from, to) = CashflowRepository.monthBounds(cal.timeInMillis)
 
         val fromCal = Calendar.getInstance().apply { timeInMillis = from }
         assertThat(fromCal.get(Calendar.MONTH)).isEqualTo(Calendar.MARCH)

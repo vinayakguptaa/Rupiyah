@@ -6,6 +6,7 @@ import android.net.Uri
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.receipt.ReceiptStore
 import com.krtky.financetracker.data.repository.AccountRepository
+import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.Account
@@ -26,6 +27,7 @@ import javax.inject.Inject
 class AddCashViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val accountRepository: AccountRepository,
+    private val cashflowRepository: CashflowRepository,
     categoryRepository: CategoryRepository,
     private val locationRepository: LocationRepository,
     private val userPreferences: UserPreferences,
@@ -40,7 +42,7 @@ class AddCashViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Cash")
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
-    val accountBalances = transactionRepository.observeAccountBalances()
+    val accountBalances = cashflowRepository.observeAccountBalances()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val lastUsedCategoryId = userPreferences.lastUsedCategoryId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

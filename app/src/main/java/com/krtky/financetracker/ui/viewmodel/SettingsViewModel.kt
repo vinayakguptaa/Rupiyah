@@ -15,8 +15,8 @@ import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.BackupRepository
+import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
-import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.data.sheets.SheetsSyncService
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.location.LocationTrackingService
@@ -48,7 +48,7 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val categoryRepository: CategoryRepository,
     private val accountRepository: AccountRepository,
-    private val transactionRepository: TransactionRepository,
+    private val cashflowRepository: CashflowRepository,
     private val sheetsSyncService: SheetsSyncService,
     private val backupRepository: BackupRepository,
     private val uiMessenger: UiMessenger,
@@ -61,7 +61,7 @@ class SettingsViewModel @Inject constructor(
     val categories = categoryRepository.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     /** Net balances keyed by account/payment method label (Cash, HDFC, …). */
-    val accountBalances = transactionRepository.observeAccountBalances()
+    val accountBalances = cashflowRepository.observeAccountBalances()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     /** Ledger balances including archived (Settings bank list). */
     val managedAccountBalances = accountRepository.observeAllBalances()
@@ -498,8 +498,8 @@ class SettingsViewModel @Inject constructor(
         _status.value = msg
     }
 
-    suspend fun exportData(context: Context, uri: Uri): Result<Unit> =
-        backupRepository.exportData(context, uri)
+    suspend fun exportData(context: Context, uri: Uri, includeSecrets: Boolean = false): Result<Unit> =
+        backupRepository.exportData(context, uri, includeSecrets)
 
     suspend fun importData(context: Context, uri: Uri): Result<String> =
         backupRepository.importData(context, uri)

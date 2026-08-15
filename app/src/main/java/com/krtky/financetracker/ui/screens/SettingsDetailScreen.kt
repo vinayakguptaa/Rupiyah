@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -148,14 +149,23 @@ fun SettingsDetailScreen(
     var systemPrompt by remember(state.llmSystemPrompt) { mutableStateOf(state.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }) }
     var classDelay by remember(state.classificationDelayMin) { mutableStateOf(state.classificationDelayMin.toString()) }
 
+    var exportPendingUri by remember { mutableStateOf<Uri?>(null) }
+    val doExport: (Uri, Boolean) -> Unit = { uri, includeSecrets ->
+        scope.launch {
+            vm.setStatus("Exporting…")
+            val r = vm.exportData(context, uri, includeSecrets)
+            vm.setStatus(r.fold({ "Exported settings & data" }, { it.message ?: "Export failed" }))
+        }
+    }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            vm.setStatus("Exporting…")
-            val r = vm.exportData(context, uri)
-            vm.setStatus(r.fold({ "Exported settings & data" }, { it.message ?: "Export failed" }))
+        // Credentials are only written into the backup file with explicit consent.
+        if (state.llmApiKeySet || state.sheetTokenSet) {
+            exportPendingUri = uri
+        } else {
+            doExport(uri, false)
         }
     }
     val importLauncher = rememberLauncherForActivityResult(
@@ -1104,6 +1114,35 @@ fun SettingsDetailScreen(
                     defaultDigital = ""
                 }
                 bankPendingArchiveId = null
+            },
+        )
+    }
+    exportPendingUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { exportPendingUri = null },
+            title = { Text("Include credentials?") },
+            text = {
+                Text(
+                    "This device has an AI API key and/or Google Sheets token saved. " +
+                        "Including them in the backup file stores them in plaintext — anyone who " +
+                        "gets the file can use them. Exclude them to keep the file safe to share.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        doExport(uri, true)
+                        exportPendingUri = null
+                    },
+                ) { Text("Include credentials") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+            doExport(uri, false)
+                        exportPendingUri = null
+                    },
+                ) { Text("Exclude") }
             },
         )
     }

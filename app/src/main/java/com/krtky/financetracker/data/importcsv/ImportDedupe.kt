@@ -66,15 +66,23 @@ object ImportDedupe {
                 row.description ?: row.counterparty,
                 c.rawDescription ?: c.counterparty ?: c.note,
             )
-            if (descScore >= 0.72f || (ref != null && c.externalRefId.isNullOrBlank())) {
-                // Strong description match, or we're attaching a new ref to a near twin
-                if (descScore >= 0.72f) {
-                    return DedupeMatch(
-                        DedupeConfidence.HIGH,
-                        c,
-                        reason = "Same amount & date · similar description",
-                    )
-                }
+            // Strong description match → HIGH.
+            if (descScore >= 0.72f) {
+                return DedupeMatch(
+                    DedupeConfidence.HIGH,
+                    c,
+                    reason = "Same amount & date · similar description",
+                )
+            }
+            // Attaching a brand-new statement ref to a near twin that carries no ref yet
+            // is an exact-enough signal on its own — the twin otherwise had nothing to
+            // link by, so the statement row is its missing reference.
+            if (ref != null && c.externalRefId.isNullOrBlank()) {
+                return DedupeMatch(
+                    DedupeConfidence.HIGH,
+                    c,
+                    reason = "Same amount & date · attaching statement reference",
+                )
             }
             // Same calendar day + exact amount without needing desc (SMS often short)
             if (sameDay(c.occurredAt, row.occurredAt) && descScore >= 0.45f) {

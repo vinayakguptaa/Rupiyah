@@ -1,6 +1,7 @@
 package com.krtky.financetracker.widget
 
 import android.content.Context
+import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.FundBalance
@@ -22,13 +23,20 @@ import kotlin.math.abs
 @InstallIn(SingletonComponent::class)
 interface WidgetEntryPoint {
     fun transactionRepository(): TransactionRepository
+    fun cashflowRepository(): CashflowRepository
 }
 
-internal fun widgetRepository(context: Context): TransactionRepository? = try {
-    EntryPointAccessors.fromApplication(
+internal data class WidgetRepositories(
+    val transactions: TransactionRepository,
+    val cashflow: CashflowRepository,
+)
+
+internal fun widgetRepositories(context: Context): WidgetRepositories? = try {
+    val ep = EntryPointAccessors.fromApplication(
         context.applicationContext,
         WidgetEntryPoint::class.java,
-    ).transactionRepository()
+    )
+    WidgetRepositories(ep.transactionRepository(), ep.cashflowRepository())
 } catch (_: Exception) {
     null
 }
@@ -126,13 +134,15 @@ internal object WidgetDataLoader {
 
     suspend fun load(context: Context): WidgetSnapshots {
         val empty = emptySnapshots()
-        val repo = widgetRepository(context) ?: return empty
+        val repos = widgetRepositories(context) ?: return empty
         return try {
-            val summary = repo.monthlySummary()
-            val trend = repo.monthlyTrend()
+            val repo = repos.transactions
+            val cashflow = repos.cashflow
+            val summary = cashflow.monthlySummary()
+            val trend = cashflow.monthlyTrend()
             val txns = repo.observeTransactions().first().take(5)
             val funds = repo.observeFunds().first().take(4)
-            val categories = repo.categorySpend().take(4)
+            val categories = cashflow.categorySpend().take(4)
             WidgetSnapshots(
                 overview = buildOverview(summary, trend),
                 transactions = txns.map { toTxnRow(it) },

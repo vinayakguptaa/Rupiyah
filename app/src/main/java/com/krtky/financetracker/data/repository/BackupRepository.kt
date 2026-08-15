@@ -39,7 +39,15 @@ class BackupRepository @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val db: AppDatabase,
 ) {
-    suspend fun exportData(context: Context, uri: Uri): Result<Unit> {
+    /**
+     * Export everything to [uri] as a single JSON file.
+     *
+     * @param includeSecrets when true, genuine credentials (LLM API key, Sheets access
+     *   token) are written into the file in plaintext. When false they are written as
+     *   blank so the file can be shared freely; import simply skips blank secrets.
+     *   Non-secret config (base URL, model, spreadsheet id) is always exported.
+     */
+    suspend fun exportData(context: Context, uri: Uri, includeSecrets: Boolean = false): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
                 val json = buildJsonObject {
@@ -47,13 +55,13 @@ class BackupRepository @Inject constructor(
                     // Restore is tolerant (reads known keys only), so this is a marker, not a gate.
                     put("version", 5)
                     put("secure_store", buildJsonObject {
-                        put("llm_api_key", secureStore.llmApiKey.orEmpty())
+                        put("llm_api_key", if (includeSecrets) secureStore.llmApiKey.orEmpty() else "")
                         put("llm_enabled", secureStore.llmEnabled)
                         put("llm_base_url", secureStore.llmBaseUrl)
                         put("llm_model", secureStore.llmModel)
                         // Gmail secrets no longer used — omitted intentionally
                         put("sheets_spreadsheet_id", secureStore.sheetsSpreadsheetId.orEmpty())
-                        put("sheets_access_token", secureStore.sheetsAccessToken.orEmpty())
+                        put("sheets_access_token", if (includeSecrets) secureStore.sheetsAccessToken.orEmpty() else "")
                     })
                     put("user_prefs", buildJsonObject {
                         put("location_enabled", userPreferences.locationEnabled.first())

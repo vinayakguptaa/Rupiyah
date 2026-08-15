@@ -2,6 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CategorySpend
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,11 +17,12 @@ import javax.inject.Inject
 @HiltViewModel
 class CategoriesViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
+    private val cashflowRepository: CashflowRepository,
 ) : ViewModel() {
     private val refresh = MutableStateFlow(0)
 
     val categorySpend: StateFlow<List<CategorySpend>> = refresh.map {
-        transactionRepository.categorySpend()
+        cashflowRepository.categorySpend()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalExpense: StateFlow<Long> = categorySpend.map { list ->

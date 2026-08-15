@@ -5,9 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
+import com.krtky.financetracker.data.repository.CashflowRepository
+import com.krtky.financetracker.data.repository.HomeCashflowSnapshot
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CashflowMetrics
-import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
 import com.krtky.financetracker.domain.model.MonthlyTrend
@@ -38,6 +39,7 @@ data class SetupChecklistState(
 class HomeViewModel @Inject constructor(
     @ApplicationContext private val context: android.content.Context,
     private val transactionRepository: TransactionRepository,
+    private val cashflowRepository: CashflowRepository,
     private val accountRepository: AccountRepository,
     private val uiMessenger: UiMessenger,
     private val userPreferences: UserPreferences,
@@ -50,17 +52,17 @@ class HomeViewModel @Inject constructor(
     private val _initialLoaded = MutableStateFlow(false)
     val initialLoaded: StateFlow<Boolean> = _initialLoaded
 
-    val summary: StateFlow<MonthlySummary> = refresh.map {
-        transactionRepository.monthlySummary()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MonthlySummary(0, 0))
-
-    /** Lifestyle / credits / investment for the current month. */
-    val cashflow: StateFlow<CashflowMetrics> = refresh.map {
-        transactionRepository.cashflowMetrics()
+    /**
+     * One cashflow snapshot for the current month: summary + lifestyle/investment
+     * metrics + debit-by-category, derived from a single scan (see
+     * [CashflowRepository.homeCashflowSnapshot]).
+     */
+    val homeCashflow: StateFlow<HomeCashflowSnapshot> = refresh.map {
+        cashflowRepository.homeCashflowSnapshot()
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        CashflowMetrics(0, 0, 0, 0),
+        HomeCashflowSnapshot(MonthlySummary(0, 0), CashflowMetrics(0, 0, 0, 0), emptyList()),
     )
 
     val funds: StateFlow<List<FundBalance>> = transactionRepository.observeFunds()
@@ -77,15 +79,11 @@ class HomeViewModel @Inject constructor(
 
     /** Net balance per account label (Cash, Digital, HDFC, …). */
     val paymentBalances: StateFlow<Map<String, Long>> =
-        transactionRepository.observeAccountBalances()
+        cashflowRepository.observeAccountBalances()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    val categorySpend: StateFlow<List<CategorySpend>> = refresh.map {
-        transactionRepository.categorySpend()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
     val monthlyTrend: StateFlow<List<MonthlyTrend>> = refresh.map {
-        transactionRepository.monthlyTrend()
+        cashflowRepository.monthlyTrend()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val displayName: StateFlow<String> = userPreferences.displayName
@@ -139,7 +137,7 @@ class HomeViewModel @Inject constructor(
         }
         // Refresh widgets when home data changes (and once on open).
         viewModelScope.launch {
-            combine(summary, recent, funds, categorySpend) { _, _, _, _ -> }
+            combine(homeCashflow, recent, funds) { _, _, _ -> }
                 .collect {
                     WidgetUpdater.refreshAll(context)
                 }

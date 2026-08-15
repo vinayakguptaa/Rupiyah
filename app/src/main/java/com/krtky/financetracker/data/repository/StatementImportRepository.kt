@@ -103,7 +103,11 @@ class StatementImportRepository @Inject constructor(
             }
             val defaultAction = when (effectiveConfidence) {
                 DedupeConfidence.HIGH -> ImportRowAction.SKIP_MERGE
-                DedupeConfidence.MEDIUM -> ImportRowAction.SKIP_MERGE
+                // MEDIUM rows are imported rather than skipped: silently dropping an
+                // uncertain-but-plausible row loses money data. The preview still shows
+                // the near match (matchReason / matchedSummary) so users can switch the
+                // row to SKIP_MERGE before committing.
+                DedupeConfidence.MEDIUM -> ImportRowAction.IMPORT_ANYWAY
                 DedupeConfidence.LOW -> ImportRowAction.IMPORT
             }
             ImportPreviewRow(

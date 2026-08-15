@@ -108,13 +108,11 @@ fun HomeScreen(
     onOpenSettingsSection: (String) -> Unit = {},
     vm: HomeViewModel = hiltViewModel(),
 ) {
-    val summary by vm.summary.collectAsStateWithLifecycle()
-    val cashflow by vm.cashflow.collectAsStateWithLifecycle()
+    val homeCashflow by vm.homeCashflow.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
     val openTabs by vm.openTabs.collectAsStateWithLifecycle()
     val paymentBalances by vm.paymentBalances.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
-    val categorySpend by vm.categorySpend.collectAsStateWithLifecycle()
     val monthlyTrend by vm.monthlyTrend.collectAsStateWithLifecycle()
     val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val initialLoaded by vm.initialLoaded.collectAsStateWithLifecycle()
@@ -129,11 +127,12 @@ fun HomeScreen(
     val haptics = rememberAppHaptics()
 
     // Home uses lifestyle spend (excl. Investment + self-transfer) and credits
+    val cashflow = homeCashflow.metrics
     val income = cashflow.creditPaise
     val spent = cashflow.lifestyleSpendPaise
     val net = income - spent
     val fundBalance = openTabs.sumOf { it.balancePaise }
-    val lifestyleCategories = cashflow.lifestyleByCategory.ifEmpty { categorySpend }
+    val lifestyleCategories = cashflow.lifestyleByCategory.ifEmpty { homeCashflow.categorySpend }
     // Cash mode vs everything else (named banks/wallets + unlabelled Digital)
     val cashBal = paymentBalances.entries
         .firstOrNull { it.key.equals("Cash", ignoreCase = true) }

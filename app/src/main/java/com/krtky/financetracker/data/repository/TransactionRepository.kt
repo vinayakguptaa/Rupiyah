@@ -12,14 +12,9 @@ import com.krtky.financetracker.data.local.db.TransactionEntity
 import com.krtky.financetracker.data.local.db.parseTransactionType
 import com.krtky.financetracker.data.local.db.toDomain
 import com.krtky.financetracker.data.local.db.toEntity
-import com.krtky.financetracker.domain.model.CashflowMetrics
-import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.FundEntryType
-import com.krtky.financetracker.domain.model.MonthlySummary
-import com.krtky.financetracker.domain.model.MonthlyTrend
-import com.krtky.financetracker.domain.model.NamedAmount
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
 import com.krtky.financetracker.domain.model.Transaction
@@ -28,10 +23,8 @@ import com.krtky.financetracker.domain.model.TransactionSource
 import com.krtky.financetracker.domain.model.TransactionType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.security.MessageDigest
-import java.util.Calendar
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -778,113 +771,6 @@ class TransactionRepository @Inject constructor(
         enqueueSync(transactionId)
     }
 
-    suspend fun monthlySummary(now: Long = System.currentTimeMillis()): MonthlySummary {
-        val (from, to) = monthBounds(now)
-        return MonthlySummary(
-            incomePaise = txnDao.sumByType(TransactionType.CREDIT.name, from, to),
-            expensePaise = txnDao.sumByType(TransactionType.DEBIT.name, from, to),
-        )
-    }
-
-    suspend fun monthlyTrend(months: Int = 6, now: Long = System.currentTimeMillis()): List<MonthlyTrend> {
-        val cal = Calendar.getInstance().apply {
-            timeInMillis = now
-            set(Calendar.DAY_OF_MONTH, 1)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            add(Calendar.MONTH, -(months - 1))
-        }
-        val rows = txnDao.monthlyTrend(cal.timeInMillis, now)
-        val byMonth = rows.associateBy { it.monthKey }
-        return (0 until months).map { offset ->
-            val month = Calendar.getInstance().apply {
-                timeInMillis = cal.timeInMillis
-                add(Calendar.MONTH, offset)
-            }
-            val key = "%04d-%02d".format(
-                month.get(Calendar.YEAR),
-                month.get(Calendar.MONTH) + 1,
-            )
-            val row = byMonth[key]
-            MonthlyTrend(key, row?.incomePaise ?: 0L, row?.expensePaise ?: 0L)
-        }
-    }
-
-    /**
-     * Debit totals by category for the current month. Split parents are soft-deleted,
-     * so the DAO's kind + deletedAt filter already yields split-replaced amounts.
-     */
-    suspend fun categorySpend(now: Long = System.currentTimeMillis()): List<CategorySpend> {
-        val (from, to) = monthBounds(now)
-        return txnDao.categorySpend(from, to)
-            .map { CategorySpend(it.categoryId, it.categoryName, it.totalPaise) }
-    }
-
-    /**
-     * Month cashflow metrics for Home:
-     * lifestyle spend (debits − Investment), credits, investment by name.
-     * Split parents are soft-deleted so rows are counted directly.
-     */
-    suspend fun cashflowMetrics(now: Long = System.currentTimeMillis()): CashflowMetrics {
-        val (from, to) = monthBounds(now)
-        val cats = categoryDao.getAll().associateBy { it.id }
-        val investmentIds = cats.values
-            .filter { it.name.equals("Investment", true) }
-            .map { it.id }
-            .toSet()
-        val entities = txnDao.observeFiltered("", null, null, null, from, to, null).first()
-        val rows = entities.filter { !isExcludedFromCashflowKind(it.kind) }
-        val lifestyle = rows.filter {
-            !isCreditType(it.type) &&
-                (it.categoryId == null || it.categoryId !in investmentIds)
-        }
-        // Lifestyle credits exclude Investment redemptions (reported under redeemedPaise).
-        val credits = rows.filter {
-            isCreditType(it.type) &&
-                (it.categoryId == null || it.categoryId !in investmentIds)
-        }
-        val investDebits = rows.filter {
-            !isCreditType(it.type) &&
-                it.categoryId != null &&
-                it.categoryId in investmentIds
-        }
-        val investCredits = rows.filter {
-            isCreditType(it.type) &&
-                it.categoryId != null &&
-                it.categoryId in investmentIds
-        }
-        val lifestyleByCat = lifestyle
-            .groupBy { it.categoryId }
-            .map { (catId, items) ->
-                CategorySpend(
-                    categoryId = catId,
-                    categoryName = catId?.let { cats[it]?.name } ?: "Uncategorized",
-                    totalPaise = items.sumOf { it.amountPaise },
-                )
-            }
-            .sortedByDescending { it.totalPaise }
-        val investByName = (investDebits + investCredits)
-            .groupBy { it.counterparty?.trim().orEmpty().ifBlank { "Unnamed" } }
-            .map { (name, items) ->
-                NamedAmount(
-                    name = name,
-                    debitPaise = items.filter { !isCreditType(it.type) }.sumOf { it.amountPaise },
-                    creditPaise = items.filter { isCreditType(it.type) }.sumOf { it.amountPaise },
-                )
-            }
-            .sortedByDescending { kotlin.math.abs(it.netPaise) }
-        return CashflowMetrics(
-            lifestyleSpendPaise = lifestyle.sumOf { it.amountPaise },
-            creditPaise = credits.sumOf { it.amountPaise },
-            investedPaise = investDebits.sumOf { it.amountPaise },
-            redeemedPaise = investCredits.sumOf { it.amountPaise },
-            lifestyleByCategory = lifestyleByCat,
-            investmentByName = investByName,
-        )
-    }
-
     suspend fun getRecommendedFundForCategory(categoryId: Long): Long? {
         val txns = txnDao.getAllForCategory(categoryId)
             .filter { it.fundId != null && it.deletedAt == null }
@@ -901,39 +787,6 @@ class TransactionRepository @Inject constructor(
     /** accountId -> use count (most used first from DAO). */
     fun observeAccountUsage(): Flow<Map<Long, Long>> =
         txnDao.observeAccountUsage().map { rows -> rows.associate { it.id to it.useCount } }
-
-    /**
-     * Net balance per account label (credits − debits + opening), matching the
-     * Accounts-screen formula in [com.krtky.financetracker.data.repository.AccountRepository].
-     * Rows with no owning account group under "Digital".
-     */
-    fun observeAccountBalances(): Flow<Map<String, Long>> =
-        combine(
-            accountDao.observeAll(),
-            txnDao.observeAll(),
-        ) { accounts, txns ->
-            val live = txns.filter { it.deletedAt == null }
-            val byAccount = accounts.associate { acc ->
-                val mine = live.filter { it.accountId == acc.id }
-                val net = mine.sumOf { signedPaise(it) }
-                acc.name.trim() to (acc.openingBalancePaise + net)
-            }.toMutableMap()
-
-            // Rows with no owning account (e.g. legacy unlinked spends) — keep Home's
-            // total honest.
-            //
-            // NOTE: "Digital" here is a DISPLAY-ONLY pseudo-bucket, not a real
-            // `accounts` row. It aggregates every row with no owning account so the
-            // Home total stays complete, but it is deliberately absent from the
-            // Accounts screen (which lists real accounts only). Each *named* account's
-            // balance agrees exactly between Home and the Accounts screen.
-            val unmatched = live.filter { it.accountId == null }
-            if (unmatched.isNotEmpty()) {
-                val digital = unmatched.sumOf { signedPaise(it) }
-                byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digital
-            }
-            byAccount
-        }
 
     /**
      * Open Tab balances (fund table).
@@ -1179,10 +1032,6 @@ class TransactionRepository @Inject constructor(
     private fun isDebitType(type: String): Boolean =
         type.uppercase() == TransactionType.DEBIT.name
 
-    /** Signed amount for balance math: credits +, debits −. */
-    private fun signedPaise(t: TransactionEntity): Long =
-        if (isCreditType(t.type)) t.amountPaise else -t.amountPaise
-
     private suspend fun scheduleClassification(transactionId: String, delayMin: Long = 15) {
         pendingDao.upsert(
             PendingClassificationEntity(
@@ -1210,19 +1059,6 @@ class TransactionRepository @Inject constructor(
                 .joinToString("|")
             val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray())
             return digest.joinToString("") { "%02x".format(it) }
-        }
-
-        fun monthBounds(now: Long): Pair<Long, Long> {
-            val cal = Calendar.getInstance().apply { timeInMillis = now }
-            cal.set(Calendar.DAY_OF_MONTH, 1)
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            val from = cal.timeInMillis
-            cal.add(Calendar.MONTH, 1)
-            cal.add(Calendar.MILLISECOND, -1)
-            return from to cal.timeInMillis
         }
     }
 }
