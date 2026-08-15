@@ -956,10 +956,10 @@ class TransactionRepository @Inject constructor(
         }
 
         // Split parts are standalone rows, so fund linking is a direct row filter.
-        val hits = txnDao.getAllNonDeleted()
+        // Scope the scan to this fund's rows instead of the whole transactions table.
+        val hits = txnDao.getAllForFund(fundId)
             .asSequence()
             .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
-            .filter { it.fundId == fundId }
             .sortedWith(compareBy({ it.occurredAt }, { it.id }))
 
         for (txn in hits) {

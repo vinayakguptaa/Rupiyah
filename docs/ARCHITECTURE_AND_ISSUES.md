@@ -158,7 +158,6 @@ Severity: **high** · **med** · **low**. Only open items.
 
 | ID | Issue | File |
 | --- | --- | --- |
-| **N1** | Dead filter `.filter { it.isNotEmpty() \|\| true }` always keeps lines; should be a single blank‑line filter. | `CsvStatementParser.kt:426` |
 | **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) don't mirror the Settings `bank_accounts` pref — only `SettingsViewModel` does (`syncBankPrefsFromAccounts`). Cold start syncs bidirectionally (`FinanceApp.onCreate`), so the stale‑prefs re-archive risk is mitigated but not eliminated for accounts added via the Accounts screen between cold starts. | `AccountsViewModel.kt:37-55` ; `FinanceApp.kt:36-45` ; `SettingsViewModel.kt:440-445` |
 
 ### 6.2 God objects / files (high — main maintenance cost)
@@ -183,12 +182,12 @@ Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `mon
 
 ### 6.4 Security / privacy (med)
 
-- **LLM layer still echoes email.** `DEFAULT_LLM_SYSTEM` says "extract completed bank/wallet money movements from emails and SMS"; `LlmClient.extractTransaction` takes `redactedEmailBody`. SMS is the only ingest path — the system prompt is sent to the LLM provider, so it should be corrected. `SecureStore.kt:98`; `LlmClient.kt:41,45,77`.
+- LLM system prompt and `LlmClient.extractTransaction` parameter are SMS‑only (email references removed in `SecureStore.kt:97-98` and `LlmClient.kt:45`)..
 
 ### 6.5 Database fragility (low)
 
 - **No `1→2` migration** — latent `IllegalStateException` if a v1 install ever upgrades.
-- **`MIGRATION_4_5` drops the v4 unique index on `externalRefId` + `paymentMethod` and does not recreate it** — the v10→11 collapse to single `accountId` makes this index obsolete, but there is no explicit comment documenting this rationale in the migration. *(Clarity.)*
+- **`MIGRATION_4_5` rebuilds `transactions` and recreates the unique `externalRefId` + `paymentMethod` index** — that index is later made obsolete by the v10→11 collapse to a single `accountId` (the rationale is documented in `MIGRATION_10_11`, `AppDatabase.kt:471-473`). *(Clarity — resolved.)*
 - **Schema JSON history only from v11** — older migrations can't be authored against exported schema.
 
 ### 6.6 Dependencies & permissions (low)
@@ -209,8 +208,7 @@ Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `mon
 
 ### 6.9 Naming echoes (low, cosmetic)
 
-- `LlmClient.extractTransaction` still takes a `redactedEmailBody: String` parameter and its system prompt (`DEFAULT_LLM_SYSTEM`, `SecureStore.kt:97-98`) says "extract completed bank/wallet money movements from **emails and SMS**". SMS is the only ingest. Rename param to `redactedBody`/`messageBody` and drop "emails" from the prompt.
-- `TransactionParser` reads `e.merchant`/`e.paymentMethod` from the LLM's `ExtractedTransaction` model (`LlmClient.kt:21,26`) — these are LLM response fields, not persistence, but `AccountRepository.resolveId(paymentMethod, isCash)` carries the old name (`AccountRepository.kt:198`).
+- `TransactionParser` reads `e.merchant`/`e.paymentMethod` from the LLM's `ExtractedTransaction` model (`LlmClient.kt:21,26`) — these are LLM response fields, not persistence.
 - `SmsRedactor.kt:4-6` comment says "Renamed from the email-era `EmailRedactor`" — self-documenting, acceptable to keep.
 - `SettingsUiState.kt:13` comment says "Email/SMS auto-import also needs [llmApiKeySet]" — drop "Email/".
 
@@ -220,20 +218,14 @@ All of the above are parse-scaffolding/parameter/comment echoes, not persistence
 
 ## 7. Prioritized recommendations
 
-**P1 — ship‑level (correctness/security):**
-1. Rename `LlmClient.redactedEmailBody` → `messageBody`; drop "emails" from `DEFAULT_LLM_SYSTEM` and code comments (§6.4, §6.9).
+**P1 — Structural simplify:**
+1. Split remaining god files: `TransactionDetailScreen` (1347), `SettingsDetailScreen` (1204), `AddCashScreen` (1000) (§6.2); simplify Home to a fixed section order, move self‑transfer to its own mode and splits to post‑create only, make Detail view‑first (§6.8).
 
-**P2 — structural simplify:**
-2. Split the remaining god files: `TransactionDetailScreen` (1347), `SettingsDetailScreen` (1204), `AddCashScreen` (1000) (§6.2).
-3. Simplify Home to a fixed section order; move self‑transfer to its own mode and splits to post‑create only; make Detail view‑first (§6.8).
-4. Remove the separate `monthlyTrend` scan by folding it into `homeCashflowSnapshot()`; delete the dead `cashflowMetrics()` (§6.3).
+**P2 — Data consistency:**
+2. Remove dead `cashflowMetrics()`, fold `monthlyTrend` into `homeCashflowSnapshot()`, and fix N2 AccountsViewModel bank‑prefs sync (§6.1, §6.3).
 
-**P3 — hygiene:**
-5. N1 dead filter (`CsvStatementParser.kt:426`); N2 AccountsViewModel bank‑prefs sync (§6.1).
-6. Rename `AccountRepository.resolveId(paymentMethod, isCash)` → `resolveId(methodLabel, isCash)` (§6.9).
-7. Add a clarifying comment on the `MIGRATION_4_5` v4 index drop (§6.5) and consider exporting schema JSON for v10.
-8. Optional: bound `recalculateFundLedger` to the fund's own txns, not `getAllNonDeleted()` (§6.7).
-9. Optional cosmetic: if cheap, rename `Fund`/`FundBalance`/`FundsViewModel`/`FundsWidget` → `Tab*`; otherwise leave (§6.8).
+**P3 — Schema hygiene:**
+3. Export schema JSON for v10 (currently only v11+) (`AppDatabase.kt:69`).
 
 ---
 
@@ -244,9 +236,9 @@ All of the above are parse-scaffolding/parameter/comment echoes, not persistence
 | Layering / DI / navigation | Solid, conventional, maintainable |
 | Core cashflow model | Sound; transfers/splits correctly excluded from metrics |
 | Database (v11) | Good; migrations are sound; schema export on; no `1→2` gap, minor clarity gaps remain |
-| Correctness | N1 dead-filter and N2 AccountsViewModel bank-prefs sync remain |
+| Correctness | N2 AccountsViewModel bank‑prefs sync remain (N1 dead‑filter resolved) |
 | Structural / KISS | God files remain (`TransactionRepository` 1064, `TransactionDetailScreen` 1347, `SettingsDetailScreen` 1204, `AddCashScreen` 1000, `HomeDashboardSections` 761). `CashflowRepository` extracted (§5.1); Home metric consolidation partial — `monthlyTrend` still separate (§6.3). |
 | UI storytelling | Coherent core; Home/Add/Detail still do too much; Tabs label applied but `Fund` types linger |
-| Security | Secrets gated (opt-in dialog); cleartext HTTP blocked. `redactedEmailBody` param + "emails" in system prompt still echo |
+| Security | Secrets gated (opt-in dialog); cleartext HTTP blocked. LLM system prompt and parameter are SMS‑only (email references removed) |
 
-**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), fold `monthlyTrend` into the single snapshot, fix N1 dead filter and N2 AccountsViewModel bank‑prefs sync, then optional `Fund`→`Tab` rename. No new features until that debt is closed.
+**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), fold `monthlyTrend` into the single snapshot, fix N2 AccountsViewModel bank‑prefs sync, then optional `Fund`→`Tab` rename. No new features until that debt is closed.

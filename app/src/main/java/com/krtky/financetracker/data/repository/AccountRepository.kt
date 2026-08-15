@@ -195,14 +195,14 @@ class AccountRepository @Inject constructor(
      * Matches existing accounts only (including archived) so history stays linked.
      * Creates Cash if missing. Does **not** invent new bank rows from free text.
      */
-    suspend fun resolveId(paymentMethod: String?, isCash: Boolean): Long? {
-        if (isCash || paymentMethod.equals("Cash", true)) {
+    suspend fun resolveId(methodLabel: String?, isCash: Boolean): Long? {
+        if (isCash || methodLabel.equals("Cash", true)) {
             return accountDao.getByName("Cash")?.id
                 ?: accountDao.upsert(
                     AccountEntity(name = "Cash", kind = AccountKind.CASH.name, sortOrder = 0),
                 )
         }
-        val label = paymentMethod?.trim().orEmpty()
+        val label = methodLabel?.trim().orEmpty()
         if (label.isBlank() || label.equals("Digital", true) || label.equals("UPI", true)) {
             return null
         }

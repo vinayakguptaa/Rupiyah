@@ -10,7 +10,7 @@ import com.krtky.financetracker.ui.theme.TypographyMode
 
 data class SettingsUiState(
     val llmApiKeySet: Boolean = false,
-    /** Master switch. Email/SMS auto-import also needs [llmApiKeySet]. */
+    /** Master switch. SMS auto-import also needs [llmApiKeySet]. */
     val llmEnabled: Boolean = false,
     val llmBaseUrl: String = SecureStore.DEFAULT_LLM_BASE,
     val llmModel: String = SecureStore.DEFAULT_LLM_MODEL,

@@ -111,7 +111,7 @@ class TransactionParser @Inject constructor(
             val redacted = SmsRedactor.redact(text)
             runCatching {
                 llmClient.extractTransaction(
-                    redactedEmailBody = redacted,
+                    messageBody = redacted,
                     subject = null,
                     sender = sms.sender,
                     categories = categories.map { it.name },

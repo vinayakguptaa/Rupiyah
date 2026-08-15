@@ -95,7 +95,7 @@ class SecureStore @Inject constructor(
         const val DEFAULT_LLM_BASE = "https://api.groq.com/openai/v1"
         const val DEFAULT_LLM_MODEL = "llama-3.3-70b-versatile"
         val DEFAULT_LLM_SYSTEM = """
-            You extract completed bank/wallet money movements from emails and SMS in India.
+            You extract completed bank/wallet money movements from SMS in India.
             Return ONLY valid JSON with keys:
             type (sent|received|INCOME|EXPENSE|none),
             amount (number in INR, no currency symbol),

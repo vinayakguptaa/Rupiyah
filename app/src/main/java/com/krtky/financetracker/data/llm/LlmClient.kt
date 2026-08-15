@@ -38,11 +38,11 @@ class LlmClient @Inject constructor(
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    /** True only when AI is on and an API key is saved (required for email/SMS auto-import). */
+    /** True only when AI is on and an API key is saved (required for SMS auto-import). */
     fun isConfigured(): Boolean = secureStore.isLlmReady()
 
     suspend fun extractTransaction(
-        redactedEmailBody: String,
+        messageBody: String,
         subject: String?,
         sender: String,
         categories: List<String> = emptyList(),
@@ -74,7 +74,7 @@ class LlmClient @Inject constructor(
             }
             appendLine()
             appendLine("Message body:")
-            append(redactedEmailBody.take(6000))
+            append(messageBody.take(6000))
         }
 
         val payload = ChatRequest(

@@ -17,7 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AccountsViewModel @Inject constructor(
     private val accountRepository: AccountRepository,
-    userPreferences: UserPreferences,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
     val accounts = accountRepository.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -39,18 +39,26 @@ class AccountsViewModel @Inject constructor(
         if (trimmed.isBlank()) return
         viewModelScope.launch {
             accountRepository.addOrRestore(trimmed, kind)
+            mirrorBankPrefs()
         }
     }
 
     fun archiveAccount(id: Long) {
         viewModelScope.launch {
             accountRepository.archive(id)
+            mirrorBankPrefs()
         }
     }
 
     fun restoreAccount(id: Long) {
         viewModelScope.launch {
             accountRepository.unarchive(id)
+            mirrorBankPrefs()
         }
+    }
+
+    private suspend fun mirrorBankPrefs() {
+        val joined = accountRepository.activeBankNames().joinToString(",")
+        userPreferences.setBankAccounts(joined)
     }
 }

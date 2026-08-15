@@ -421,13 +421,8 @@ object CsvStatementParser {
     // --- CSV split ---------------------------------------------------------------
 
     fun splitLines(text: String): List<String> {
-        // Strip BOM
-        val cleaned = text.removePrefix("\uFEFF")
-        return cleaned.split('\n', '\r').map { it.trimEnd() }.filter { it.isNotEmpty() || true }
-            .let { all ->
-                // Re-join empty only if truly blank file parts — keep non-empty after strip
-                all.filter { line -> line.isNotBlank() }
-            }
+        // Strip BOM, then drop blank lines.
+        return text.removePrefix("\uFEFF").split('\n', '\r').map { it.trimEnd() }.filter { it.isNotBlank() }
     }
 
     /** RFC4180-ish field split with quotes. */
