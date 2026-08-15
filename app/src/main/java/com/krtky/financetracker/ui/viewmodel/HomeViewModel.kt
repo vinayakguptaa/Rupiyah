@@ -62,7 +62,12 @@ class HomeViewModel @Inject constructor(
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        HomeCashflowSnapshot(MonthlySummary(0, 0), CashflowMetrics(0, 0, 0, 0), emptyList()),
+        HomeCashflowSnapshot(
+            MonthlySummary(0, 0),
+            CashflowMetrics(0, 0, 0, 0),
+            emptyList(),
+            emptyList()
+        ),
     )
 
     val funds: StateFlow<List<FundBalance>> = transactionRepository.observeFunds()
@@ -82,9 +87,8 @@ class HomeViewModel @Inject constructor(
         cashflowRepository.observeAccountBalances()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    val monthlyTrend: StateFlow<List<MonthlyTrend>> = refresh.map {
-        cashflowRepository.monthlyTrend()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val monthlyTrend: StateFlow<List<MonthlyTrend>> = homeCashflow.map { it.monthlyTrend }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val displayName: StateFlow<String> = userPreferences.displayName
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")

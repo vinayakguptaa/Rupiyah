@@ -12,7 +12,7 @@ Rupiyah is a single‑module, offline‑first personal finance tracker (package 
 - **Layering is clean and conventional** (UI → ViewModel → Repository → Room/DAO), single Hilt-injected `AppDatabase`.
 - **Core cashflow model is sound**: a transaction is the single source of truth; self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId`, and are excluded from lifestyle metrics.
 - **The data model is single‑field and current**: one party (`counterparty`), one account (`accountId`), one ingest id (`smsMessageId`); type strings are `DEBIT`/`CREDIT`. SMS, CSV, and manual are the only ingest paths.
-- **Remaining risk is concentrated in** file/ViewModel sizing (god files), a few import reconciliation edges (N1, N2), one redundant Home metric query, naming echoes in the LLM/security layer, and a couple of database‑clarity gaps.
+- **Remaining risk is concentrated in** file/ViewModel sizing (god files), one redundant Home metric query resolved, naming echoes in the LLM/security layer, and a couple of database‑clarity gaps.
 
 The architecture shape is right; the open debt is **simplification and a few import/security edges**, not rework of the model.
 
@@ -126,7 +126,7 @@ Supporting: `components/` (~30 files), `theme/` (`Theme.kt` 951, `ThemeColorPick
 | Repository | Role | Notes |
 | --- | --- | --- |
 | `TransactionRepository` (1064) | CRUD, splits, merges, self/tab transfer, fund ledger, dedupe, classify | **God object** — §6.1 |
-| `CashflowRepository` (293) | Read-only cashflow metrics: `monthlySummary`, `monthlyTrend`, `categorySpend`, `observeAccountBalances`, `homeCashflowSnapshot` | Extracted from `TransactionRepository` |
+| `CashflowRepository` (293) | Read-only cashflow metrics: `homeCashflowSnapshot`, `observeAccountBalances` | Extracted from `TransactionRepository` |
 | `AccountRepository` (233) | Account CRUD, balances, `syncFromBankList`, legacy `resolveId` | One balance path |
 | `CategoryRepository` (89) | Seeding + CRUD | Healthy |
 | `StatementImportRepository` (230) | CSV preview/dedupe/commit | |
@@ -158,7 +158,7 @@ Severity: **high** · **med** · **low**. Only open items.
 
 | ID | Issue | File |
 | --- | --- | --- |
-| **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) don't mirror the Settings `bank_accounts` pref — only `SettingsViewModel` does (`syncBankPrefsFromAccounts`). Cold start syncs bidirectionally (`FinanceApp.onCreate`), so the stale‑prefs re-archive risk is mitigated but not eliminated for accounts added via the Accounts screen between cold starts. | `AccountsViewModel.kt:37-55` ; `FinanceApp.kt:36-45` ; `SettingsViewModel.kt:440-445` |
+| **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) now call `mirrorBankPrefs()` to sync with Settings `bank_accounts` pref — previously missing (now fixed in code). Cold start sync (`FinanceApp.onCreate`) still provides bidirectional sync. | `AccountsViewModel.kt:37-55` ; `FinanceApp.kt:36-45` ; `SettingsViewModel.kt:440-445` |
 
 ### 6.2 God objects / files (high — main maintenance cost)
 
@@ -176,13 +176,13 @@ Severity: **high** · **med** · **low**. Only open items.
 
 These block safe change and explain the "too many jobs per screen" UX complaints.
 
-### 6.3 Redundant metric computations (med)
+### 6.3 Redundant metric computations (med) — **resolved**
 
-Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `monthlyTrend` — several queries computing overlapping monthly numbers. `CashflowRepository.homeCashflowSnapshot()` consolidates `monthlySummary` + `cashflowMetrics` + `categorySpend` into a single DAO scan (used by `HomeViewModel` → `homeCashflow`), but **`monthlyTrend` still scans separately** via `CashflowRepository.monthlyTrend()`. Additionally `cashflowMetrics()` remains in `CashflowRepository` as dead code and should be removed.
+`CashflowRepository.homeCashflowSnapshot()` now consolidates `monthlySummary`, `cashflowMetrics`, `categorySpend`, and `monthlyTrend` into a single DAO scan. The old redundant public methods (`monthlySummary()`, `cashflowMetrics()`, `categorySpend()`, `monthlyTrend()`) have been removed. WidgetData, HomeViewModel, and CategoriesViewModel now derive all cashflow data from the consolidated snapshot.
 
 ### 6.4 Security / privacy (med)
 
-- LLM system prompt and `LlmClient.extractTransaction` parameter are SMS‑only (email references removed in `SecureStore.kt:97-98` and `LlmClient.kt:45`)..
+- LLM system prompt and `LlmClient.extractTransaction` parameter are SMS‑only (email references removed in `SecureStore.kt:97-98` and `LlmClient.kt:45`).
 
 ### 6.5 Database fragility (low)
 
@@ -222,10 +222,10 @@ All of the above are parse-scaffolding/parameter/comment echoes, not persistence
 1. Split remaining god files: `TransactionDetailScreen` (1347), `SettingsDetailScreen` (1204), `AddCashScreen` (1000) (§6.2); simplify Home to a fixed section order, move self‑transfer to its own mode and splits to post‑create only, make Detail view‑first (§6.8).
 
 **P2 — Data consistency:**
-2. Remove dead `cashflowMetrics()`, fold `monthlyTrend` into `homeCashflowSnapshot()`, and fix N2 AccountsViewModel bank‑prefs sync (§6.1, §6.3).
+2. (Completed) Redundant cashflow methods consolidated into `homeCashflowSnapshot()`; N2 AccountsViewModel bank‑prefs sync also completed (§6.1, §6.3).
 
 **P3 — Schema hygiene:**
-3. Export schema JSON for v10 (currently only v11+) (`AppDatabase.kt:69`).
+3. Export schema JSON for v10 (generate via Room schema export or note limitation in §6.5).
 
 ---
 
@@ -236,9 +236,9 @@ All of the above are parse-scaffolding/parameter/comment echoes, not persistence
 | Layering / DI / navigation | Solid, conventional, maintainable |
 | Core cashflow model | Sound; transfers/splits correctly excluded from metrics |
 | Database (v11) | Good; migrations are sound; schema export on; no `1→2` gap, minor clarity gaps remain |
-| Correctness | N2 AccountsViewModel bank‑prefs sync remain (N1 dead‑filter resolved) |
-| Structural / KISS | God files remain (`TransactionRepository` 1064, `TransactionDetailScreen` 1347, `SettingsDetailScreen` 1204, `AddCashScreen` 1000, `HomeDashboardSections` 761). `CashflowRepository` extracted (§5.1); Home metric consolidation partial — `monthlyTrend` still separate (§6.3). |
+| Correctness | N2 AccountsViewModel bank‑prefs sync fixed; N1 dead‑filter resolved |
+| Structural / KISS | God files remain (`TransactionRepository` 1064, `TransactionDetailScreen` 1347, `SettingsDetailScreen` 1204, `AddCashScreen` 1000, `HomeDashboardSections` 761). `CashflowRepository` extracted (§5.1); Home metric consolidation completed (§6.3). |
 | UI storytelling | Coherent core; Home/Add/Detail still do too much; Tabs label applied but `Fund` types linger |
 | Security | Secrets gated (opt-in dialog); cleartext HTTP blocked. LLM system prompt and parameter are SMS‑only (email references removed) |
 
-**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), fold `monthlyTrend` into the single snapshot, fix N2 AccountsViewModel bank‑prefs sync, then optional `Fund`→`Tab` rename. No new features until that debt is closed.
+**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), then optional `Fund`→`Tab` rename. No new features until that debt is closed.

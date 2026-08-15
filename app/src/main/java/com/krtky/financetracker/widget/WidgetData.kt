@@ -138,11 +138,12 @@ internal object WidgetDataLoader {
         return try {
             val repo = repos.transactions
             val cashflow = repos.cashflow
-            val summary = cashflow.monthlySummary()
-            val trend = cashflow.monthlyTrend()
+            val snapshot = cashflow.homeCashflowSnapshot()
+            val summary = snapshot.summary
+            val trend = snapshot.monthlyTrend
             val txns = repo.observeTransactions().first().take(5)
             val funds = repo.observeFunds().first().take(4)
-            val categories = cashflow.categorySpend().take(4)
+            val categories = snapshot.categorySpend.take(4)
             WidgetSnapshots(
                 overview = buildOverview(summary, trend),
                 transactions = txns.map { toTxnRow(it) },

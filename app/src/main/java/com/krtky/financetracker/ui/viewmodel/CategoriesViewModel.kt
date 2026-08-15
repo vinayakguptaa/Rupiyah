@@ -22,7 +22,7 @@ class CategoriesViewModel @Inject constructor(
     private val refresh = MutableStateFlow(0)
 
     val categorySpend: StateFlow<List<CategorySpend>> = refresh.map {
-        cashflowRepository.categorySpend()
+        cashflowRepository.homeCashflowSnapshot().categorySpend
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val totalExpense: StateFlow<Long> = categorySpend.map { list ->
