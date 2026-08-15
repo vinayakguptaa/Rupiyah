@@ -115,17 +115,8 @@ data class CashflowMetrics(
     val investedPaise: Long,
     val redeemedPaise: Long,
     val lifestyleByCategory: List<CategorySpend> = emptyList(),
-    val investmentByName: List<NamedAmount> = emptyList(),
 ) {
     val netInvestedPaise: Long get() = investedPaise - redeemedPaise
-}
-
-data class NamedAmount(
-    val name: String,
-    val debitPaise: Long = 0L,
-    val creditPaise: Long = 0L,
-) {
-    val netPaise: Long get() = debitPaise - creditPaise
 }
 
 /** Validation helpers for split editor (pure; unit-testable). */

@@ -7,7 +7,6 @@ import com.krtky.financetracker.domain.model.CashflowMetrics
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.MonthlySummary
 import com.krtky.financetracker.domain.model.MonthlyTrend
-import com.krtky.financetracker.domain.model.NamedAmount
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionType
 import kotlinx.coroutines.flow.Flow
@@ -134,16 +133,6 @@ class CashflowRepository @Inject constructor(
                 )
             }
             .sortedByDescending { it.totalPaise }
-        val investByName = (investDebits + investCredits)
-            .groupBy { it.counterparty?.trim().orEmpty().ifBlank { "Unnamed" } }
-            .map { (name, items) ->
-                NamedAmount(
-                    name = name,
-                    debitPaise = items.filter { !isCreditType(it.type) }.sumOf { it.amountPaise },
-                    creditPaise = items.filter { isCreditType(it.type) }.sumOf { it.amountPaise },
-                )
-            }
-            .sortedByDescending { kotlin.math.abs(it.netPaise) }
         val trend = computeMonthlyTrend(now)
         return HomeCashflowSnapshot(
             summary = MonthlySummary(incomePaise = income, expensePaise = expense),
@@ -153,7 +142,6 @@ class CashflowRepository @Inject constructor(
                 investedPaise = investDebits.sumOf { it.amountPaise },
                 redeemedPaise = investCredits.sumOf { it.amountPaise },
                 lifestyleByCategory = lifestyleByCat,
-                investmentByName = investByName,
             ),
             categorySpend = debitByCat,
             monthlyTrend = trend,

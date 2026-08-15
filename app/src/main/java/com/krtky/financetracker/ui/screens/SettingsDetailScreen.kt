@@ -397,24 +397,6 @@ fun SettingsDetailScreen(
                 }
             }
 
-            "email", "gmail", "senders", "paste" -> {
-                SettingsBlock(
-                    title = "Email import removed",
-                    helpTitle = "Capture methods",
-                    helpMessage = "Rupiyah no longer reads bank email. Use SMS, CSV statement import, or manual entry.",
-                ) {
-                    Text(
-                        "Capture is SMS + CSV + manual only.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        "• Settings → Bank text messages (SMS) for live bank alerts\n• Accounts → Import bank statement (CSV)\n• + button for manual Debit / Credit",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-            }
             "sms" -> {
                 SettingsBlock(
                     title = "Read bank SMS",

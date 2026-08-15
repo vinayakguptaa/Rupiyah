@@ -27,15 +27,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -356,7 +352,6 @@ fun HomeScreen(
                         selectedCategoryFilter = selectedCategoryFilter,
                         investedPaise = cashflow.investedPaise,
                         redeemedPaise = cashflow.redeemedPaise,
-                        investmentByName = cashflow.investmentByName,
                     ),
                     onMoveSection = { from, to ->
                         haptics.select()

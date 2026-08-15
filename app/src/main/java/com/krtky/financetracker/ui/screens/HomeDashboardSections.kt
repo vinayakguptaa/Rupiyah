@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FilterAltOff
@@ -53,7 +54,6 @@ import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.MonthlyTrend
-import com.krtky.financetracker.domain.model.NamedAmount
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.BalanceHeroCard
@@ -95,7 +95,6 @@ internal data class HomeDashboardData(
     val selectedCategoryFilter: CategorySpend?,
     val investedPaise: Long = 0L,
     val redeemedPaise: Long = 0L,
-    val investmentByName: List<NamedAmount> = emptyList(),
 ) {
     val netInvested: Long get() = investedPaise - redeemedPaise
 }
@@ -169,7 +168,7 @@ internal fun LazyListScope.homeDashboardSections(
             next != null &&
             next.effectiveSpan == 1
 
-        if (canPair && next != null) {
+        if (canPair) {
             val left = config
             val right = next
             item(key = "row_${left.section.id}_${right.section.id}") {
@@ -512,7 +511,7 @@ private fun HomeSectionBody(
                             } else {
                                 "In ${data.investedPaise.inr()} · out ${data.redeemedPaise.inr()}"
                             },
-                            icon = Icons.Default.Savings,
+                            icon = Icons.AutoMirrored.Filled.TrendingUp,
                             onClick = onOpenExpenseActivity,
                             accent = scheme.tertiary,
                             modifier = Modifier.fillMaxWidth(),
