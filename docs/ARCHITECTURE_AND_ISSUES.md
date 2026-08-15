@@ -1,6 +1,6 @@
 # Rupiyah — Architecture & Remaining Issues
 
-**Scope:** Current-state architecture of `app/` (Kotlin + Jetpack Compose + Room + Hilt + WorkManager) and the **remaining** debt to close. Historical "what was already fixed" is deliberately omitted.
+**Scope:** Current-state architecture of `app/` (Kotlin + Jetpack Compose + Room + Hilt + WorkManager) and the **remaining** debt to close.
 **Date:** 2026-08-15 · **DB version:** 11 · minSdk 26 / targetSdk 35 · versionCode 6 / 1.4.1
 
 ---
@@ -12,7 +12,7 @@ Rupiyah is a single‑module, offline‑first personal finance tracker (package 
 - **Layering is clean and conventional** (UI → ViewModel → Repository → Room/DAO), single Hilt-injected `AppDatabase`.
 - **Core cashflow model is sound**: a transaction is the single source of truth; self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId`, and are excluded from lifestyle metrics.
 - **The data model is single‑field and current**: one party (`counterparty`), one account (`accountId`), one ingest id (`smsMessageId`); type strings are `DEBIT`/`CREDIT`. SMS, CSV, and manual are the only ingest paths.
-- **Remaining risk is concentrated in** import reconciliation edge cases (S1, S2), file/ViewModel sizing (god files), redundant Home metric queries, and backup secret handling.
+- **Remaining risk is concentrated in** file/ViewModel sizing (god files), a few import reconciliation edges (N1, N2), one redundant Home metric query, naming echoes in the LLM/security layer, and a couple of database‑clarity gaps.
 
 The architecture shape is right; the open debt is **simplification and a few import/security edges**, not rework of the model.
 
@@ -36,11 +36,11 @@ The architecture shape is right; the open debt is **simplification and a few imp
 SMS (SmsReceiver) ─┐
 CSV import wizard  ─┼─► TransactionParser / CsvStatementParser ─► TransactionRepository
 Manual (+ FAB)     ─┘                                    (dedupe, classify, fund ledger)
-                                                         │
-                                                         ▼
-                                             Room (AppDatabase) ──► encrypted prefs / widgets / Sheets
-                                                         │
-                                             ViewModels ──► Compose screens (StateFlow)
+                                                          │
+                                                          ▼
+                                              Room (AppDatabase) ──► encrypted prefs / widgets / Sheets
+                                                          │
+                                              ViewModels ──► Compose screens (StateFlow)
 ```
 
 - **Ingest** is validated/deduped in `TransactionRepository`, one dedicated path per source: `insertFromSms`, `insertFromImport`, `insertManual` / `insertManualWithSplits`.
@@ -90,7 +90,7 @@ Relationships are logical (FKs not enforced by Room): `categoryId`, `accountId`,
 
 ### 3.3 Migrations (`AppDatabase.kt`)
 
-Nine migrations: `2→3`, `3→4` (no‑op), `4→5` (drops experimental recurring‑payments), `5→6` (receipt), `6→7` (accounts + Debit/Credit), `7→8` (transaction_splits), `8→9` (splits as rows + `splitGroupId`), `9→10` (drop `trusted_senders`/`email_ingest_log`), `10→11` (field collapse to single `counterparty`/`accountId`/`smsMessageId`). `fallbackToDestructiveMigrationOnDowngrade()` is set.
+Nine migrations: `2→3`, `3→4` (no‑op), `4→5` (drops experimental recurring‑payments), `5→6` (receipt), `6→7` (accounts + Debit/Credit), `7→8` (transaction_splits), `8→9` (splits as rows + `splitGroupId`), `9→10` (drop `trusted_senders`/`email_ingest_log`), `10→11` (field collapse to single `counterparty`/`accountId`/`smsMessageId`). `fallbackToDestructiveMigrationOnDowngrade()` is set. Only `2→3` … `10→11` are registered in `AppModule` (10 `Migration` objects spanning versions 2–11); there is **no `1→2`** migration.
 
 ---
 
@@ -125,11 +125,12 @@ Supporting: `components/` (~30 files), `theme/` (`Theme.kt` 951, `ThemeColorPick
 
 | Repository | Role | Notes |
 | --- | --- | --- |
-| `TransactionRepository` (**1228**) | CRUD, splits, merges, self/tab transfer, fund ledger, cashflow metrics, dedupe, classification | **God object** — §6.2 |
+| `TransactionRepository` (1064) | CRUD, splits, merges, self/tab transfer, fund ledger, dedupe, classify | **God object** — §6.1 |
+| `CashflowRepository` (293) | Read-only cashflow metrics: `monthlySummary`, `monthlyTrend`, `categorySpend`, `observeAccountBalances`, `homeCashflowSnapshot` | Extracted from `TransactionRepository` |
 | `AccountRepository` (233) | Account CRUD, balances, `syncFromBankList`, legacy `resolveId` | One balance path |
 | `CategoryRepository` (89) | Seeding + CRUD | Healthy |
 | `StatementImportRepository` (230) | CSV preview/dedupe/commit | |
-| `BackupRepository` (433) | JSON export/import (format v5) | Secrets in plaintext — §6.4 |
+| `BackupRepository` (433) | JSON export/import (format v5) | Secrets gated by opt-in dialog |
 | `LocationRepository` (74) | Capture + place match | Optional |
 
 ### 5.2 Workers (`workers/AppWorkers.kt`)
@@ -144,29 +145,27 @@ Supporting: `components/` (~30 files), `theme/` (`Theme.kt` 951, `ThemeColorPick
 - `SmsReceiver` → `TransactionParser.parseSms` → `insertFromSms`.
 - `CsvStatementParser` + `StatementImportRepository` → `insertFromImport`.
 - `LlmClient` (OkHttp) — OpenAI‑compatible `/chat/completions`; required for SMS auto‑import.
-- `ClassificationNotifier` / `OverlayClassificationService` / `ClassificationActionReceiver` — classify prompts.
+- `ClassificationNotifier` / `ClassificationActionReceiver` — classify prompts (overlay-service path removed).
 - `LocationTrackingService` (foreground) — optional location stamping.
 
 ---
 
 ## 6. Remaining issues
 
-Severity: **high** · **med** · **low**. Only open items; IDs carried over from the original plan for traceability.
+Severity: **high** · **med** · **low**. Only open items.
 
 ### 6.1 Import reconciliation (med)
 
 | ID | Issue | File |
 | --- | --- | --- |
-| **S1** | The "attach statement ref to a near twin with a blank ref" HIGH branch never fires alone — it still requires `descScore >= 0.72f`. New‑ref‑on‑blank‑existing matches fall through to a weak `sameDay` check. | `ImportDedupe.kt:69-77` |
-| **S2** | MEDIUM‑confidence rows default to `SKIP_MERGE`; one‑tap import silently drops uncertain rows. Easy under‑import against sparse SMS. Needs a product decision (ask vs default‑import). | `StatementImportRepository.kt:106` |
 | **N1** | Dead filter `.filter { it.isNotEmpty() \|\| true }` always keeps lines; should be a single blank‑line filter. | `CsvStatementParser.kt:426` |
-| **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) don't mirror the Settings bank‑prefs list; cold start can re‑sync from stale prefs and re‑archive. | `AccountsViewModel.kt:37-55` |
+| **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) don't mirror the Settings `bank_accounts` pref — only `SettingsViewModel` does (`syncBankPrefsFromAccounts`). Cold start syncs bidirectionally (`FinanceApp.onCreate`), so the stale‑prefs re-archive risk is mitigated but not eliminated for accounts added via the Accounts screen between cold starts. | `AccountsViewModel.kt:37-55` ; `FinanceApp.kt:36-45` ; `SettingsViewModel.kt:440-445` |
 
 ### 6.2 God objects / files (high — main maintenance cost)
 
 | Type | ~Lines | Smell |
 | --- | --- | --- |
-| `TransactionRepository` | 1228 | CRUD + splits + merges + transfers + fund ledger + **4 metric computations** + classify + dedupe |
+| `TransactionRepository` | 1064 | CRUD + splits + merges + transfers + fund ledger + dedupe + classify (cashflow reads extracted to §5.1 `CashflowRepository`) |
 | `TransactionDetailScreen` | 1347 | View + edit + amount pad + date + account + tab + location + receipt + OSM map + splits |
 | `SettingsDetailScreen` | 1204 | Every settings domain |
 | `AddCashScreen` | 1000 | Entry + self‑transfer + draft splits in one screen |
@@ -180,18 +179,17 @@ These block safe change and explain the "too many jobs per screen" UX complaints
 
 ### 6.3 Redundant metric computations (med)
 
-Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `monthlyTrend` (`HomeViewModel.kt:53-89`) — several queries computing overlapping monthly numbers (with `cashflow.lifestyleByCategory` overlapping `categorySpend`). Consolidate into one cashflow snapshot.
+Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `monthlyTrend` — several queries computing overlapping monthly numbers. `CashflowRepository.homeCashflowSnapshot()` consolidates `monthlySummary` + `cashflowMetrics` + `categorySpend` into a single DAO scan (used by `HomeViewModel` → `homeCashflow`), but **`monthlyTrend` still scans separately** via `CashflowRepository.monthlyTrend()`. Additionally `cashflowMetrics()` remains in `CashflowRepository` as dead code and should be removed.
 
-### 6.4 Security / privacy (high)
+### 6.4 Security / privacy (med)
 
-- **Backups contain secrets in plaintext.** `BackupRepository.exportData` writes `llm_api_key`, `llm_base_url`, `sheets_access_token`, `sheets_spreadsheet_id` into an unencrypted JSON file (`BackupRepository.kt:50-58`). Should be optional/warning‑gated.
-- LLM base URL is user‑supplied and called over plain OkHttp; a `http://` endpoint may be allowed unless `network_security_config` blocks cleartext (not verified).
+- **LLM layer still echoes email.** `DEFAULT_LLM_SYSTEM` says "extract completed bank/wallet money movements from emails and SMS"; `LlmClient.extractTransaction` takes `redactedEmailBody`. SMS is the only ingest path — the system prompt is sent to the LLM provider, so it should be corrected. `SecureStore.kt:98`; `LlmClient.kt:41,45,77`.
 
-### 6.5 Database fragility (med/low)
+### 6.5 Database fragility (low)
 
-- **No `1→2` migration** — latent `IllegalStateException` if a v1 install ever upgrades. *(Low.)*
-- **`MIGRATION_4_5` hardcodes the `transactions` CREATE** — omits later columns, relying on subsequent `ALTER`s; brittle on the v4→ path. *(Med, legacy.)*
-- **Schema JSON history only from v11** — older migrations can't be authored against exported schema. *(Low.)*
+- **No `1→2` migration** — latent `IllegalStateException` if a v1 install ever upgrades.
+- **`MIGRATION_4_5` drops the v4 unique index on `externalRefId` + `paymentMethod` and does not recreate it** — the v10→11 collapse to single `accountId` makes this index obsolete, but there is no explicit comment documenting this rationale in the migration. *(Clarity.)*
+- **Schema JSON history only from v11** — older migrations can't be authored against exported schema.
 
 ### 6.6 Dependencies & permissions (low)
 
@@ -205,34 +203,37 @@ Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `mon
 
 ### 6.8 UI storytelling (med)
 
-- **Home is overloaded**: greeting + layout‑edit mode (reorder, half‑width spans, drag), pending chip, setup checklist, hero net, tiles, category pie, trend, open tabs, recent, investment metrics. Layout editor is power‑user chrome on the primary screen. Target fixed order: Net · Pending · Accounts strip · Spend by category · Recent · Open tabs.
-- **Product vs class naming**: open IOUs are "Tabs" in UI copy but `Fund`, `FundBalance`, `FundsWidget` in code — cosmetic, pervasive rename is churn.
-- **Home language**: Home still reads income/spent/net where forms use Debit/Credit; and Home's "Cash/Digital" collapsed view (rows with no owning account → display‑only "Digital" bucket) differs from the Accounts screen's real‑account list. They agree per named account, but the "Digital" pseudo‑bucket deserves a clarifying comment (`TransactionRepository.kt:924-934`).
+- **Home is overloaded**: greeting + layout‑edit mode (reorder, half‑width spans, drag), pending chip, setup checklist, hero net, tiles, ring, trend, open tabs, recent, investment metrics. Layout editor is power‑user chrome on the primary screen. Target fixed order: Net · Pending · Accounts strip · Spend by category · Recent · Open tabs.
+- **Product vs class naming**: open IOUs are "Tabs" in UI copy (e.g. `FundsScreen.kt:118` title = "Tabs", "New tab", "Archive tab") but code still says `Fund`, `FundBalance`, `FundsViewModel`, `FundsWidget`, `FundDao`, `fundDao`, `fund_ledger`. A "renamed Funds to Tabs" commit only touched UI strings, not model/viewmodel/widget types. Low value to fully chase; a targeted rename of `Fund`→`Tab` across model + DAO + ViewModel + widget is moderate churn (≈15 files) with zero behavior change.
 - **Add / Detail / Self‑transfer / Splits** are mixed into a few kitchen‑sink screens; splits are also reachable pre‑create in Add. Simpler target: Add = plain entry; self‑transfer separate; split only post‑create; Detail view‑first.
 
 ### 6.9 Naming echoes (low, cosmetic)
 
-- `LlmClient` still uses a `redactedEmailBody` parameter and its system prompt says "emails and SMS"; `TransactionParser` reads `e.merchant`/`e.paymentMethod` while parsing raw SMS; `AccountRepository.resolveId(paymentMethod, isCash)` keeps the `paymentMethod` param name. All parse‑scaffolding/params, not persistence.
+- `LlmClient.extractTransaction` still takes a `redactedEmailBody: String` parameter and its system prompt (`DEFAULT_LLM_SYSTEM`, `SecureStore.kt:97-98`) says "extract completed bank/wallet money movements from **emails and SMS**". SMS is the only ingest. Rename param to `redactedBody`/`messageBody` and drop "emails" from the prompt.
+- `TransactionParser` reads `e.merchant`/`e.paymentMethod` from the LLM's `ExtractedTransaction` model (`LlmClient.kt:21,26`) — these are LLM response fields, not persistence, but `AccountRepository.resolveId(paymentMethod, isCash)` carries the old name (`AccountRepository.kt:198`).
+- `SmsRedactor.kt:4-6` comment says "Renamed from the email-era `EmailRedactor`" — self-documenting, acceptable to keep.
+- `SettingsUiState.kt:13` comment says "Email/SMS auto-import also needs [llmApiKeySet]" — drop "Email/".
+
+All of the above are parse-scaffolding/parameter/comment echoes, not persistence-layer fields.
 
 ---
 
 ## 7. Prioritized recommendations
 
 **P1 — ship‑level (correctness/security):**
-1. Fix **S1** (let a new ref on a blank‑ref near twin match HIGH) and decide **S2** (MEDIUM must ask, or default to import).
-2. Gate **backup secrets** behind an explicit warning/opt‑in (§6.4).
+1. Rename `LlmClient.redactedEmailBody` → `messageBody`; drop "emails" from `DEFAULT_LLM_SYSTEM` and code comments (§6.4, §6.9).
 
 **P2 — structural simplify:**
-3. Split `TransactionRepository` (cashflow queries, fund ledger, splits, transfer) and `SettingsViewModel` into focused modules.
-4. Consolidate the redundant Home metric queries into one cashflow snapshot (§6.3).
-5. Simplify Home to a fixed section order; move self‑transfer to its own mode and splits to post‑create only; make Detail view‑first (§6.8).
-6. Remove OSM / camera / background‑location if those features stay optional.
+2. Split the remaining god files: `TransactionDetailScreen` (1347), `SettingsDetailScreen` (1204), `AddCashScreen` (1000) (§6.2).
+3. Simplify Home to a fixed section order; move self‑transfer to its own mode and splits to post‑create only; make Detail view‑first (§6.8).
+4. Remove the separate `monthlyTrend` scan by folding it into `homeCashflowSnapshot()`; delete the dead `cashflowMetrics()` (§6.3).
 
 **P3 — hygiene:**
-7. N1, N2 cleanups (§6.1).
-8. Add a `1→2` migration or document that v1 never shipped; comment the "Digital" fold (§6.5/6.8).
-9. Consider collapsing the `fund_ledger` materialised table or bounding its recompute (§6.7).
-10. Optional cosmetic renames (`Fund*` → `Tab*`, `redactedEmailBody`) only when cheap.
+5. N1 dead filter (`CsvStatementParser.kt:426`); N2 AccountsViewModel bank‑prefs sync (§6.1).
+6. Rename `AccountRepository.resolveId(paymentMethod, isCash)` → `resolveId(methodLabel, isCash)` (§6.9).
+7. Add a clarifying comment on the `MIGRATION_4_5` v4 index drop (§6.5) and consider exporting schema JSON for v10.
+8. Optional: bound `recalculateFundLedger` to the fund's own txns, not `getAllNonDeleted()` (§6.7).
+9. Optional cosmetic: if cheap, rename `Fund`/`FundBalance`/`FundsViewModel`/`FundsWidget` → `Tab*`; otherwise leave (§6.8).
 
 ---
 
@@ -242,10 +243,10 @@ Home consumes `monthlySummary`, `cashflowMetrics`, `categorySpend`, **and** `mon
 | --- | --- |
 | Layering / DI / navigation | Solid, conventional, maintainable |
 | Core cashflow model | Sound; transfers/splits correctly excluded from metrics |
-| Database (v11) | Good; migrations are the fragile part; schema export on |
-| Correctness | Import‑reconciliation edges (S1, S2) remain |
-| Structural / KISS | God files + redundant metrics are the main cost |
-| UI storytelling | Coherent core; Home/Add/Detail still do too much |
-| Security | Plaintext backup secrets is the main concern |
+| Database (v11) | Good; migrations are sound; schema export on; no `1→2` gap, minor clarity gaps remain |
+| Correctness | N1 dead-filter and N2 AccountsViewModel bank-prefs sync remain |
+| Structural / KISS | God files remain (`TransactionRepository` 1064, `TransactionDetailScreen` 1347, `SettingsDetailScreen` 1204, `AddCashScreen` 1000, `HomeDashboardSections` 761). `CashflowRepository` extracted (§5.1); Home metric consolidation partial — `monthlyTrend` still separate (§6.3). |
+| UI storytelling | Coherent core; Home/Add/Detail still do too much; Tabs label applied but `Fund` types linger |
+| Security | Secrets gated (opt-in dialog); cleartext HTTP blocked. `redactedEmailBody` param + "emails" in system prompt still echo |
 
-**Highest‑leverage next step:** fix S1/S2 and gate backup secrets (P1), then split the god files and consolidate Home metrics (P2). No new features until that debt is closed.
+**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), fold `monthlyTrend` into the single snapshot, fix N1 dead filter and N2 AccountsViewModel bank‑prefs sync, then optional `Fund`→`Tab` rename. No new features until that debt is closed.
