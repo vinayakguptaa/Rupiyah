@@ -31,12 +31,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,9 +45,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -59,10 +56,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,27 +65,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.ui.components.AccountChipRow
 import com.krtky.financetracker.ui.components.AmountNumpadSheet
 import com.krtky.financetracker.ui.components.AmountRupeeField
-import com.krtky.financetracker.ui.components.M3LoadingIndicator
+import com.krtky.financetracker.ui.components.CategoryChipRow
+import com.krtky.financetracker.ui.components.DateTimeField
 import com.krtky.financetracker.ui.components.DatePickerSheet
 import com.krtky.financetracker.ui.components.FormAccountChip
 import com.krtky.financetracker.ui.components.FormCategoryChip
 import com.krtky.financetracker.ui.components.FormExpandableHeader
 import com.krtky.financetracker.ui.components.FormToggleRow
 import com.krtky.financetracker.ui.components.FormTypeSegment
+import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.ReceiptAttachmentField
 import com.krtky.financetracker.ui.components.TimePickerSheet
-import com.krtky.financetracker.ui.util.formDateFormatter
-import com.krtky.financetracker.ui.util.formTimeFormatter
+import com.krtky.financetracker.ui.components.TransactionFormState
+import com.krtky.financetracker.ui.components.formTextFieldColors
 import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.viewmodel.AddCashViewModel
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -101,7 +97,6 @@ fun AddCashScreen(
     initialType: TransactionType = TransactionType.DEBIT,
     vm: AddCashViewModel = hiltViewModel(),
 ) {
-    // NavHost handles predictive back (no intercepting BackHandler).
     val categories by vm.categories.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
     val accounts by vm.accounts.collectAsStateWithLifecycle()
@@ -110,107 +105,49 @@ fun AddCashScreen(
     val accountBalances by vm.accountBalances.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
-    var amount by remember { mutableStateOf(initialAmount) }
-    var note by remember { mutableStateOf("") }
-    var counterparty by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(initialType) }
+
+    val formState = remember {
+        TransactionFormState(initialAmount, initialType)
+    }
+
     var isSelfTransfer by remember { mutableStateOf(false) }
     var fromAccountId by remember { mutableStateOf<Long?>(null) }
     var toAccountId by remember { mutableStateOf<Long?>(null) }
-    var selectedAccountId by remember { mutableStateOf<Long?>(null) }
-    // Always open the amount numpad when landing on this screen; tapping amount reopens it later
-    var showAmountPad by remember { mutableStateOf(true) }
     var amountPadIsEntryGate by remember { mutableStateOf(true) }
+    var draftSplits by remember { mutableStateOf<List<SplitPart>>(emptyList()) }
+
+    // Reset entry gate when the shared amount pad opens, so dismissing with
+    // a blank amount no longer exits the Add screen (fixes regression from
+    // showAmountPad defaulting to false in TransactionFormState).
+    LaunchedEffect(formState.showAmountPad) {
+        if (formState.showAmountPad) {
+            amountPadIsEntryGate = false
+        }
+    }
+    var editingSplits by remember { mutableStateOf(false) }
+    var contentVisible by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var recommendedFundId by remember { mutableStateOf<Long?>(null) }
+    var appliedLastUsed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     val lastCategory by vm.lastUsedCategoryId.collectAsStateWithLifecycle()
     val lastFund by vm.lastUsedFundId.collectAsStateWithLifecycle()
     val lastPayment by vm.lastUsedPaymentMethod.collectAsStateWithLifecycle()
-    var categoryId by remember { mutableStateOf<Long?>(null) }
-    var fundId by remember { mutableStateOf<Long?>(null) }
-    var useLocation by remember { mutableStateOf(false) }
-    var addToFund by remember { mutableStateOf(true) }
-    var receiptUri by remember { mutableStateOf<Uri?>(null) }
-    var moreExpanded by remember { mutableStateOf(false) }
-    var appliedLastUsed by remember { mutableStateOf(false) }
-    /** Draft splits composed on Add; saved with the parent on submit. */
-    var draftSplits by remember { mutableStateOf<List<SplitPart>>(emptyList()) }
-    /** Full-screen split editor (not a sheet). */
-    var editingSplits by remember { mutableStateOf(false) }
+
     // Default account: last used → default pay/digital → Cash → first account
     LaunchedEffect(accounts, defaultPay, defaultDigital, lastPayment) {
-        if (selectedAccountId != null) return@LaunchedEffect
+        if (formState.selectedAccountId != null) return@LaunchedEffect
         if (accounts.isEmpty()) return@LaunchedEffect
         fun match(name: String?) =
             name?.takeIf { it.isNotBlank() }?.let { n ->
                 accounts.firstOrNull { it.name.equals(n, true) }?.id
             }
-        selectedAccountId = match(lastPayment)
+        formState.selectedAccountId = match(lastPayment)
             ?: match(defaultPay)
             ?: match(defaultDigital)
             ?: accounts.firstOrNull { it.kind.name == "CASH" }?.id
             ?: accounts.first().id
-    }
-    // Date + time stored as wall-clock fields so either picker can update independently
-    val nowCal = remember { Calendar.getInstance() }
-    var selectedYear by remember { mutableStateOf(nowCal.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableStateOf(nowCal.get(Calendar.MONTH)) }
-    var selectedDay by remember { mutableStateOf(nowCal.get(Calendar.DAY_OF_MONTH)) }
-    var selectedHour by remember { mutableStateOf(nowCal.get(Calendar.HOUR_OF_DAY)) }
-    var selectedMinute by remember { mutableStateOf(nowCal.get(Calendar.MINUTE)) }
-    var selectedSecond by remember { mutableStateOf(nowCal.get(Calendar.SECOND)) }
-    var selectedMillis by remember { mutableStateOf(nowCal.get(Calendar.MILLISECOND)) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showTimePicker by remember { mutableStateOf(false) }
-    var paymentExpanded by remember { mutableStateOf(true) }
-    var categoryExpanded by remember { mutableStateOf(true) }
-    var contentVisible by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    var saving by remember { mutableStateOf(false) }
-    var recommendedFundId by remember { mutableStateOf<Long?>(null) }
-    val dateFmt = remember { formDateFormatter() }
-    val timeFmt = remember { formTimeFormatter() }
-    val displayWhen = remember(
-        selectedYear, selectedMonth, selectedDay,
-        selectedHour, selectedMinute, selectedSecond, selectedMillis,
-    ) {
-        Calendar.getInstance().apply {
-            set(Calendar.YEAR, selectedYear)
-            set(Calendar.MONTH, selectedMonth)
-            set(Calendar.DAY_OF_MONTH, selectedDay)
-            set(Calendar.HOUR_OF_DAY, selectedHour)
-            set(Calendar.MINUTE, selectedMinute)
-            set(Calendar.SECOND, selectedSecond)
-            set(Calendar.MILLISECOND, selectedMillis)
-        }.timeInMillis
-    }
-    val fieldShape = RoundedCornerShape(18.dp)
-    val fieldBg = scheme.surfaceContainerHigh
-    val fieldColors = TextFieldDefaults.colors(
-        focusedContainerColor = fieldBg,
-        unfocusedContainerColor = fieldBg,
-        disabledContainerColor = fieldBg,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-        disabledIndicatorColor = Color.Transparent,
-        cursorColor = scheme.primary,
-        focusedTextColor = scheme.onSurface,
-        unfocusedTextColor = scheme.onSurface,
-        focusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-        unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-    )
-    val ctaLabel = when {
-        isSelfTransfer -> "Transfer between accounts"
-        draftSplits.isNotEmpty() && type == TransactionType.DEBIT -> "Add debit (split)"
-        draftSplits.isNotEmpty() && type == TransactionType.CREDIT -> "Add credit (split)"
-        type == TransactionType.DEBIT -> "Add debit"
-        else -> "Add credit"
-    }
-
-    // Self-transfer cannot use splits
-    LaunchedEffect(isSelfTransfer) {
-        if (isSelfTransfer) {
-            draftSplits = emptyList()
-            editingSplits = false
-        }
     }
 
     // Seed self-transfer account picks once accounts load
@@ -221,9 +158,8 @@ fun AddCashScreen(
         if (toAccountId == null && accounts.size >= 2) {
             toAccountId = accounts.getOrNull(1)?.id ?: accounts.first().id
         }
-        // Drop selection if account was archived (no longer in list)
-        if (selectedAccountId != null && accounts.none { it.id == selectedAccountId }) {
-            selectedAccountId = null
+        if (formState.selectedAccountId != null && accounts.none { it.id == formState.selectedAccountId }) {
+            formState.selectedAccountId = null
         }
         if (fromAccountId != null && accounts.none { it.id == fromAccountId }) {
             fromAccountId = accounts.firstOrNull()?.id
@@ -232,12 +168,37 @@ fun AddCashScreen(
             toAccountId = accounts.firstOrNull { it.id != fromAccountId }?.id
         }
     }
-    val paymentLabel = accounts.firstOrNull { it.id == selectedAccountId }?.name ?: "Select account"
-    val parentAmountPaise = Money.fromRupeesString(amount)?.paise ?: 0L
 
-    LaunchedEffect(Unit) {
-        contentVisible = true
+    // Self-transfer cannot use splits
+    LaunchedEffect(isSelfTransfer) {
+        if (isSelfTransfer) {
+            draftSplits = emptyList()
+            editingSplits = false
+        }
     }
+
+    // When category changes, look up recommended fund from past usage
+    LaunchedEffect(formState.categoryId) {
+        val rec = formState.categoryId?.let { vm.recommendFundForCategory(it) }
+        recommendedFundId = rec
+    }
+
+    // Prefer last-used category / fund once
+    LaunchedEffect(lastCategory, lastFund, categories, funds) {
+        if (appliedLastUsed) return@LaunchedEffect
+        if (lastCategory != null && categories.any { it.id == lastCategory }) {
+            formState.categoryId = lastCategory
+        }
+        if (lastFund != null && funds.any { it.fund.id == lastFund }) {
+            formState.fundId = lastFund
+            formState.addToFund = true
+        }
+        appliedLastUsed = true
+    }
+
+    val parentAmountPaise = Money.fromRupeesString(formState.amount)?.paise ?: 0L
+
+    val paymentLabel = accounts.firstOrNull { it.id == formState.selectedAccountId }?.name ?: "Select account"
 
     // Full-screen split editor (same route, full body)
     if (editingSplits && !isSelfTransfer) {
@@ -265,23 +226,16 @@ fun AddCashScreen(
         }
     }
 
-    // When category changes, look up recommended fund from past usage
-    LaunchedEffect(categoryId) {
-        val rec = categoryId?.let { vm.recommendFundForCategory(it) }
-        recommendedFundId = rec
+    val ctaLabel = when {
+        isSelfTransfer -> "Transfer between accounts"
+        draftSplits.isNotEmpty() && formState.type == TransactionType.DEBIT -> "Add debit (split)"
+        draftSplits.isNotEmpty() && formState.type == TransactionType.CREDIT -> "Add credit (split)"
+        formState.type == TransactionType.DEBIT -> "Add debit"
+        else -> "Add credit"
     }
 
-    // Prefer last-used category / fund once
-    LaunchedEffect(lastCategory, lastFund, categories, funds) {
-        if (appliedLastUsed) return@LaunchedEffect
-        if (lastCategory != null && categories.any { it.id == lastCategory }) {
-            categoryId = lastCategory
-        }
-        if (lastFund != null && funds.any { it.fund.id == lastFund }) {
-            fundId = lastFund
-            addToFund = true
-        }
-        appliedLastUsed = true
+    LaunchedEffect(Unit) {
+        contentVisible = true
     }
 
     Scaffold(
@@ -324,7 +278,7 @@ fun AddCashScreen(
                         onClick = {
                             scope.launch {
                                 saving = true
-                                val whenMs = displayWhen
+                                val whenMs = formState.computeDisplayWhen()
                                 val ok = if (isSelfTransfer) {
                                     val fromId = fromAccountId
                                     val toId = toAccountId
@@ -332,29 +286,29 @@ fun AddCashScreen(
                                         false
                                     } else {
                                         vm.saveSelfTransfer(
-                                            amountText = amount,
+                                            amountText = formState.amount,
                                             fromAccountId = fromId,
                                             toAccountId = toId,
-                                            note = note,
+                                            note = formState.note,
                                             occurredAt = whenMs,
                                         )
                                     }
                                 } else {
-                                    val acc = accounts.firstOrNull { it.id == selectedAccountId }
+                                    val acc = accounts.firstOrNull { it.id == formState.selectedAccountId }
                                     val method = acc?.name ?: "Cash"
                                     val id = vm.save(
-                                        amountText = amount,
-                                        type = type,
-                                        categoryId = categoryId,
-                                        fundId = fundId,
-                                        note = note,
-                                        counterparty = counterparty,
+                                        amountText = formState.amount,
+                                        type = formState.type,
+                                        categoryId = formState.categoryId,
+                                        fundId = formState.fundId,
+                                        note = formState.note,
+                                        counterparty = formState.counterparty,
                                         paymentMethod = method,
-                                        accountId = selectedAccountId,
-                                        useLocation = useLocation,
-                                        addToFund = addToFund,
+                                        accountId = formState.selectedAccountId,
+                                        useLocation = formState.useLocation,
+                                        addToFund = formState.addToFund,
                                         occurredAt = whenMs,
-                                        receiptLocalUri = receiptUri,
+                                        receiptLocalUri = formState.receiptUri,
                                         splits = draftSplits,
                                     )
                                     id != null
@@ -366,7 +320,7 @@ fun AddCashScreen(
                                 }
                             }
                         },
-                        enabled = !saving && amount.isNotBlank() &&
+                        enabled = !saving && formState.amount.isNotBlank() &&
                             (!isSelfTransfer || (fromAccountId != null && toAccountId != null && fromAccountId != toAccountId)),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -422,21 +376,21 @@ fun AddCashScreen(
                 ) {
                     FormTypeSegment(
                         label = "Debit",
-                        selected = !isSelfTransfer && type == TransactionType.DEBIT,
+                        selected = !isSelfTransfer && formState.type == TransactionType.DEBIT,
                         modifier = Modifier.weight(1f),
                         onClick = {
                             isSelfTransfer = false
-                            type = TransactionType.DEBIT
+                            formState.type = TransactionType.DEBIT
                             haptics.select()
                         },
                     )
                     FormTypeSegment(
                         label = "Credit",
-                        selected = !isSelfTransfer && type == TransactionType.CREDIT,
+                        selected = !isSelfTransfer && formState.type == TransactionType.CREDIT,
                         modifier = Modifier.weight(1f),
                         onClick = {
                             isSelfTransfer = false
-                            type = TransactionType.CREDIT
+                            formState.type = TransactionType.CREDIT
                             haptics.select()
                         },
                     )
@@ -466,7 +420,7 @@ fun AddCashScreen(
                                 label = acc.name,
                                 icon = Icons.Default.AccountBalance,
                                 selected = fromAccountId == acc.id,
-                                balanceLabel = accountBalances[acc.name]?.let { paise -> paise.inr() },
+                                balanceLabel = accountBalances[acc.name]?.inr(),
                                 onClick = {
                                     haptics.select()
                                     fromAccountId = acc.id
@@ -491,7 +445,7 @@ fun AddCashScreen(
                                 label = acc.name,
                                 icon = Icons.Default.AccountBalance,
                                 selected = toAccountId == acc.id,
-                                balanceLabel = accountBalances[acc.name]?.let { paise -> paise.inr() },
+                                balanceLabel = accountBalances[acc.name]?.inr(),
                                 onClick = {
                                     haptics.select()
                                     toAccountId = acc.id
@@ -504,7 +458,7 @@ fun AddCashScreen(
                     }
                 } else {
                     AnimatedContent(
-                        targetState = type,
+                        targetState = formState.type,
                         transitionSpec = {
                             (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
                                 .togetherWith(fadeOut(M3EMotion.effectsFast()))
@@ -513,8 +467,8 @@ fun AddCashScreen(
                     ) { currentType ->
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             TextField(
-                                value = counterparty,
-                                onValueChange = { counterparty = it },
+                                value = formState.counterparty,
+                                onValueChange = { formState.counterparty = it },
                                 placeholder = {
                                     Text(
                                         if (currentType == TransactionType.DEBIT) {
@@ -526,22 +480,22 @@ fun AddCashScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = fieldShape,
-                                colors = fieldColors,
-                            )
+                    shape = RoundedCornerShape(18.dp),
+                    colors = formTextFieldColors(),
+                )
                         }
                     }
                 }
 
                 // Amount — tap opens app numpad (no system keyboard)
                 AmountRupeeField(
-                    amount = amount,
+                    amount = formState.amount,
                     onClick = {
                         haptics.select()
-                        showAmountPad = true
+                        formState.showAmountPad = true
                     },
-                    shape = fieldShape,
-                    containerColor = fieldBg,
+                    shape = RoundedCornerShape(18.dp),
+                    containerColor = scheme.surfaceContainerHigh,
                 )
                 Row(
                     Modifier.fillMaxWidth(),
@@ -551,9 +505,9 @@ fun AddCashScreen(
                         Surface(
                             onClick = {
                                 haptics.select()
-                                val base = amount.toDoubleOrNull() ?: 0.0
+                                val base = formState.amount.toDoubleOrNull() ?: 0.0
                                 val add = chip.toDouble()
-                                amount = if (base == 0.0) chip else {
+                                formState.amount = if (base == 0.0) chip else {
                                     val sum = base + add
                                     if (sum == sum.toLong().toDouble()) sum.toLong().toString()
                                     else String.format(Locale.US, "%.2f", sum)
@@ -573,150 +527,67 @@ fun AddCashScreen(
                 }
 
                 TextField(
-                    value = note,
-                    onValueChange = { note = it },
+                    value = formState.note,
+                    onValueChange = { formState.note = it },
                     placeholder = { Text("Description") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = fieldShape,
-                    colors = fieldColors,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = formTextFieldColors(),
                     minLines = 2,
                 )
 
                 ReceiptAttachmentField(
-                    localUri = receiptUri,
-                    onUriChange = { receiptUri = it },
+                    localUri = formState.receiptUri,
+                    onUriChange = { formState.receiptUri = it },
                 )
 
                 // Date + Time (both pickers work)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Surface(
-                        onClick = {
-                            haptics.select()
-                            showDatePicker = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = fieldShape,
-                        color = fieldBg,
-                    ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.CalendarMonth,
-                                    contentDescription = null,
-                                    tint = scheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Text(
-                                    "Date",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                dateFmt.format(Date(displayWhen)),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                    Surface(
-                        onClick = {
-                            haptics.select()
-                            showTimePicker = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = fieldShape,
-                        color = fieldBg,
-                    ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.Schedule,
-                                    contentDescription = null,
-                                    tint = scheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Text(
-                                    "Time",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                timeFmt.format(Date(displayWhen)),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                }
+                DateTimeField(state = formState)
 
-                if (!isSelfTransfer) FormExpandableHeader(
-                    title = "Account",
-                    subtitle = paymentLabel,
-                    icon = Icons.Default.Payments,
-                    expanded = paymentExpanded,
-                    onToggle = {
-                        haptics.select()
-                        paymentExpanded = !paymentExpanded
-                    },
-                )
-                AnimatedVisibility(
-                    visible = !isSelfTransfer && paymentExpanded,
-                    enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                    exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            "Same list as Settings → Bank accounts (+ Cash)",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = scheme.onSurfaceVariant,
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            accounts.forEach { acc ->
-                                FormAccountChip(
-                                    label = acc.name,
-                                    icon = if (acc.kind.name == "CASH") {
-                                        Icons.Default.Payments
-                                    } else {
-                                        Icons.Default.AccountBalance
-                                    },
-                                    selected = selectedAccountId == acc.id,
-                                    balanceLabel = accountBalances[acc.name]?.inr(),
-                                    isDefault = defaultDigital.equals(acc.name, true) ||
-                                        defaultPay.equals(acc.name, true),
-                                    onClick = {
-                                        selectedAccountId = acc.id
-                                        haptics.select()
-                                    },
-                                )
-                            }
-                        }
-                        if (accounts.isEmpty()) {
+                // Account (payment method) selector
+                if (!isSelfTransfer) {
+                    FormExpandableHeader(
+                        title = "Account",
+                        subtitle = paymentLabel,
+                        icon = Icons.Default.Payments,
+                        expanded = formState.paymentExpanded,
+                        onToggle = {
+                            haptics.select()
+                            formState.paymentExpanded = !formState.paymentExpanded
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = formState.paymentExpanded,
+                        enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
+                        exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                "No accounts yet. Add banks in Settings → Bank accounts.",
-                                style = MaterialTheme.typography.bodySmall,
+                                "Same list as Settings → Bank accounts (+ Cash)",
+                                style = MaterialTheme.typography.labelMedium,
                                 color = scheme.onSurfaceVariant,
                             )
+                            AccountChipRow(
+                                accounts = accounts,
+                                selectedAccountId = formState.selectedAccountId,
+                                onAccountSelected = { formState.selectedAccountId = it },
+                                accountBalances = accountBalances,
+                                defaultDigital = defaultDigital,
+                                defaultPay = defaultPay,
+                                showArchivedSuffix = false,
+                            )
+                            if (accounts.isEmpty()) {
+                                Text(
+                                    "No accounts yet. Add banks in Settings → Bank accounts.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
 
-                // Splits — full-screen editor (available while adding, not only from detail)
+                // Splits — full-screen editor
                 if (!isSelfTransfer) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),
@@ -751,13 +622,13 @@ fun AddCashScreen(
                                     onClick = {
                                         haptics.select()
                                         if (parentAmountPaise <= 0L) {
-                                            showAmountPad = true
+                                            formState.showAmountPad = true
                                         } else {
                                             editingSplits = true
                                         }
                                     },
                                     shape = RoundedCornerShape(18.dp),
-                                    enabled = amount.isNotBlank(),
+                                    enabled = formState.amount.isNotBlank(),
                                 ) {
                                     Text(if (draftSplits.isEmpty()) "Split" else "Edit")
                                 }
@@ -791,138 +662,122 @@ fun AddCashScreen(
                     }
                 }
 
-                if (!isSelfTransfer && draftSplits.isEmpty()) FormExpandableHeader(
-                    title = "Category",
-                    subtitle = categories.firstOrNull { it.id == categoryId }?.name ?: "Select category",
-                    icon = Icons.Default.Payments,
-                    expanded = categoryExpanded,
-                    onToggle = {
-                        haptics.select()
-                        categoryExpanded = !categoryExpanded
-                    },
-                )
-                AnimatedVisibility(
-                    visible = !isSelfTransfer && draftSplits.isEmpty() && categoryExpanded,
-                    enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                    exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                ) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                if (!isSelfTransfer && draftSplits.isEmpty()) {
+                    FormExpandableHeader(
+                        title = "Category",
+                        subtitle = categories.firstOrNull { it.id == formState.categoryId }?.name ?: "Select category",
+                        icon = Icons.Default.Payments,
+                        expanded = formState.categoryExpanded,
+                        onToggle = {
+                            haptics.select()
+                            formState.categoryExpanded = !formState.categoryExpanded
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = formState.categoryExpanded,
+                        enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
+                        exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                     ) {
-                        FormCategoryChip(
-                            label = "None",
-                            icon = Icons.Default.Clear,
-                            selected = categoryId == null,
-                            onClick = {
-                                categoryId = null
-                                haptics.select()
-                            },
+                        CategoryChipRow(
+                            categories = categories,
+                            selectedCategoryId = formState.categoryId,
+                            onCategorySelected = { formState.categoryId = it },
+                            noneIcon = Icons.Default.Clear,
                         )
-                        categories.forEach { c ->
-                            FormCategoryChip(
-                                label = c.name,
-                                icon = CategoryIcons.iconFor(c.icon, c.name),
-                                selected = categoryId == c.id,
-                                onClick = {
-                                    categoryId = c.id
-                                    haptics.select()
-                                },
-                            )
-                        }
                     }
                 }
 
-                if (draftSplits.isEmpty()) FormExpandableHeader(
-                    title = "More",
-                    subtitle = buildString {
-                        val bits = mutableListOf<String>()
-                        if (fundId != null) {
-                            bits += funds.firstOrNull { it.fund.id == fundId }?.fund?.name ?: "Tab"
-                        }
-                        if (useLocation) bits += "Location"
-                        append(bits.joinToString(" · ").ifBlank { "Tab, location" })
-                    },
-                    icon = Icons.Default.KeyboardArrowDown,
-                    expanded = moreExpanded,
-                    onToggle = {
-                        haptics.select()
-                        moreExpanded = !moreExpanded
-                    },
-                )
-                AnimatedVisibility(
-                    visible = draftSplits.isEmpty() && moreExpanded,
-                    enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                    exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (funds.isNotEmpty()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    "Tab",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = scheme.onSurface,
-                                )
-                                val recFundName = recommendedFundId?.let { id ->
-                                    funds.firstOrNull { it.fund.id == id }?.fund?.name
+                if (draftSplits.isEmpty()) {
+                    FormExpandableHeader(
+                        title = "More",
+                        subtitle = buildString {
+                            val bits = mutableListOf<String>()
+                            if (formState.fundId != null) {
+                                bits += funds.firstOrNull { it.fund.id == formState.fundId }?.fund?.name ?: "Tab"
+                            }
+                            if (formState.useLocation) bits += "Location"
+                            append(bits.joinToString(" · ").ifBlank { "Tab, location" })
+                        },
+                        icon = Icons.Default.KeyboardArrowDown,
+                        expanded = formState.moreExpanded,
+                        onToggle = {
+                            haptics.select()
+                            formState.moreExpanded = !formState.moreExpanded
+                        },
+                    )
+                    AnimatedVisibility(
+                        visible = formState.moreExpanded,
+                        enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
+                        exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (funds.isNotEmpty()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "Tab",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = scheme.onSurface,
+                                    )
+                                    val recFundName = recommendedFundId?.let { id ->
+                                        funds.firstOrNull { it.fund.id == id }?.fund?.name
+                                    }
+                                    if (recFundName != null && formState.fundId == null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = scheme.tertiaryContainer,
+                                        ) {
+                                            Text(
+                                                "Spend from $recFundName",
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = scheme.onTertiaryContainer,
+                                            )
+                                        }
+                                    }
                                 }
-                                if (recFundName != null && fundId == null) {
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = scheme.tertiaryContainer,
-                                    ) {
-                                        Text(
-                                            "Spend from $recFundName",
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = scheme.onTertiaryContainer,
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    FormCategoryChip(
+                                        label = "None",
+                                        icon = Icons.Default.Clear,
+                                        selected = formState.fundId == null,
+                                        onClick = { formState.fundId = null },
+                                    )
+                                    funds.forEach { f ->
+                                        FormCategoryChip(
+                                            label = f.fund.name,
+                                            icon = Icons.Default.Payments,
+                                            selected = formState.fundId == f.fund.id,
+                                            onClick = {
+                                                formState.fundId = f.fund.id
+                                                formState.addToFund = true
+                                            },
                                         )
                                     }
                                 }
-                            }
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                FormCategoryChip(
-                                    label = "None",
-                                    icon = Icons.Default.Clear,
-                                    selected = fundId == null,
-                                    onClick = { fundId = null },
-                                )
-                                funds.forEach { f ->
-                                    FormCategoryChip(
-                                        label = f.fund.name,
-                                        icon = Icons.Default.Payments,
-                                        selected = fundId == f.fund.id,
-                                        onClick = {
-                                            fundId = f.fund.id
-                                            addToFund = true
-                                        },
+                                AnimatedVisibility(visible = formState.type == TransactionType.CREDIT && formState.fundId != null) {
+                                    FormToggleRow(
+                                        title = "Apply credit to tab balance",
+                                        checked = formState.addToFund,
+                                        onCheckedChange = { formState.addToFund = it },
                                     )
                                 }
                             }
-                            AnimatedVisibility(visible = type == TransactionType.CREDIT && fundId != null) {
-                                FormToggleRow(
-                                    title = "Apply credit to tab balance",
-                                    checked = addToFund,
-                                    onCheckedChange = { addToFund = it },
-                                )
-                            }
+                            FormToggleRow(
+                                title = "Attach current location",
+                                checked = formState.useLocation,
+                                onCheckedChange = { formState.useLocation = it },
+                            )
                         }
-                        FormToggleRow(
-                            title = "Attach current location",
-                            checked = useLocation,
-                            onCheckedChange = { useLocation = it },
-                        )
                     }
                 }
 
@@ -931,65 +786,63 @@ fun AddCashScreen(
         }
     }
 
-    if (showDatePicker) {
+    if (formState.showDatePicker) {
         DatePickerSheet(
-            initialMillis = displayWhen,
-            onDismiss = { showDatePicker = false },
+            initialMillis = formState.computeDisplayWhen(),
+            onDismiss = { formState.showDatePicker = false },
             onConfirm = { y, m, d ->
-                selectedYear = y
-                selectedMonth = m
-                selectedDay = d
+                formState.selectedYear = y
+                formState.selectedMonth = m
+                formState.selectedDay = d
                 haptics.select()
             },
         )
     }
 
-    if (showTimePicker) {
+    if (formState.showTimePicker) {
         TimePickerSheet(
-            initialHour = selectedHour,
-            initialMinute = selectedMinute,
-            onDismiss = { showTimePicker = false },
+            initialHour = formState.selectedHour,
+            initialMinute = formState.selectedMinute,
+            onDismiss = { formState.showTimePicker = false },
             onConfirm = { h, m, s, ms ->
-                selectedHour = h
-                selectedMinute = m
-                selectedSecond = s
-                selectedMillis = ms
+                formState.selectedHour = h
+                formState.selectedMinute = m
+                formState.selectedSecond = s
+                formState.selectedMillis = ms
                 haptics.select()
             },
         )
     }
 
-    if (showAmountPad) {
+    if (formState.showAmountPad) {
         AmountNumpadSheet(
-            initialAmount = amount,
+            initialAmount = formState.amount,
             title = "Enter amount",
-            // Entry gate: Debit / Credit / Transfer. Later edits: amount only.
-            pickTransactionType = amountPadIsEntryGate || amount.isBlank(),
+            pickTransactionType = amountPadIsEntryGate || formState.amount.isBlank(),
             onDismiss = {
-                showAmountPad = false
-                // Only exit the whole screen when the pad was the entry gate (empty launch)
-                if (amountPadIsEntryGate && amount.isBlank()) onDone()
+                formState.showAmountPad = false
+                if (amountPadIsEntryGate && formState.amount.isBlank()) onDone()
                 amountPadIsEntryGate = false
             },
             onConfirmEntry = { entry ->
-                amount = entry.amountText
+                formState.amount = entry.amountText
                 isSelfTransfer = entry.isSelfTransfer
-                if (!entry.isSelfTransfer) type = entry.type
-                showAmountPad = false
+                if (!entry.isSelfTransfer) formState.type = entry.type
+                formState.showAmountPad = false
                 amountPadIsEntryGate = false
                 haptics.select()
             },
             onConfirmWithType = { amountText, selectedType ->
-                amount = amountText
-                type = selectedType
+                formState.amount = amountText
+                formState.type = selectedType
                 isSelfTransfer = false
-                showAmountPad = false
+                formState.showAmountPad = false
                 amountPadIsEntryGate = false
                 haptics.select()
             },
             onConfirmAmount = { amountText ->
-                amount = amountText
-                showAmountPad = false
+                formState.amount = amountText
+                formState.showAmountPad = false
                 amountPadIsEntryGate = false
                 haptics.select()
             },

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
@@ -39,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.ui.components.BalanceHeroCard
-import com.krtky.financetracker.ui.components.FundsWaveSummary
 import com.krtky.financetracker.ui.navigation.HomeSection
 import com.krtky.financetracker.ui.navigation.HomeSectionConfig
 import com.krtky.financetracker.ui.theme.M3EMotion
@@ -396,14 +394,11 @@ private fun HomeSectionBody(
             )
         }
         HomeSection.FUNDS_SUMMARY -> {
-            Column {
-                FundsWaveSummary(
-                    funds = data.funds,
-                    hidden = data.isNetHidden,
-                    onOpenFunds = onOpenFunds,
-                )
-                if (!compact) Spacer(Modifier.height(16.dp))
-            }
+            HomeOpenTabsSection(
+                data = data,
+                compact = compact,
+                onOpenFunds = onOpenFunds,
+            )
         }
     }
 }

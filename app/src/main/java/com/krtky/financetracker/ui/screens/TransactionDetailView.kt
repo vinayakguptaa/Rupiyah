@@ -2,9 +2,7 @@ package com.krtky.financetracker.ui.screens
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,8 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,7 +42,9 @@ import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.ui.components.InfoRow
 import com.krtky.financetracker.ui.components.OsmMiniMap
+import com.krtky.financetracker.ui.components.ReceiptPreview
 import com.krtky.financetracker.ui.util.AppHaptics
 import com.krtky.financetracker.ui.util.formatDateTime
 import com.krtky.financetracker.ui.util.inr
@@ -131,42 +129,10 @@ internal fun TransactionDetailView(
             label = "Category",
             value = categoryName ?: "Uncategorized",
         )
-        existingReceiptUri?.let { receiptUri ->
-            val preview = remember(receiptUri) {
-                runCatching {
-                    context.contentResolver.openInputStream(receiptUri)?.use {
-                        BitmapFactory.decodeStream(it)
-                    } ?: receiptUri.path?.let { BitmapFactory.decodeFile(it) }
-                }.getOrNull()
-            }
-            if (preview != null) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    color = scheme.surfaceContainerHigh,
-                ) {
-                    Column(
-                        Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.receipt_label),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = scheme.onSurfaceVariant,
-                        )
-                        Image(
-                            bitmap = preview.asImageBitmap(),
-                            contentDescription = stringResource(R.string.cd_receipt_preview),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .clip(MaterialTheme.shapes.medium),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                }
-            }
-        }
+        ReceiptPreview(
+            receiptUri = existingReceiptUri,
+            context = context,
+        )
         if (fundName != null) {
             InfoRow(
                 icon = Icons.Default.AccountBalance,

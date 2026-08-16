@@ -67,7 +67,6 @@ import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.BalanceHeroCard
 import com.krtky.financetracker.ui.components.CategoryInteractivePieChart
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.FundsWaveSummary
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
 import com.krtky.financetracker.ui.components.MonthlyExpenseChart
 import com.krtky.financetracker.ui.components.OutlinePillButton
