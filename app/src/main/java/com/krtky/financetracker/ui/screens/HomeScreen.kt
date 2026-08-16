@@ -415,13 +415,6 @@ private fun SetupCheckRow(
     }
 }
 
-internal data class MomMetrics(
-    val incomePct: Float?,
-    val expensePct: Float?,
-    val lastIncomeLabel: String?,
-    val lastExpenseLabel: String?,
-)
-
 /** Percent change current vs previous; null if previous is zero and current is zero. */
 private fun pctChange(current: Long, previous: Long): Float? {
     if (previous == 0L && current == 0L) return 0f

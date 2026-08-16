@@ -1,10 +1,8 @@
 package com.krtky.financetracker.ui.screens
 
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -14,7 +12,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -35,24 +32,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.key
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
-import org.osmdroid.tileprovider.tilesource.XYTileSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import com.krtky.financetracker.R
@@ -76,7 +65,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -366,17 +354,6 @@ fun TransactionDetailScreen(
     // Only intercept when editing so info mode keeps system predictive-back animation.
     BackHandler(enabled = editing) { exitEditOrScreen() }
 
-    val partyTitle = t.counterparty ?: t.accountName ?: "Transaction"
-    val amountSign = if (t.type == TransactionType.DEBIT) "-" else "+"
-    val infoPayment = when {
-        t.isCash || t.accountName.equals("Cash", true) -> "Cash"
-        !t.accountName.isNullOrBlank() -> t.accountName!!
-        else -> "Digital"
-    }
-    val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
-    val fundName = funds.firstOrNull { it.fund.id == t.fundId }?.fund?.name
-    val canSplit = !t.isSelfTransfer() && !t.isTabTransfer()
-
     Scaffold(
         containerColor = scheme.background,
         topBar = {
@@ -491,269 +468,17 @@ fun TransactionDetailScreen(
                 .padding(padding),
         ) {
             if (!editing) {
-                // ——— Info / detail view ———
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp),
-                        color = scheme.primaryContainer,
-                    ) {
-                        Column(
-                            Modifier.padding(horizontal = 20.dp, vertical = 22.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                if (t.type == TransactionType.DEBIT) "Debit" else "Credit",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
-                            )
-                            Text(
-                                partyTitle,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Normal,
-                                color = scheme.onPrimaryContainer,
-                            )
-                            Text(
-                                "$amountSign${t.amountPaise.inr()}",
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Normal,
-                                color = scheme.onPrimaryContainer,
-                            )
-                            Text(
-                                t.occurredAt.formatDateTime(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = scheme.onPrimaryContainer.copy(alpha = 0.72f),
-                            )
-                        }
-                    }
-
-                    InfoRow(
-                        icon = Icons.Default.Payments,
-                        label = "Payment",
-                        value = infoPayment,
-                    )
-                    InfoRow(
-                        icon = Icons.Default.Category,
-                        label = "Category",
-                        value = categoryName ?: "Uncategorized",
-                    )
-                    existingReceiptUri?.let { receiptUri ->
-                        val preview = remember(receiptUri) {
-                            runCatching {
-                                context.contentResolver.openInputStream(receiptUri)?.use {
-                                    BitmapFactory.decodeStream(it)
-                                } ?: receiptUri.path?.let { BitmapFactory.decodeFile(it) }
-                            }.getOrNull()
-                        }
-                        if (preview != null) {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.large,
-                                color = scheme.surfaceContainerHigh,
-                            ) {
-                                Column(
-                                    Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.receipt_label),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = scheme.onSurfaceVariant,
-                                    )
-                                    Image(
-                                        bitmap = preview.asImageBitmap(),
-                                        contentDescription = stringResource(R.string.cd_receipt_preview),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(180.dp)
-                                            .clip(MaterialTheme.shapes.medium),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (fundName != null) {
-                        InfoRow(
-                            icon = Icons.Default.AccountBalance,
-                            label = "Tab",
-                            value = fundName,
-                        )
-                    }
-                    if (canSplit) {
-                        val groupSize = if (t.isSplitPart()) splits.size + 1 else splits.size
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = scheme.surfaceContainerHigh,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            stringResource(R.string.split_section_title),
-                                            style = MaterialTheme.typography.titleMedium,
-                                        )
-                                        Text(
-                                            if (splits.isEmpty()) {
-                                                "Break into categories, names, or tabs"
-                                            } else {
-                                                stringResource(
-                                                    R.string.split_lines_summary,
-                                                    groupSize,
-                                                )
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = scheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            haptics.select()
-                                            onOpenSplit()
-                                        },
-                                        shape = RoundedCornerShape(18.dp),
-                                    ) {
-                                        Text(
-                                            if (splits.isEmpty()) {
-                                                stringResource(R.string.split_action)
-                                            } else {
-                                                stringResource(R.string.split_edit)
-                                            },
-                                        )
-                                    }
-                                }
-                                splits.forEach { line ->
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                line.counterparty
-                                                    ?: categories.firstOrNull { it.id == line.categoryId }?.name
-                                                    ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
-                                                    ?: "Line",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                            )
-                                            val bits = buildList {
-                                                line.counterparty?.takeIf { it.isNotBlank() }?.let { add(it) }
-                                                funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name?.let { add(it) }
-                                                line.note?.takeIf { it.isNotBlank() }?.let { add(it) }
-                                            }
-                                            if (bits.isNotEmpty()) {
-                                                Text(
-                                                    bits.joinToString(" · "),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = scheme.onSurfaceVariant,
-                                                )
-                                            }
-                                        }
-                                        Text(
-                                            line.amountPaise.inr(),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium,
-                                        )
-                                    }
-                                }
-                                if (t.isSplitPart()) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            haptics.select()
-                                            scope.launch {
-                                                vm.clearSplits()
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(18.dp),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text(stringResource(R.string.split_merge_action))
-                                    }
-                                }
-                            }
-                        }
-                    } else if (t.isSelfTransfer()) {
-                        Text(
-                            stringResource(R.string.split_not_for_transfer),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    if (!t.note.isNullOrBlank()) {
-                        InfoRow(
-                            icon = Icons.Default.Edit,
-                            label = "Note",
-                            value = t.note!!,
-                        )
-                    }
-                    if (t.placeName != null || t.latitude != null) {
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = scheme.surfaceContainerHigh,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    Icon(Icons.Default.Place, null, tint = scheme.primary, modifier = Modifier.size(20.dp))
-                                    Column {
-                                        Text("Location", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                                        Text(
-                                            t.placeName ?: "${t.latitude}, ${t.longitude}",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                        )
-                                    }
-                                }
-                                if (t.latitude != null && t.longitude != null) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(140.dp)
-                                            .clip(RoundedCornerShape(12.dp)),
-                                    ) {
-                                        OsmMiniMap(
-                                            latitude = t.latitude,
-                                            longitude = t.longitude,
-                                            placeName = t.placeName,
-                                        )
-                                    }
-                                    Spacer(Modifier.height(4.dp))
-                                    OutlinedButton(
-                                        onClick = {
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, mapsUri(t.latitude, t.longitude, t.placeName)),
-                                            )
-                                        },
-                                        shape = RoundedCornerShape(18.dp),
-                                    ) { Text("Open in Maps") }
-                                }
-                            }
-                        }
-                    }
-                    if (!t.externalRefId.isNullOrBlank()) {
-                        Text(
-                            "Ref: ${t.externalRefId}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(72.dp))
-                }
+                TransactionDetailView(
+                    t = t,
+                    categories = categories,
+                    funds = funds,
+                    splits = splits,
+                    existingReceiptUri = existingReceiptUri,
+                    context = context,
+                    onOpenSplit = onOpenSplit,
+                    onClearSplits = { scope.launch { vm.clearSplits() } },
+                    haptics = haptics,
+                )
             } else {
             Column(
                 Modifier
@@ -1253,66 +978,8 @@ fun TransactionDetailScreen(
 
 }
 
-private val CARTO_LIGHT = XYTileSource(
-    "CartoDB_Light", 0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/light_all/",
-        "https://b.basemaps.cartocdn.com/light_all/",
-        "https://c.basemaps.cartocdn.com/light_all/",
-        "https://d.basemaps.cartocdn.com/light_all/",
-    ),
-)
-private val CARTO_DARK = XYTileSource(
-    "CartoDB_Dark", 0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_all/",
-        "https://b.basemaps.cartocdn.com/dark_all/",
-        "https://c.basemaps.cartocdn.com/dark_all/",
-        "https://d.basemaps.cartocdn.com/dark_all/",
-    ),
-)
-
 @Composable
-private fun OsmMiniMap(
-    latitude: Double,
-    longitude: Double,
-    placeName: String?,
-) {
-    val ctx = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-
-    key(isDark) {
-        val mapView = remember(latitude, longitude, isDark) {
-            org.osmdroid.config.Configuration.getInstance().userAgentValue = ctx.packageName
-            org.osmdroid.views.MapView(ctx).apply {
-                setTileSource(if (isDark) CARTO_DARK else CARTO_LIGHT)
-                setMultiTouchControls(false)
-                setOnTouchListener { _, _ -> true }
-                controller.setZoom(16.0)
-                controller.setCenter(org.osmdroid.util.GeoPoint(latitude, longitude))
-                val marker = org.osmdroid.views.overlay.Marker(this)
-                marker.position = org.osmdroid.util.GeoPoint(latitude, longitude)
-                marker.setAnchor(
-                    org.osmdroid.views.overlay.Marker.ANCHOR_CENTER,
-                    org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM,
-                )
-                marker.title = placeName ?: ""
-                overlays.add(marker)
-                minZoomLevel = 12.0
-                isVerticalMapRepetitionEnabled = false
-            }
-        }
-        DisposableEffect(lifecycleOwner) {
-            mapView.onResume()
-            onDispose { mapView.onPause() }
-        }
-        AndroidView(factory = { mapView })
-    }
-}
-
-@Composable
-private fun InfoRow(
+internal fun InfoRow(
     icon: ImageVector,
     label: String,
     value: String,
