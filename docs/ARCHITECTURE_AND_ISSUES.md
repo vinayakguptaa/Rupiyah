@@ -1,244 +1,247 @@
 # Rupiyah — Architecture & Remaining Issues
 
-**Scope:** Current-state architecture of `app/` (Kotlin + Jetpack Compose + Room + Hilt + WorkManager) and the **remaining** debt to close.
-**Date:** 2026-08-15 · **DB version:** 11 · minSdk 26 / targetSdk 35 · versionCode 6 / 1.4.1
+**Scope:** Current architecture of `app/` (Kotlin + Jetpack Compose + Room + Hilt + WorkManager) and **open** debt.
+**Date:** 2026-08-17 · **DB version:** 11 · minSdk 26 / targetSdk 35 · versionCode 6 / 1.4.1
 
 ---
 
 ## 1. Executive summary
 
-Rupiyah is a single‑module, offline‑first personal finance tracker (package `com.krtky.financetracker`). It records money in ₹ via **manual entry**, **SMS auto‑import (LLM‑assisted)**, or **CSV bank‑statement import**, then organises it under **accounts**, **categories**, **tabs (open IOUs, "funds")**, and **splits**.
+Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.financetracker`). Money is recorded in ₹ via **manual entry**, **SMS auto-import (LLM-assisted)**, or **CSV bank-statement import**, then organised under **accounts**, **categories**, **tabs** (open IOUs; code still says `Fund`), and **splits**.
 
-- **Layering is clean and conventional** (UI → ViewModel → Repository → Room/DAO), single Hilt-injected `AppDatabase`.
-- **Core cashflow model is sound**: a transaction is the single source of truth; self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId`, and are excluded from lifestyle metrics.
-- **The data model is single‑field and current**: one party (`counterparty`), one account (`accountId`), one ingest id (`smsMessageId`); type strings are `DEBIT`/`CREDIT`. SMS, CSV, and manual are the only ingest paths.
-- **Remaining risk is concentrated in** file/ViewModel sizing (god files), one redundant Home metric query resolved, naming echoes in the LLM/security layer, and a couple of database‑clarity gaps.
-
-The architecture shape is right; the open debt is **simplification and a few import/security edges**, not rework of the model.
+- Layering is conventional: UI → ViewModel → Repository → Room/DAO. One Hilt-injected `AppDatabase`.
+- A transaction is the source of truth. Self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId` and are excluded from lifestyle cashflow metrics.
+- Persistence is single-field: one `counterparty`, one `accountId`, one `smsMessageId`; types are `DEBIT` / `CREDIT`. Email ingest is gone.
+- Remaining work is file size / mixed screens, schema hygiene (no `1→2` migration), and a few optional-feature weights — not a model rewrite.
 
 ---
 
 ## 2. System architecture
 
-### 2.1 Layers (packages under `app/src/main/java/com/krtky/financetracker/`)
+### 2.1 Layers (`app/src/main/java/com/krtky/financetracker/`)
 
 | Layer | Packages | Responsibility |
 | --- | --- | --- |
-| **UI** | `ui/` (screens, components, navigation, viewmodel, theme, util) | Compose screens, ViewModels (`StateFlow`), navigation graph, charts, formatters |
-| **Domain** | `domain/model/` | Pure data classes + enums (`Transaction`, `Account`, `Fund`, `Money`, `SplitRules`) |
-| **Data** | `data/` (local/db, repository, prefs, sms, llm, sheets, importcsv, receipt) | Room entities/DAOs, repositories, encrypted prefs (`SecureStore`), parsers, network clients |
-| **Services / receivers** | `sms/`, `notification/`, `location/`, `widget/`, `workers/`, `system/` | Background ingest, classification notifications, widgets, periodic work, boot rescheduling |
-| **DI** | `di/AppModule.kt` | Hilt module providing `AppDatabase` + migrations |
+| **UI** | `ui/` | Compose screens, ViewModels (`StateFlow`), navigation, charts, formatters, theme |
+| **Domain** | `domain/model/` | Pure types (`Transaction`, `Account`, `Fund`, `Money`, `SplitRules`, …) |
+| **Data** | `data/` | Room, repositories, `SecureStore` / DataStore, SMS parser, LLM client, CSV import, Sheets, receipts |
+| **Services** | `sms/`, `notification/`, `location/`, `widget/`, `workers/`, `system/` | SMS ingest, classify notifications, optional location, Glance widgets, WorkManager, boot reschedule |
+| **DI** | `di/AppModule.kt` | Provides `AppDatabase` + migrations 2→11 |
+
+Empty leftover: `data/email/` (no sources).
 
 ### 2.2 Data flow
 
 ```
 SMS (SmsReceiver) ─┐
 CSV import wizard  ─┼─► TransactionParser / CsvStatementParser ─► TransactionRepository
-Manual (+ FAB)     ─┘                                    (dedupe, classify, fund ledger)
-                                                          │
-                                                          ▼
-                                              Room (AppDatabase) ──► encrypted prefs / widgets / Sheets
-                                                          │
-                                              ViewModels ──► Compose screens (StateFlow)
+Manual (+ FAB)     ─┘         (dedupe, classify, fund ledger)
+                                          │
+                                          ▼
+                              Room (AppDatabase)
+                                          │
+                    ViewModels ──► Compose screens
+                    Backup / Sheets / widgets read the same store
 ```
 
-- **Ingest** is validated/deduped in `TransactionRepository`, one dedicated path per source: `insertFromSms`, `insertFromImport`, `insertManual` / `insertManualWithSplits`.
-- **Classify** is scheduled via `PendingClassificationEntity` + `ClassificationWorker` (every 15 min) → notification/overlay.
-- **Export** is CSV / JSON backup (`BackupRepository`) or one‑way Google Sheets sync (`SheetsSyncService` + `SheetsSyncWorker`, every 30 min). Every write enqueues a `sync_outbox` UPSERT.
-- **Widgets** are refreshed by `WidgetRefreshWorker` (every 15 min) and on cold start (`FinanceApp.onCreate`).
+- **Ingest** is dedicated: `insertFromSms`, `insertFromImport`, `insertManual` / `insertManualWithSplits`.
+- **Classify** uses `pending_classification` + `ClassificationWorker` (15 min) → notification.
+- **Export:** JSON backup (`BackupRepository`) or one-way Google Sheets (`SheetsSyncService` + `SheetsSyncWorker`, 30 min, network required). Writes enqueue `sync_outbox`.
+- **Widgets** refresh via `WidgetRefreshWorker` (15 min) and `FinanceApp.onCreate`.
 
-### 2.3 Component inventory (from `AndroidManifest.xml`)
+### 2.3 Components (`AndroidManifest.xml`)
 
 | Kind | Name | Notes |
 | --- | --- | --- |
-| Activity | `ui.MainActivity` | Single host activity; one `NavHost`. |
-| Receiver | `sms.SmsReceiver` | `SMS_RECEIVED`; gates on `smsEnabled` + LLM ready. |
-| Receiver | `system.BootReceiver` | `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` / `USER_PRESENT`; re‑schedules WorkManager. |
-| Receiver | `notification.ClassificationActionReceiver` | Notification action handler. |
-| Receivers | `widget.*WidgetReceiver` (×5) | Overview, Transactions, AddButton, **Funds**, Spending widgets (Glance). |
-| Service | `location.LocationTrackingService` | Foreground `location` service; started by `SettingsViewModel` when background location is enabled. |
-| Provider | `FileProvider`, `InitializationProvider` | Receipts / WorkManager init. |
-
-> Exactly **one Activity**; all "screens" are Compose destinations.
+| Activity | `ui.MainActivity` | Single host; one `NavHost`. |
+| Receiver | `sms.SmsReceiver` | `SMS_RECEIVED`; gated by SMS enabled + LLM ready. |
+| Receiver | `system.BootReceiver` | `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` / `USER_PRESENT`; reschedules work. |
+| Receiver | `notification.ClassificationActionReceiver` | Notification actions. |
+| Receivers | `widget.*WidgetReceiver` (×5) | Overview, Transactions, AddButton, Funds, Spending (Glance). |
+| Service | `location.LocationTrackingService` | Foreground location; started from Settings when enabled. |
+| Provider | `FileProvider`, `InitializationProvider` | Receipts; WorkManager init (default initializer removed). |
 
 ---
 
 ## 3. Database (`AppDatabase`, version 11)
 
-`data/local/db/` — entities, DAOs, `Mappers`, `AppDatabase`. **`exportSchema = true`** (schema JSON committed for v11 onward only).
+`data/local/db/` — entities, DAOs, `Mappers`. `exportSchema = true` (JSON for **v10** and **v11** only).
 
 ### 3.1 Tables
 
-| Table | Key columns | Purpose |
-| --- | --- | --- |
-| `categories` | id, name, icon, color, sortOrder, isSystem, isQuickAction | Category taxonomy (19 seeded defaults). |
-| `accounts` | id, name, kind (BANK/CARD/CASH/WALLET), openingBalancePaise, archived | Owned ledgers. |
-| `funds` | id, name, archived, **budgetPaise** | "Tabs" (open IOUs); `budgetPaise` doubles as opening balance. |
-| `transactions` | id (String PK), type, amountPaise, occurredAt, **counterparty**, categoryId, fundId, **accountId**, source, kind, transferGroupId, splitGroupId, **smsMessageId**, externalRefId, contentHash, deletedAt, version, receiptUri | Core ledger; single party/account fields. |
-| `fund_ledger` | id, fundId, transactionId, entryType, amountPaise, balanceAfterPaise | Materialised running balance per tab; rebuilt by `recalculateFundLedger`. |
-| `location_samples` | lat/lng/accuracy, placeName | Optional location history. |
-| `pending_classification` | transactionId, scheduledAt, attempts | Drives `ClassificationWorker`. |
-| `sync_outbox` | entityType, entityId, operation, attempts | Outbox for Sheets sync. |
-| `sync_state` | key/value | Sync cursors. |
+| Table | Purpose |
+| --- | --- |
+| `categories` | Taxonomy (seeded defaults). |
+| `accounts` | Owned ledgers: `kind` BANK / CARD / CASH / WALLET, `openingBalancePaise`, `archived`. |
+| `funds` | Tabs (open IOUs). `budgetPaise` is the envelope / opening figure. |
+| `transactions` | Ledger. String PK; `type`, `amountPaise`, `occurredAt`, `counterparty`, `categoryId`, `fundId`, `accountId`, `source`, `kind`, `transferGroupId`, `splitGroupId`, `smsMessageId`, `externalRefId`, `contentHash`, `deletedAt`, `receiptUri`. |
+| `fund_ledger` | Materialised tab running balance; rebuilt by `recalculateFundLedger`. |
+| `location_samples` | Optional location history. |
+| `pending_classification` | Queue for `ClassificationWorker`. |
+| `sync_outbox` / `sync_state` | Sheets outbox and cursors. |
 
-Relationships are logical (FKs not enforced by Room): `categoryId`, `accountId`, `fundId` → parent tables; `splitGroupId` groups split children (parent soft‑deleted); `transferGroupId` links transfer legs; `fund_ledger.transactionId → transactions.id`.
+Room does not enforce FKs. Split children share `splitGroupId` (parent soft-deleted). Transfer legs share `transferGroupId`.
 
-### 3.2 Indexing
+### 3.2 Indexes (`transactions`)
 
-`transactions` has 10 indexes: unique on `smsMessageId`, `contentHash`; non‑unique on `externalRefId`, `occurredAt`, `categoryId`, `fundId`, `accountId`, `transferGroupId`, `splitGroupId`, `deletedAt`. Appropriate for the query patterns.
+Unique: `smsMessageId`, `contentHash`. Non-unique: `externalRefId`, `occurredAt`, `categoryId`, `fundId`, `accountId`, `transferGroupId`, `splitGroupId`, `deletedAt`.
 
-### 3.3 Migrations (`AppDatabase.kt`)
+### 3.3 Migrations
 
-Nine migrations: `2→3`, `3→4` (no‑op), `4→5` (drops experimental recurring‑payments), `5→6` (receipt), `6→7` (accounts + Debit/Credit), `7→8` (transaction_splits), `8→9` (splits as rows + `splitGroupId`), `9→10` (drop `trusted_senders`/`email_ingest_log`), `10→11` (field collapse to single `counterparty`/`accountId`/`smsMessageId`). `fallbackToDestructiveMigrationOnDowngrade()` is set. Only `2→3` … `10→11` are registered in `AppModule` (10 `Migration` objects spanning versions 2–11); there is **no `1→2`** migration.
+Registered in `AppModule`: `2→3` … `10→11`. **No `1→2`.** `fallbackToDestructiveMigrationOnDowngrade()` is set.
+
+| Step | Effect |
+| --- | --- |
+| 2→3 | Fund budget freeze |
+| 3→4 | No-op (recurring never landed on this path) |
+| 4→5 | Drop experimental recurring; rebuild `transactions` |
+| 5→6 | Receipt URI |
+| 6→7 | Accounts + Debit/Credit |
+| 7→8 | `transaction_splits` table |
+| 8→9 | Splits as child rows + `splitGroupId` |
+| 9→10 | Drop `trusted_senders`, `email_ingest_log` |
+| 10→11 | Collapse to `counterparty` / `accountId` / `smsMessageId` |
 
 ---
 
-## 4. Screens (Compose destinations)
+## 4. Screens
 
-Type‑safe navigation (`ui/navigation/AppRoutes.kt`, kotlinx‑serialization). Bottom nav: **Home / Activity / Funds / Settings**; the rest are pushed.
+Type-safe navigation (`ui/navigation/AppRoutes.kt`). Bottom nav: **Home / Activity / Funds / Settings**.
 
-| Screen file | ~Lines | Responsibility |
+| Screen | ~Lines | Role |
 | --- | --- | --- |
-| `MainActivity.kt` | 574 | Host + `NavHost` + floating nav + intent handling, theme state, onboarding gate |
-| `HomeScreen.kt` + `HomeDashboardSections.kt` | 436 + 761 | Dashboard: net, tiles, ring, trend, open tabs, recent |
-| `TransactionsScreen.kt` | 491 | Full list, search, filters, export |
-| `AddCashScreen.kt` | 1000 | Debit/Credit entry + self‑transfer + draft splits |
-| `TransactionDetailScreen.kt` | **1347** | View/edit, amount pad, account, tab, location, receipt, OSM map, splits |
-| `SplitTransactionScreen.kt` | 510 | Split editor (own destination) |
-| `FundsScreen.kt` | 479 | Tabs list — open balances ("they owe you / you owe them") |
-| `FundDetailScreen.kt` | 262 | Per‑tab activity |
-| `AccountsScreen.kt` | 297 | Owned ledgers + archive + CSV import entry |
-| `CategoriesScreen.kt` / `CategoryDetailScreen.kt` | 193 / 237 | Category management + activity |
-| `CsvImportScreen.kt` | 500 | Account → file → preview → done wizard |
-| `SettingsScreen.kt` / `SettingsDetailScreen.kt` | 400 / 1204 | All settings domains |
-| `OnboardingScreen.kt` | 858 | First‑run setup |
-| `AppearanceSettingsContent.kt` | 369 | Theme studio |
+| `MainActivity.kt` | 549 | Host, `NavHost`, floating nav, intents, theme, onboarding gate |
+| `HomeScreen.kt` + dashboard files | 409 + 398 + sections | Net, tiles, ring, trend, open tabs, recent; reorder/span still on Home |
+| `TransactionsScreen.kt` | 476 | List, search, filters, export |
+| `AddCashScreen.kt` | 821 | Debit/Credit + self-transfer + draft splits |
+| `TransactionDetailScreen.kt` | 945 | View/edit; helpers: `TransactionDetailView`, `TransactionDetailSplits`, `OsmMap` |
+| `SplitTransactionScreen.kt` | 498 | Split editor destination |
+| `FundsScreen.kt` / `FundDetailScreen.kt` | 464 / 256 | Tabs list + per-tab activity |
+| `AccountsScreen.kt` | 286 | Ledgers, archive, CSV import entry |
+| `CategoriesScreen.kt` / `CategoryDetailScreen.kt` | 187 / 233 | Category CRUD + activity |
+| `CsvImportScreen.kt` | 486 | Account → file → preview → commit |
+| `SettingsScreen.kt` / `SettingsDetailScreen.kt` | 382 / **1198** | Settings hub + all domains |
+| `OnboardingScreen.kt` | 819 | First-run |
+| `AppearanceSettingsContent.kt` | 356 | Theme studio |
 
-Supporting: `components/` (~30 files), `theme/` (`Theme.kt` 951, `ThemeColorPicker.kt` 1031), `util/`. Widgets: `OverviewWidget`, `TransactionsWidget`, `SpendingWidget`, `FundsWidget`, `AddButtonWidget` (Glance).
+Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add and Detail edit). Widgets: Overview, Transactions, Spending, Funds, AddButton.
 
 ---
 
 ## 5. Repositories, workers & background
 
-### 5.1 Repositories (the "functions" layer)
+### 5.1 Repositories
 
-| Repository | Role | Notes |
+| Repository | ~Lines | Role |
 | --- | --- | --- |
-| `TransactionRepository` (1064) | CRUD, splits, merges, self/tab transfer, fund ledger, dedupe, classify | **God object** — §6.1 |
-| `CashflowRepository` (293) | Read-only cashflow metrics: `homeCashflowSnapshot`, `observeAccountBalances` | Extracted from `TransactionRepository` |
-| `AccountRepository` (233) | Account CRUD, balances, `syncFromBankList`, legacy `resolveId` | One balance path |
-| `CategoryRepository` (89) | Seeding + CRUD | Healthy |
-| `StatementImportRepository` (230) | CSV preview/dedupe/commit | |
-| `BackupRepository` (433) | JSON export/import (format v5) | Secrets gated by opt-in dialog |
-| `LocationRepository` (74) | Capture + place match | Optional |
+| `TransactionRepository` | 1011 | CRUD, splits, merges, self/tab transfer, fund ledger, dedupe, classify |
+| `CashflowRepository` | 190 | Read-only metrics; `homeCashflowSnapshot` is the single Home/widget/category scan |
+| `AccountRepository` | 207 | Account CRUD, balances, `syncFromBankList` |
+| `CategoryRepository` | 76 | Seed + CRUD |
+| `StatementImportRepository` | 217 | CSV preview / dedupe / commit |
+| `BackupRepository` | 429 | JSON export/import |
+| `LocationRepository` | 68 | Optional stamp + place match |
+
+Accounts created/archived/restored from `AccountsViewModel` call `mirrorBankPrefs()` so Settings `bank_accounts` stays aligned. Cold start in `FinanceApp` still bidirectional-syncs bank names and repairs fund ledgers.
 
 ### 5.2 Workers (`workers/AppWorkers.kt`)
 
-- `ClassificationWorker` (15 min) — notifies due pending classifications.
-- `SheetsSyncWorker` (30 min, network‑constrained) — drains `sync_outbox`.
-- `WidgetRefreshWorker` (15 min) — refreshes Glance widgets.
-- `WorkScheduler.scheduleAll` registers the three unique periodic works.
+`WorkScheduler.scheduleAll` registers three unique periodic jobs:
 
-### 5.3 Background & ingest
+- `ClassificationWorker` — 15 min
+- `SheetsSyncWorker` — 30 min, `CONNECTED`
+- `WidgetRefreshWorker` — 15 min
 
-- `SmsReceiver` → `TransactionParser.parseSms` → `insertFromSms`.
-- `CsvStatementParser` + `StatementImportRepository` → `insertFromImport`.
-- `LlmClient` (OkHttp) — OpenAI‑compatible `/chat/completions`; required for SMS auto‑import.
-- `ClassificationNotifier` / `ClassificationActionReceiver` — classify prompts (overlay-service path removed).
-- `LocationTrackingService` (foreground) — optional location stamping.
+### 5.3 Ingest & side paths
+
+- SMS → `TransactionParser.parseSms` → `insertFromSms` (LLM via `LlmClient`, OpenAI-compatible `/chat/completions`).
+- CSV → `CsvStatementParser` + `StatementImportRepository` → `insertFromImport`.
+- Classify: `ClassificationNotifier` + `ClassificationActionReceiver` (no overlay service).
+- Location: optional foreground `LocationTrackingService`.
 
 ---
 
 ## 6. Remaining issues
 
-Severity: **high** · **med** · **low**. Only open items.
+Open items only.
 
-### 6.1 Import reconciliation (med)
+### 6.1 God files (high)
 
-| ID | Issue | File |
+| File | ~Lines | Smell |
 | --- | --- | --- |
-| **N2** | `AccountsViewModel` mutators (`addAccount`/`archiveAccount`/`restoreAccount`) now call `mirrorBankPrefs()` to sync with Settings `bank_accounts` pref — previously missing (now fixed in code). Cold start sync (`FinanceApp.onCreate`) still provides bidirectional sync. | `AccountsViewModel.kt:37-55` ; `FinanceApp.kt:36-45` ; `SettingsViewModel.kt:440-445` |
+| `TransactionRepository` | 1011 | Writes + splits + transfers + ledger + dedupe + classify |
+| `SettingsDetailScreen` | 1198 | Every settings domain in one composable |
+| `TransactionDetailScreen` | 945 | View + edit + pad + account/tab/location/receipt (partially extracted) |
+| `ThemeColorPicker` / `Theme.kt` | 996 / 887 | Theme heavier than the ledger |
+| `SheetsSyncService` | 963 | Client + table assembly + worker glue |
+| `AddCashScreen` | 821 | Entry + self-transfer + draft splits |
+| `OnboardingScreen` | 819 | First-run monolith |
+| `SettingsViewModel` | 460 | Profile, SMS, theme, LLM, Sheets, location, banks, backup, dev |
 
-### 6.2 God objects / files (high — main maintenance cost)
+`TransactionFormState` already exists; Add/Detail still own extra flow (transfer, splits, dirty tracking).
 
-| Type | ~Lines | Smell |
-| --- | --- | --- |
-| `TransactionRepository` | 1064 | CRUD + splits + merges + transfers + fund ledger + dedupe + classify (cashflow reads extracted to §5.1 `CashflowRepository`) |
-| `TransactionDetailScreen` | 1347 | View + edit + amount pad + date + account + tab + location + receipt + OSM map + splits |
-| `SettingsDetailScreen` | 1204 | Every settings domain |
-| `AddCashScreen` | 1000 | Entry + self‑transfer + draft splits in one screen |
-| `HomeDashboardSections` | 761 | Whole dashboard in one file |
-| `SheetsSyncService` | 998 | Service + table assembly + worker logic |
-| `OnboardingScreen` | 858 | |
-| `Theme.kt` / `ThemeColorPicker` | 951 / 1031 | Theme system heavier than the core money model |
-| `SettingsViewModel` | 511 | Profile, SMS, theme, LLM, Sheets, location, banks, backup, dev |
+### 6.2 Database (low)
 
-These block safe change and explain the "too many jobs per screen" UX complaints.
+- No `1→2` migration — a v1 DB would fail upgrade.
+- Schema JSON only from v10. Older migrations cannot be replayed against exported schemas.
 
-### 6.3 Redundant metric computations (med) — **resolved**
+### 6.3 Performance (low at personal scale)
 
-`CashflowRepository.homeCashflowSnapshot()` now consolidates `monthlySummary`, `cashflowMetrics`, `categorySpend`, and `monthlyTrend` into a single DAO scan. The old redundant public methods (`monthlySummary()`, `cashflowMetrics()`, `categorySpend()`, `monthlyTrend()`) have been removed. WidgetData, HomeViewModel, and CategoriesViewModel now derive all cashflow data from the consolidated snapshot.
+- `recalculateFundLedger` loads all non-deleted transactions (`getAllNonDeleted()`) on each fund mutation.
+- Several screens `combine` / `observeAll()` and re-emit the full list on any change.
 
-### 6.4 Security / privacy (med)
+### 6.4 Dependencies & permissions (low)
 
-- LLM system prompt and `LlmClient.extractTransaction` parameter are SMS‑only (email references removed in `SecureStore.kt:97-98` and `LlmClient.kt:45`).
+- `osmdroid` for one optional map in Detail.
+- `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE_LOCATION`, `CAMERA`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` for optional features — need a clear runtime story.
+- `FOREGROUND_SERVICE_DATA_SYNC` is declared; there is no data-sync foreground service (email watch is gone).
 
-### 6.5 Database fragility (low)
+### 6.5 Product / naming (med)
 
-- **No `1→2` migration** — latent `IllegalStateException` if a v1 install ever upgrades.
-- **`MIGRATION_4_5` rebuilds `transactions` and recreates the unique `externalRefId` + `paymentMethod` index** — that index is later made obsolete by the v10→11 collapse to a single `accountId` (the rationale is documented in `MIGRATION_10_11`, `AppDatabase.kt:471-473`). *(Clarity — resolved.)*
-- **Schema JSON history: v10 and v11 exported** — older migrations can be authored against v10 schema (v1-v9 gaps remain).
+- **Home** still mixes dashboard + layout editor (reorder, half-width spans). Keep reorder if that is a product requirement; the screen is still crowded (Lifestyle / tabs / top category appear in more than one widget).
+- UI copy says **Tabs**; types stay `Fund`, `FundsViewModel`, `FundsWidget`, `fund_ledger`. Rename is mechanical (~15 files), no behaviour change.
+- Add / Detail still mix self-transfer and pre-create splits. Simpler target: Add = entry; self-transfer = own sheet; splits = post-create; Detail = view-first.
 
-### 6.6 Dependencies & permissions (low)
+### 6.6 Comment / pref leftovers (low)
 
-- `org.osmdroid` full OSM map for a single receipt/location view inside `TransactionDetailScreen` — heavy for an optional feature.
-- `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE_LOCATION`, `CAMERA`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` for optional features — reasonable but need runtime justification/UI.
-
-### 6.7 Performance (low, at personal scale)
-
-- `recalculateFundLedger` reloads the **entire** `transactions` table on every fund mutation (`txnDao.getAllNonDeleted()`) — O(n) per edit.
-- In‑memory `combine` flows re‑emit the whole transaction list on any change (several screens subscribe to `observeAll()`).
-
-### 6.8 UI storytelling (med)
-
-- **Home is overloaded**: greeting + layout‑edit mode (reorder, half‑width spans, drag), pending chip, setup checklist, hero net, tiles, ring, trend, open tabs, recent, investment metrics. Layout editor is power‑user chrome on the primary screen. Target fixed order: Net · Pending · Accounts strip · Spend by category · Recent · Open tabs.
-- **Product vs class naming**: open IOUs are "Tabs" in UI copy (e.g. `FundsScreen.kt:118` title = "Tabs", "New tab", "Archive tab") but code still says `Fund`, `FundBalance`, `FundsViewModel`, `FundsWidget`, `FundDao`, `fundDao`, `fund_ledger`. A "renamed Funds to Tabs" commit only touched UI strings, not model/viewmodel/widget types. Low value to fully chase; a targeted rename of `Fund`→`Tab` across model + DAO + ViewModel + widget is moderate churn (≈15 files) with zero behavior change.
-- **Add / Detail / Self‑transfer / Splits** are mixed into a few kitchen‑sink screens; splits are also reachable pre‑create in Add. Simpler target: Add = plain entry; self‑transfer separate; split only post‑create; Detail view‑first.
-
-### 6.9 Naming echoes (low, cosmetic)
-
-- `TransactionParser` reads `e.merchant`/`e.paymentMethod` from the LLM's `ExtractedTransaction` model (`LlmClient.kt:21,26`) — these are LLM response fields, not persistence.
-- `SmsRedactor.kt:4-6` comment says "Renamed from the email-era `EmailRedactor`" — self-documenting, acceptable to keep.
-- `SettingsUiState.kt:13` comment updated to "SMS auto-import also needs [llmApiKeySet]" — email reference removed.
-
-All of the above are parse-scaffolding/parameter/comment echoes, not persistence-layer fields.
+- `SecureStore` comments still say “email/SMS auto-import”.
+- LLM `ExtractedTransaction` fields `merchant` / `paymentMethod` are parse JSON only, not columns.
 
 ---
 
 ## 7. Prioritized recommendations
 
-**P1 — Structural simplify:**
-1. Split remaining god files: `TransactionDetailScreen` (1347), `SettingsDetailScreen` (1204), `AddCashScreen` (1000) (§6.2); simplify Home to a fixed section order, move self‑transfer to its own mode and splits to post‑create only, make Detail view‑first (§6.8).
+**P1 — Split remaining kitchen-sink files**
 
-**P2 — Data consistency:**
-2. (Completed) Redundant cashflow methods consolidated into `homeCashflowSnapshot()`; N2 AccountsViewModel bank‑prefs sync also completed (§6.1, §6.3).
+1. `SettingsDetailScreen` → per-domain files under `ui/screens/settings/` (reuse `SettingsBlock` / rows).
+2. Finish Add/Detail: keep `TransactionFormState` for shared fields; extract self-transfer and draft-splits from Add; keep Detail view-first.
+3. Optional: thin `SheetsSyncService` and `OnboardingScreen`.
 
-**P3 — Schema hygiene:**
-3. (Completed) Schema JSON for v10 exported at `app/schemas/com.krtky.financetracker.data.local.db.AppDatabase/10.json`. Note: v1→2 migration doesn't exist, so v1 schema cannot be validated unless a v1 database is provided.
+**P2 — UX (only after P1 or in the same PR if isolated)**
+
+4. Home: keep reorder if required; drop duplicate tiles (Lifestyle / open tabs / top category).
+5. `Fund` → `Tab` rename across model + DAO + ViewModel + widget when convenient.
+
+**P3 — Hygiene**
+
+6. Add a no-op or documented `1→2` if v1 installs still matter; otherwise record “unsupported”.
+7. Drop unused `FOREGROUND_SERVICE_DATA_SYNC` (and empty `data/email/`).
+8. Leave `recalculateFundLedger` until a fund has enough rows to hurt.
+
+Verify: `./gradlew compileDebugKotlin`.
 
 ---
 
 ## 8. Bottom line
 
-| Area | Verdict |
+| Area | Status |
 | --- | --- |
-| Layering / DI / navigation | Solid, conventional, maintainable |
-| Core cashflow model | Sound; transfers/splits correctly excluded from metrics |
-| Database (v11) | Good; migrations are sound; schema export on; no `1→2` gap, minor clarity gaps remain |
-| Correctness | N2 AccountsViewModel bank‑prefs sync fixed; N1 dead‑filter resolved |
-| Structural / KISS | God files remain (`TransactionRepository` 1064, `TransactionDetailScreen` 1347, `SettingsDetailScreen` 1204, `AddCashScreen` 1000, `HomeDashboardSections` 761). `CashflowRepository` extracted (§5.1); Home metric consolidation completed (§6.3). |
-| UI storytelling | Coherent core; Home/Add/Detail still do too much; Tabs label applied but `Fund` types linger |
-| Security | Secrets gated (opt-in dialog); cleartext HTTP blocked. LLM system prompt and parameter are SMS‑only (email references removed) |
+| Layering / DI / navigation | Conventional, one activity |
+| Cashflow model | Sound; transfers/splits excluded from lifestyle metrics |
+| Database v11 | Migrations 2→11 registered; no `1→2`; schema export v10–v11 |
+| Ingest | SMS + CSV + manual only |
+| Structure | Shared form started; Settings / Detail / Add / `TransactionRepository` still large |
+| Naming | Tabs in UI, `Fund` in code |
+| Security | Encrypted prefs; secrets opt-in on backup; cleartext HTTP blocked; LLM is SMS parse |
 
-**Highest‑leverage next step:** close remaining god files (split `TransactionDetailScreen`/`SettingsDetailScreen`/`AddCashScreen`), then optional `Fund`→`Tab` rename. No new features until that debt is closed.
+**Next:** split `SettingsDetailScreen`, then finish Add/Detail flow separation. No new ingest surface until that is smaller.
