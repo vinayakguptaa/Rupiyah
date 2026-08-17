@@ -93,6 +93,16 @@ class TransactionParser @Inject constructor(
             TransactionSource.SMS,
         )
 
+    /** Same pipeline as SMS: deterministic + LLM merge. For pasted bank notes or free text. */
+    suspend fun parsePastedText(body: String, receivedAt: Long = System.currentTimeMillis()): Transaction? {
+        val trimmed = body.trim()
+        if (trimmed.isBlank()) return null
+        return parseSource(
+            RawSms("paste-$receivedAt-${trimmed.hashCode()}", "paste", trimmed, receivedAt),
+            TransactionSource.PASTE,
+        )
+    }
+
     private suspend fun parseSource(sms: RawSms, source: TransactionSource): Transaction? {
         val text = SmsRedactor.stripHtml(sms.body)
         val categories = categoryRepository.getAll()

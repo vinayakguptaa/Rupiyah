@@ -7,12 +7,12 @@
 
 ## 1. Executive summary
 
-Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.financetracker`). Money is recorded in ₹ via **manual entry**, **SMS auto-import (LLM-assisted)**, or **CSV bank-statement import**, then organised under **accounts**, **categories**, **tabs** (open IOUs; code still says `Fund`), and **splits**.
+Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.financetracker`). Money is recorded in ₹ via **manual entry**, **SMS auto-import (LLM-assisted)**, **paste-to-AI** (same parser, review on the Add form), or **CSV bank-statement import**, then organised under **accounts**, **categories**, **tabs** (open IOUs; code still says `Fund`), and **splits**.
 
 - Layering is conventional: UI → ViewModel → Repository → Room/DAO. One Hilt-injected `AppDatabase`.
 - A transaction is the source of truth. Self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId` and are excluded from lifestyle cashflow metrics.
-- Persistence is single-field: one `counterparty`, one `accountId`, one `smsMessageId`; types are `DEBIT` / `CREDIT`. Email ingest is gone.
-- Remaining work is file size / mixed screens, schema hygiene (no `1→2` migration), and a few optional-feature weights — not a model rewrite.
+- Persistence is single-field: one `counterparty`, one `accountId`, one `smsMessageId`; types are `DEBIT` / `CREDIT`. Sources are `SMS` / `MANUAL` / `IMPORT` / `PASTE`. Email ingest is gone.
+- **P1 (settings split + Add extract + paste ingest) landed.** Remaining work is Detail/repo/theme size, Home crowding, `Fund`→`Tab` naming, and schema/permission hygiene — not a model rewrite.
 
 ---
 
@@ -23,8 +23,9 @@ Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.f
 | Layer | Packages | Responsibility |
 | --- | --- | --- |
 | **UI** | `ui/` | Compose screens, ViewModels (`StateFlow`), navigation, charts, formatters, theme |
+| **Settings UI** | `ui/screens/settings/` | Per-domain settings (profile, backup, LLM, SMS, location, Sheets, Google auth, categories, banks, dev) |
 | **Domain** | `domain/model/` | Pure types (`Transaction`, `Account`, `Fund`, `Money`, `SplitRules`, …) |
-| **Data** | `data/` | Room, repositories, `SecureStore` / DataStore, SMS parser, LLM client, CSV import, Sheets, receipts |
+| **Data** | `data/` | Room, repositories, `SecureStore` / DataStore, SMS/paste parser, LLM client, CSV import, Sheets, receipts |
 | **Services** | `sms/`, `notification/`, `location/`, `widget/`, `workers/`, `system/` | SMS ingest, classify notifications, optional location, Glance widgets, WorkManager, boot reschedule |
 | **DI** | `di/AppModule.kt` | Provides `AppDatabase` + migrations 2→11 |
 
@@ -33,18 +34,20 @@ Empty leftover: `data/email/` (no sources).
 ### 2.2 Data flow
 
 ```
-SMS (SmsReceiver) ─┐
-CSV import wizard  ─┼─► TransactionParser / CsvStatementParser ─► TransactionRepository
-Manual (+ FAB)     ─┘         (dedupe, classify, fund ledger)
-                                          │
-                                          ▼
-                              Room (AppDatabase)
-                                          │
-                    ViewModels ──► Compose screens
-                    Backup / Sheets / widgets read the same store
+SMS (SmsReceiver)     ─┐
+Paste (Add sheet)     ─┼─► TransactionParser ──┐
+CSV import wizard     ─┤                       ├─► TransactionRepository
+Manual (+ FAB)        ─┘ CsvStatementParser ───┘     (dedupe, classify, fund ledger)
+                                                    │
+                                                    ▼
+                                        Room (AppDatabase)
+                                                    │
+                              ViewModels ──► Compose screens
+                              Backup / Sheets / widgets read the same store
 ```
 
-- **Ingest** is dedicated: `insertFromSms`, `insertFromImport`, `insertManual` / `insertManualWithSplits`.
+- **Ingest** is dedicated: `insertFromSms`, `insertFromImport`, `insertManual` / `insertManualWithSplits` (paste saves through `insertManual` with `source = PASTE` after form review).
+- **Parse:** `TransactionParser.parseSms` and `parsePastedText` share `parseSource` (deterministic + LLM merge via `LlmClient`).
 - **Classify** uses `pending_classification` + `ClassificationWorker` (15 min) → notification.
 - **Export:** JSON backup (`BackupRepository`) or one-way Google Sheets (`SheetsSyncService` + `SheetsSyncWorker`, 30 min, network required). Writes enqueue `sync_outbox`.
 - **Widgets** refresh via `WidgetRefreshWorker` (15 min) and `FinanceApp.onCreate`.
@@ -102,6 +105,8 @@ Registered in `AppModule`: `2→3` … `10→11`. **No `1→2`.** `fallbackToDes
 | 9→10 | Drop `trusted_senders`, `email_ingest_log` |
 | 10→11 | Collapse to `counterparty` / `accountId` / `smsMessageId` |
 
+`PASTE` is a `transactions.source` string only — no schema bump.
+
 ---
 
 ## 4. Screens
@@ -113,16 +118,20 @@ Type-safe navigation (`ui/navigation/AppRoutes.kt`). Bottom nav: **Home / Activi
 | `MainActivity.kt` | 549 | Host, `NavHost`, floating nav, intents, theme, onboarding gate |
 | `HomeScreen.kt` + dashboard files | 409 + 398 + sections | Net, tiles, ring, trend, open tabs, recent; reorder/span still on Home |
 | `TransactionsScreen.kt` | 476 | List, search, filters, export |
-| `AddCashScreen.kt` | 821 | Debit/Credit + self-transfer + draft splits |
+| `AddCashScreen.kt` | 763 | Entry + type/transfer segment; paste sheet; still hosts save/numpad |
+| `AddCashSelfTransfer.kt` | 63 | Self-transfer from/to chips (extracted) |
+| `AddCashDraftSplits.kt` | 93 | Draft-split summary card (extracted) |
+| `PasteAiParseSheet.kt` | 141 | Paste text → `parsePastedText` → hydrate form |
 | `TransactionDetailScreen.kt` | 945 | View/edit; helpers: `TransactionDetailView`, `TransactionDetailSplits`, `OsmMap` |
 | `SplitTransactionScreen.kt` | 498 | Split editor destination |
 | `FundsScreen.kt` / `FundDetailScreen.kt` | 464 / 256 | Tabs list + per-tab activity |
 | `AccountsScreen.kt` | 286 | Ledgers, archive, CSV import entry |
 | `CategoriesScreen.kt` / `CategoryDetailScreen.kt` | 187 / 233 | Category CRUD + activity |
 | `CsvImportScreen.kt` | 486 | Account → file → preview → commit |
-| `SettingsScreen.kt` / `SettingsDetailScreen.kt` | 382 / **1198** | Settings hub + all domains |
-| `OnboardingScreen.kt` | 819 | First-run |
-| `AppearanceSettingsContent.kt` | 356 | Theme studio |
+| `SettingsScreen.kt` / `SettingsDetailScreen.kt` | 382 / **100** | Hub + thin section router |
+| `ui/screens/settings/*` | ~60–367 each | Per-domain settings (10 files) |
+| `OnboardingScreen.kt` | 819 | First-run monolith |
+| `AppearanceSettingsContent.kt` | 356 | Theme studio (still under `ui/screens/`) |
 
 Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add and Detail edit). Widgets: Overview, Transactions, Spending, Funds, AddButton.
 
@@ -155,6 +164,7 @@ Accounts created/archived/restored from `AccountsViewModel` call `mirrorBankPref
 ### 5.3 Ingest & side paths
 
 - SMS → `TransactionParser.parseSms` → `insertFromSms` (LLM via `LlmClient`, OpenAI-compatible `/chat/completions`).
+- Paste → Add top-bar clipboard → `PasteAiParseSheet` → `parsePastedText` → form hydrate → `insertManual(..., source = PASTE)`. LLM optional; without a key only bank-style deterministic text works.
 - CSV → `CsvStatementParser` + `StatementImportRepository` → `insertFromImport`.
 - Classify: `ClassificationNotifier` + `ClassificationActionReceiver` (no overlay service).
 - Location: optional foreground `LocationTrackingService`.
@@ -163,22 +173,21 @@ Accounts created/archived/restored from `AccountsViewModel` call `mirrorBankPref
 
 ## 6. Remaining issues
 
-Open items only.
+Open items only. Closed this pass: Settings god-file, Add self-transfer/splits extract, paste ingest.
 
 ### 6.1 God files (high)
 
 | File | ~Lines | Smell |
 | --- | --- | --- |
 | `TransactionRepository` | 1011 | Writes + splits + transfers + ledger + dedupe + classify |
-| `SettingsDetailScreen` | 1198 | Every settings domain in one composable |
 | `TransactionDetailScreen` | 945 | View + edit + pad + account/tab/location/receipt (partially extracted) |
 | `ThemeColorPicker` / `Theme.kt` | 996 / 887 | Theme heavier than the ledger |
 | `SheetsSyncService` | 963 | Client + table assembly + worker glue |
-| `AddCashScreen` | 821 | Entry + self-transfer + draft splits |
 | `OnboardingScreen` | 819 | First-run monolith |
+| `AddCashScreen` | 763 | Still owns save CTA, numpad, last-used defaults (better; not done) |
 | `SettingsViewModel` | 460 | Profile, SMS, theme, LLM, Sheets, location, banks, backup, dev |
 
-`TransactionFormState` already exists; Add/Detail still own extra flow (transfer, splits, dirty tracking).
+`TransactionFormState` is shared. Add still mixes transfer *mode* and pre-create splits. Detail is not view-first.
 
 ### 6.2 Database (low)
 
@@ -200,7 +209,7 @@ Open items only.
 
 - **Home** still mixes dashboard + layout editor (reorder, half-width spans). Keep reorder if that is a product requirement; the screen is still crowded (Lifestyle / tabs / top category appear in more than one widget).
 - UI copy says **Tabs**; types stay `Fund`, `FundsViewModel`, `FundsWidget`, `fund_ledger`. Rename is mechanical (~15 files), no behaviour change.
-- Add / Detail still mix self-transfer and pre-create splits. Simpler target: Add = entry; self-transfer = own sheet; splits = post-create; Detail = view-first.
+- Target still: Add = entry; self-transfer = own sheet (chips extracted, not a sheet); splits = post-create; Detail = view-first.
 
 ### 6.6 Comment / pref leftovers (low)
 
@@ -209,39 +218,63 @@ Open items only.
 
 ---
 
-## 7. Prioritized recommendations
+## 7. Status of the last plan
 
-**P1 — Split remaining kitchen-sink files**
+| Item | Status |
+| --- | --- |
+| P1.1 Split `SettingsDetailScreen` → `ui/screens/settings/` | **Done.** Router ~100 lines; 10 domain files. |
+| P1.2 Extract self-transfer + draft splits from Add; Detail view-first | **Partial.** Extracts exist; Add still 763. Detail still 945, mixed view/edit. |
+| P1.3 Optional: thin `SheetsSyncService` / `OnboardingScreen` | **Not started.** |
+| Paste text through AI parser | **Done.** `TransactionSource.PASTE`, `parsePastedText`, Add clipboard sheet. |
+| P2 Home de-dupe tiles / keep reorder | **Not started.** |
+| P2 `Fund` → `Tab` rename | **Not started.** |
+| P3 `1→2` migration or “unsupported” | **Not started.** |
+| P3 Drop `FOREGROUND_SERVICE_DATA_SYNC` + empty `data/email/` | **Not started.** |
+| P3 Leave `recalculateFundLedger` | **Deferred** (intentional). |
 
-1. `SettingsDetailScreen` → per-domain files under `ui/screens/settings/` (reuse `SettingsBlock` / rows).
-2. Finish Add/Detail: keep `TransactionFormState` for shared fields; extract self-transfer and draft-splits from Add; keep Detail view-first.
-3. Optional: thin `SheetsSyncService` and `OnboardingScreen`.
-
-**P2 — UX (only after P1 or in the same PR if isolated)**
-
-4. Home: keep reorder if required; drop duplicate tiles (Lifestyle / open tabs / top category).
-5. `Fund` → `Tab` rename across model + DAO + ViewModel + widget when convenient.
-
-**P3 — Hygiene**
-
-6. Add a no-op or documented `1→2` if v1 installs still matter; otherwise record “unsupported”.
-7. Drop unused `FOREGROUND_SERVICE_DATA_SYNC` (and empty `data/email/`).
-8. Leave `recalculateFundLedger` until a fund has enough rows to hurt.
-
-Verify: `./gradlew compileDebugKotlin`.
+Verify: `./gradlew compileDebugKotlin` (last green 2026-08-17). Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## 8. Bottom line
+## 8. Further plan of action
+
+Do these in order. Isolated P3 hygiene can land in the same PR as P2 if it stays mechanical.
+
+**Next (finish P1 structure)**
+
+1. **Detail view-first.** Keep `TransactionDetailView` as the default; move edit fields into a dedicated composable (or reuse Add form). Dirty-tracking stays on the Detail ViewModel.
+2. **Add: transfer as a sheet, splits post-create.** Drop pre-create draft splits from Add (use `SplitTransactionScreen` after save). Move self-transfer chips into a sheet so Add is one entry path + paste.
+3. Optional later: split `SheetsSyncService` (HTTP client vs table assembly) and slice `OnboardingScreen` by step. Do not block product work on theme files.
+
+**Then P2 — UX**
+
+4. Home: keep reorder if it stays a product requirement; drop duplicate tiles (Lifestyle / open tabs / top category).
+5. `Fund` → `Tab` rename across model + DAO + ViewModel + widget when convenient (no behaviour change).
+
+**Then P3 — Hygiene**
+
+6. Add a no-op or documented `1→2` if v1 installs still matter; otherwise record “unsupported” here and in `AppModule`.
+7. Drop unused `FOREGROUND_SERVICE_DATA_SYNC` and empty `data/email/`.
+8. Fix leftover comments (`SecureStore` “email/SMS”).
+9. Leave `recalculateFundLedger` until a tab has enough rows to hurt.
+
+**Product (only after the above, or a dedicated ingest PR)**
+
+10. Show `PASTE` in Activity filters / detail source line if users cannot tell pasted rows from manual.
+11. No new ingest surface (email, notification listener, etc.) until Detail/Add are smaller.
+
+---
+
+## 9. Bottom line
 
 | Area | Status |
 | --- | --- |
 | Layering / DI / navigation | Conventional, one activity |
 | Cashflow model | Sound; transfers/splits excluded from lifestyle metrics |
 | Database v11 | Migrations 2→11 registered; no `1→2`; schema export v10–v11 |
-| Ingest | SMS + CSV + manual only |
-| Structure | Shared form started; Settings / Detail / Add / `TransactionRepository` still large |
+| Ingest | SMS + CSV + manual + paste-to-AI (review then save) |
+| Structure | Settings split done; Add extracts started; Detail / `TransactionRepository` / Sheets / Onboarding still large |
 | Naming | Tabs in UI, `Fund` in code |
-| Security | Encrypted prefs; secrets opt-in on backup; cleartext HTTP blocked; LLM is SMS parse |
+| Security | Encrypted prefs; secrets opt-in on backup; cleartext HTTP blocked; LLM is SMS + paste parse |
 
-**Next:** split `SettingsDetailScreen`, then finish Add/Detail flow separation. No new ingest surface until that is smaller.
+**Next:** finish Detail view-first, then move Add self-transfer to a sheet and splits to post-create. Then Home de-dupe and `Fund`→`Tab`.

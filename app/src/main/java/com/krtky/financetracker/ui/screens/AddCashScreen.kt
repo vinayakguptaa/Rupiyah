@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Save
@@ -64,6 +65,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.SplitPart
+import com.krtky.financetracker.domain.model.TransactionSource
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.AccountChipRow
 import com.krtky.financetracker.ui.components.AmountNumpadSheet
@@ -115,6 +117,8 @@ fun AddCashScreen(
     var toAccountId by remember { mutableStateOf<Long?>(null) }
     var amountPadIsEntryGate by remember { mutableStateOf(true) }
     var draftSplits by remember { mutableStateOf<List<SplitPart>>(emptyList()) }
+    var showPasteSheet by remember { mutableStateOf(false) }
+    var saveSource by remember { mutableStateOf(TransactionSource.MANUAL) }
 
     // Reset entry gate when the shared amount pad opens, so dismissing with
     // a blank amount no longer exits the Add screen (fixes regression from
@@ -254,6 +258,11 @@ fun AddCashScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showPasteSheet = true }) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = "Paste message")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = scheme.background,
                     titleContentColor = scheme.onBackground,
@@ -310,6 +319,7 @@ fun AddCashScreen(
                                         occurredAt = whenMs,
                                         receiptLocalUri = formState.receiptUri,
                                         splits = draftSplits,
+                                        source = saveSource,
                                     )
                                     id != null
                                 }
@@ -406,56 +416,26 @@ fun AddCashScreen(
                 }
 
                 if (isSelfTransfer) {
-                    Text(
-                        "From account",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = scheme.onSurfaceVariant,
+                    AddCashSelfTransferFields(
+                        accounts = accounts,
+                        accountBalances = accountBalances,
+                        fromAccountId = fromAccountId,
+                        toAccountId = toAccountId,
+                        onFromAccount = { id ->
+                            haptics.select()
+                            fromAccountId = id
+                            if (toAccountId == id) {
+                                toAccountId = accounts.firstOrNull { it.id != id }?.id
+                            }
+                        },
+                        onToAccount = { id ->
+                            haptics.select()
+                            toAccountId = id
+                            if (fromAccountId == id) {
+                                fromAccountId = accounts.firstOrNull { it.id != id }?.id
+                            }
+                        },
                     )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        accounts.forEach { acc ->
-                            FormAccountChip(
-                                label = acc.name,
-                                icon = Icons.Default.AccountBalance,
-                                selected = fromAccountId == acc.id,
-                                balanceLabel = accountBalances[acc.name]?.inr(),
-                                onClick = {
-                                    haptics.select()
-                                    fromAccountId = acc.id
-                                    if (toAccountId == acc.id) {
-                                        toAccountId = accounts.firstOrNull { it.id != acc.id }?.id
-                                    }
-                                },
-                            )
-                        }
-                    }
-                    Text(
-                        "To account",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = scheme.onSurfaceVariant,
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        accounts.forEach { acc ->
-                            FormAccountChip(
-                                label = acc.name,
-                                icon = Icons.Default.AccountBalance,
-                                selected = toAccountId == acc.id,
-                                balanceLabel = accountBalances[acc.name]?.inr(),
-                                onClick = {
-                                    haptics.select()
-                                    toAccountId = acc.id
-                                    if (fromAccountId == acc.id) {
-                                        fromAccountId = accounts.firstOrNull { it.id != acc.id }?.id
-                                    }
-                                },
-                            )
-                        }
-                    }
                 } else {
                     AnimatedContent(
                         targetState = formState.type,
@@ -589,77 +569,21 @@ fun AddCashScreen(
 
                 // Splits — full-screen editor
                 if (!isSelfTransfer) {
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = scheme.surfaceContainerHigh,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(
-                            Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Splits",
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        if (draftSplits.isEmpty()) {
-                                            "Optional · break amount across categories, names, or tabs"
-                                        } else {
-                                            "${draftSplits.size} lines · saved as separate transactions"
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSurfaceVariant,
-                                    )
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        haptics.select()
-                                        if (parentAmountPaise <= 0L) {
-                                            formState.showAmountPad = true
-                                        } else {
-                                            editingSplits = true
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(18.dp),
-                                    enabled = formState.amount.isNotBlank(),
-                                ) {
-                                    Text(if (draftSplits.isEmpty()) "Split" else "Edit")
-                                }
+                    AddCashDraftSplitsCard(
+                        draftSplits = draftSplits,
+                        categories = categories,
+                        funds = funds,
+                        amountBlank = formState.amount.isBlank(),
+                        onOpenEditor = {
+                            haptics.select()
+                            if (parentAmountPaise <= 0L) {
+                                formState.showAmountPad = true
+                            } else {
+                                editingSplits = true
                             }
-                            draftSplits.forEach { line ->
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        line.counterparty
-                                            ?: categories.firstOrNull { it.id == line.categoryId }?.name
-                                            ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
-                                            ?: "Line",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        line.amountPaise.inr(),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                    )
-                                }
-                            }
-                            if (draftSplits.isNotEmpty()) {
-                                TextButton(onClick = { draftSplits = emptyList() }) {
-                                    Text("Clear splits")
-                                }
-                            }
-                        }
-                    }
+                        },
+                        onClear = { draftSplits = emptyList() },
+                    )
                 }
 
                 if (!isSelfTransfer && draftSplits.isEmpty()) {
@@ -784,6 +708,25 @@ fun AddCashScreen(
                 Spacer(Modifier.height(8.dp))
             }
         }
+    }
+
+    if (showPasteSheet) {
+        PasteAiParseSheet(
+            llmReady = vm.isLlmReady(),
+            onDismiss = { showPasteSheet = false },
+            onParse = { vm.parsePastedText(it) },
+            onApply = { parsed ->
+                formState.hydrateFrom(parsed) { name, isCash ->
+                    accounts.firstOrNull { it.id == parsed.accountId }?.id
+                        ?: name?.let { n -> accounts.firstOrNull { it.name.equals(n, true) }?.id }
+                        ?: if (isCash) accounts.firstOrNull { it.kind.name == "CASH" }?.id else null
+                }
+                isSelfTransfer = false
+                saveSource = TransactionSource.PASTE
+                showPasteSheet = false
+                haptics.select()
+            },
+        )
     }
 
     if (formState.showDatePicker) {

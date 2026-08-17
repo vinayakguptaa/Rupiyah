@@ -3,7 +3,7 @@ package com.krtky.financetracker.domain.model
 /** Ledger direction — Debit out / Credit in. Forms use these labels (not Expense/Income). */
 enum class TransactionType { DEBIT, CREDIT }
 
-enum class TransactionSource { SMS, MANUAL, IMPORT }
+enum class TransactionSource { SMS, MANUAL, IMPORT, PASTE }
 
 enum class ClassificationStatus { PENDING, CLASSIFIED, SKIPPED }
 

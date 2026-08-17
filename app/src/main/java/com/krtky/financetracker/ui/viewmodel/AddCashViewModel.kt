@@ -3,9 +3,11 @@ package com.krtky.financetracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.net.Uri
+import com.krtky.financetracker.data.llm.LlmClient
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.receipt.ReceiptStore
 import com.krtky.financetracker.data.repository.AccountRepository
+import com.krtky.financetracker.data.sms.TransactionParser
 import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
@@ -32,6 +34,8 @@ class AddCashViewModel @Inject constructor(
     private val locationRepository: LocationRepository,
     private val userPreferences: UserPreferences,
     private val receiptStore: ReceiptStore,
+    private val transactionParser: TransactionParser,
+    private val llmClient: LlmClient,
 ) : ViewModel() {
     val categories = categoriesState(categoryRepository, transactionRepository)
     val funds = fundsState(transactionRepository)
@@ -50,6 +54,24 @@ class AddCashViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val lastUsedPaymentMethod = userPreferences.lastUsedPaymentMethod
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun isLlmReady(): Boolean = llmClient.isConfigured()
+
+    suspend fun parsePastedText(text: String): Result<Transaction> {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return Result.failure(IllegalArgumentException("Paste some text first"))
+        val parsed = transactionParser.parsePastedText(trimmed)
+            ?: return Result.failure(
+                IllegalArgumentException(
+                    if (llmClient.isConfigured()) {
+                        "Could not find an amount or payment in that text"
+                    } else {
+                        "Could not read that text. Set up AI helper in Settings for notes that are not bank-style SMS."
+                    },
+                ),
+            )
+        return Result.success(parsed)
+    }
 
     suspend fun recommendFundForCategory(categoryId: Long?): Long? {
         if (categoryId == null) return null
@@ -74,6 +96,7 @@ class AddCashViewModel @Inject constructor(
         occurredAt: Long = System.currentTimeMillis(),
         receiptLocalUri: Uri? = null,
         splits: List<SplitPart> = emptyList(),
+        source: TransactionSource = TransactionSource.MANUAL,
     ): String? {
         val money = Money.fromRupeesString(amountText) ?: return null
         if (splits.isNotEmpty()) {
@@ -106,7 +129,7 @@ class AddCashViewModel @Inject constructor(
             categoryId = primaryCat,
             fundId = if (splits.isNotEmpty()) null else fundId,
             accountId = resolvedAccountId,
-            source = TransactionSource.MANUAL,
+            source = source,
             note = note.ifBlank { null },
             isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH",
             classificationStatus = if (primaryCat != null || splits.any { it.categoryId != null }) {
