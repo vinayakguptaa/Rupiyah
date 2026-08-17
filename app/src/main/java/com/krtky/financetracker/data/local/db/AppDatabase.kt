@@ -19,6 +19,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
+    // v1 is unsupported (no 1→2). Open path is 2→11; schema JSON from v10.
     version = 11,
     exportSchema = true,
 )

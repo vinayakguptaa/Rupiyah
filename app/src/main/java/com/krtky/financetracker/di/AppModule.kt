@@ -19,6 +19,7 @@ object AppModule {
     fun provideDb(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "finance_tracker.db")
             .addMigrations(
+                // v1 is unsupported: there is no 1→2. Schema export starts at v10.
                 AppDatabase.MIGRATION_2_3,
                 AppDatabase.MIGRATION_3_4,
                 AppDatabase.MIGRATION_4_5,

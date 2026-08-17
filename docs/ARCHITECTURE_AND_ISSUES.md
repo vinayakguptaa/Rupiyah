@@ -13,7 +13,7 @@ Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.f
 - A transaction is the source of truth. Self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId` and are excluded from lifestyle cashflow metrics.
 - Persistence is single-field: one `counterparty`, one `accountId`, one `smsMessageId`; types are `DEBIT` / `CREDIT`. Sources are `SMS` / `MANUAL` / `IMPORT` / `PASTE`. Email ingest is gone.
 - Kotlin types, routes, ViewModels, and the Glance widget now say **Tab**. Room tables stay `funds` / `fund_ledger` and the column stays `fundId` (mapped with `@ColumnInfo`) so v11 installs do not migrate.
-- **Add UX, Home, drill-down, and `Fund`→`Tab` naming are done.** Remaining work is host/write-path size (only if it still hurts) and leftover email-removal hygiene.
+- **Add UX, Home, drill-down, `Fund`→`Tab` naming, and email-removal hygiene are done.** Remaining work is host/write-path size only if it still hurts.
 
 ---
 
@@ -30,7 +30,7 @@ Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.f
 | **Services** | `sms/`, `notification/`, `location/`, `widget/`, `workers/`, `system/` | SMS ingest, classify notifications, optional location, Glance widgets, WorkManager, boot reschedule |
 | **DI** | `di/AppModule.kt` | Provides `AppDatabase` + migrations 2→11 |
 
-Empty leftover: `data/email/` (no sources).
+Email ingest is gone; the empty `data/email/` package is deleted.
 
 ### 2.2 Data flow
 
@@ -98,7 +98,7 @@ Unique: `smsMessageId`, `contentHash`. Non-unique: `externalRefId`, `occurredAt`
 
 ### 3.3 Migrations
 
-Registered in `AppModule`: `2→3` … `10→11`. **No `1→2`.** `fallbackToDestructiveMigrationOnDowngrade()` is set.
+Registered in `AppModule`: `2→3` … `10→11`. **v1 is unsupported** (no `1→2`; commented in `AppModule` / `AppDatabase`). `fallbackToDestructiveMigrationOnDowngrade()` is set.
 
 | Step | Effect |
 | --- | --- |
@@ -208,9 +208,9 @@ A typical merchant SMS names **one** account and stays a debit. The parser canno
 
 ## 6. Remaining issues
 
-Closed this pass: Settings god-file, Detail view-first + edit extract, Add as FAB menu (not a second picker screen), transfer + paste as sheets, pre-create splits removed, paste/share ingest, self-transfer hint from paste, Home tile/ring/trend de-dupe, MonthFlow + AccountDetail drill-down, Digital unassigned bucket, **`Fund`→`Tab` Kotlin/route/widget rename**.
+Closed this pass: Settings god-file, Detail view-first + edit extract, Add as FAB menu (not a second picker screen), transfer + paste as sheets, pre-create splits removed, paste/share ingest, self-transfer hint from paste, Home tile/ring/trend de-dupe, MonthFlow + AccountDetail drill-down, Digital unassigned bucket, **`Fund`→`Tab` Kotlin/route/widget rename**, **email-removal hygiene (6.3)**.
 
-Two open items, in order. Size work stays optional.
+No scheduled major items left. Size work stays optional.
 
 ### 6.1 `Fund` → `Tab` rename — **done**
 
@@ -240,14 +240,12 @@ Left on purpose so existing installs keep working:
 
 Do not slice Home further. Next size cut is `MainActivity` overlay/share state if it grows again, then `TransactionRepository` write vs classify vs ledger. Theme/Sheets/Onboarding are optional and must not block 6.3.
 
-### 6.3 Email-removal leftovers (P3) — **next**
+### 6.3 Email-removal leftovers (P3) — **done**
 
-One small hygiene PR:
-
-- Drop unused `FOREGROUND_SERVICE_DATA_SYNC` (no data-sync foreground service).
-- Delete empty `data/email/`.
-- Fix `SecureStore` comments that still say “email/SMS auto-import”.
-- Record `1→2` as unsupported (or add a no-op) if v1 installs no longer matter. Schema JSON exists only from v10.
+- Dropped unused `FOREGROUND_SERVICE_DATA_SYNC` (location is the only foreground service type).
+- Deleted empty `data/email/`.
+- `SecureStore` comments now say SMS + paste parse (not email).
+- `AppModule` / `AppDatabase` record v1 as unsupported (no `1→2`; schema JSON from v10). No dummy 1→2 no-op — a no-op would lie about the schema.
 
 Parked (not in the two): `recalculateTabLedger` full-table rebuild; `observeAll()` on several screens; optional `osmdroid` / location / camera permission story; unused `AddTransferContent`; LLM `toBank` not applied in `mapExtracted`; `PASTE` not shown in Activity filters.
 
@@ -266,7 +264,7 @@ Parked (not in the two): `recalculateTabLedger` full-table rebuild; `observeAll(
 | P2 Home de-dupe tiles / keep reorder | **Done.** Overview tiles, standalone ring, and 6-month trend block removed. Expenses + Income (category/source). Reorder/spans kept. |
 | MonthFlow + AccountDetail | **Done.** `MonthFlowRoute` / `AccountRoute`. Digital unassigned is a nav sentinel, not a fake account row. |
 | P2 `Fund` → `Tab` rename | **Done.** Kotlin + routes + widget UI. SQL / backup / DataStore / widget receiver unchanged. |
-| P3 `1→2` / drop `FOREGROUND_SERVICE_DATA_SYNC` / empty `data/email/` | **Not started** — now the next item (6.3). |
+| P3 `1→2` / drop `FOREGROUND_SERVICE_DATA_SYNC` / empty `data/email/` | **Done.** v1 documented unsupported; permission and empty package gone. |
 | P3 Leave `recalculateTabLedger` | **Deferred** (intentional). |
 
 Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
@@ -279,17 +277,17 @@ Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-d
 
 1. `Fund` → `Tab` — **done** (Kotlin / routes / widget UI; persistence names kept).
 
-**P3 — Hygiene (next; one PR, mechanical)**
+**P3 — Hygiene**
 
-2. Drop `FOREGROUND_SERVICE_DATA_SYNC` and empty `data/email/`.
-3. Fix leftover comments (`SecureStore` “email/SMS”).
-4. Document `1→2` as unsupported (or add a no-op) in `AppModule` and here.
+2. Drop `FOREGROUND_SERVICE_DATA_SYNC` and empty `data/email/` — **done**.
+3. Fix leftover comments (`SecureStore` “email/SMS”) — **done**.
+4. Document `1→2` as unsupported in `AppModule` / `AppDatabase` — **done**.
 5. Leave `recalculateTabLedger` until a tab has enough rows to hurt.
 
-**P2 — Size (only if something still hurts)**
+**P2 — Size (only if something still hurts; next if a file keeps growing)**
 
 6. Slim `MainActivity` overlay/share state if it grows past the current host role.
-7. Optional later: split `TransactionRepository` (writes vs classify vs ledger). Do not block 6.3.
+7. Optional later: split `TransactionRepository` (writes vs classify vs ledger).
 8. Optional later: split `SheetsSyncService` (HTTP vs table assembly) and slice `OnboardingScreen` by step. Do not block product work on theme files.
 
 **Parked (do not schedule unless a real miss shows up)**
@@ -315,4 +313,4 @@ Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-d
 | Naming | `Tab` in Kotlin / routes / widget UI; SQL tables still `funds` / `fund_ledger` |
 | Security | Encrypted prefs; secrets opt-in on backup; cleartext HTTP blocked; LLM is SMS + paste parse |
 
-**Next:** one hygiene PR (6.3): drop `FOREGROUND_SERVICE_DATA_SYNC`, delete empty `data/email/`, fix `SecureStore` comments, record `1→2` as unsupported. Size work only if the host or write path keeps growing.
+**Next:** no scheduled major item. Size work only if `MainActivity` or `TransactionRepository` keeps growing. Parked items stay parked unless a real miss shows up.

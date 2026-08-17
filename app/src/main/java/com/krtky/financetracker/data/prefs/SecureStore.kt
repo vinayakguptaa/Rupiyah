@@ -42,7 +42,7 @@ class SecureStore @Inject constructor(
 
     /**
      * Master switch for AI parsing.
-     * Bank email / SMS auto-import requires [isLlmReady] (this flag + API key).
+     * SMS auto-import and paste/share parse require [isLlmReady] (this flag + API key).
      * Default: on only if an API key was already saved (existing installs); otherwise off.
      */
     var llmEnabled: Boolean
@@ -55,7 +55,7 @@ class SecureStore @Inject constructor(
             prefs.edit().putBoolean(KEY_LLM_ENABLED, v).apply()
         }
 
-    /** True when AI is turned on and an API key is saved — required for email/SMS auto-import. */
+    /** True when AI is turned on and an API key is saved — required for SMS auto-import and paste parse. */
     fun isLlmReady(): Boolean = llmEnabled && !llmApiKey.isNullOrBlank()
 
     var llmBaseUrl: String
