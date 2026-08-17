@@ -4,7 +4,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.krtky.financetracker.R
-import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.OutlinePillButton
@@ -33,13 +31,13 @@ internal fun HomeRecentSection(
     val scheme = MaterialTheme.colorScheme
     if (!compact) {
         Text(
-            data.selectedCategoryFilter?.categoryName ?: stringResource(R.string.home_recent),
+            stringResource(R.string.home_recent),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
     } else {
         Text(
-            data.selectedCategoryFilter?.categoryName ?: stringResource(R.string.home_recent),
+            stringResource(R.string.home_recent),
             style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,
         )
@@ -48,30 +46,19 @@ internal fun HomeRecentSection(
 
 internal fun LazyListScope.recentActivityItems(
     data: HomeDashboardData,
-    onCategorySelected: (CategorySpend?) -> Unit,
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
     if (data.filtered.isEmpty()) {
         item(key = "recent_empty") {
-            if (data.selectedCategoryFilter != null) {
-                EmptyState(
-                    icon = Icons.Default.FilterAltOff,
-                    title = stringResource(R.string.empty_category_filter_title),
-                    body = stringResource(R.string.empty_category_filter_body),
-                    actionLabel = stringResource(R.string.action_clear_filter),
-                    onAction = { onCategorySelected(null) },
-                )
-            } else {
-                EmptyState(
-                    icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                    title = stringResource(R.string.empty_txns_title),
-                    body = stringResource(R.string.empty_txns_body),
-                    actionLabel = stringResource(R.string.empty_txns_action),
-                    onAction = onAddCash,
-                )
-            }
+            EmptyState(
+                icon = Icons.AutoMirrored.Filled.ReceiptLong,
+                title = stringResource(R.string.empty_txns_title),
+                body = stringResource(R.string.empty_txns_body),
+                actionLabel = stringResource(R.string.empty_txns_action),
+                onAction = onAddCash,
+            )
         }
     } else {
         itemsIndexed(

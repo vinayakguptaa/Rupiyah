@@ -39,9 +39,6 @@
     <string name="empty_txns_title">No transactions yet</string>
     <string name="empty_txns_body">Add your first debit or credit to see it here.</string>
     <string name="empty_txns_action">Add transaction</string>
-    <string name="empty_category_filter_title">Nothing in this category</string>
-    <string name="empty_category_filter_body">No transactions match this filter. Try another slice on the ring.</string>
-    <string name="action_clear_filter">Clear filter</string>
     <string name="empty_funds_title">No tabs yet</string>
     <string name="empty_funds_body">Use a tab for loans, shared trips, or IOUs — not ordinary spends.</string>
     <string name="empty_funds_action">Add tab</string>
@@ -54,6 +51,8 @@
     <string name="empty_categories_title">No spending this month</string>
     <string name="empty_categories_body">Add a transaction to see spend by category.</string>
     <string name="empty_categories_action">Add transaction</string>
+    <string name="empty_income_flow_title">No income this month</string>
+    <string name="empty_income_flow_body">Credits this month will show up here by category or source.</string>
     <string name="split_action">Split</string>
     <string name="split_section_title">Splits</string>
     <string name="split_lines_summary">%1$d lines · separate transactions</string>
@@ -84,19 +83,19 @@
     <string name="home_setup_banks">Add a bank account</string>
     <string name="home_setup_first_txn">Add your first transaction</string>
     <string name="home_setup_dismiss">Dismiss</string>
-    <string name="home_net_this_month">Net this month</string>
-    <string name="home_overview">Overview</string>
-    <string name="home_spending_by_category">Lifestyle by category</string>
-    <string name="home_ring_filter_hint">Tap the ring to filter recent activity</string>
-    <string name="home_no_expenses_yet">No lifestyle spend yet</string>
+    <string name="home_available_balance">Available balance</string>
+    <string name="home_expenses_this_month">Expenses</string>
+    <string name="home_income_this_month">Income</string>
+    <string name="home_cut_category">Category</string>
+    <string name="home_cut_source">Source</string>
+    <string name="home_no_expenses_yet">No expenses this month</string>
+    <string name="home_no_income_yet">No income this month</string>
     <string name="home_recent">Recent</string>
     <string name="home_see_all_activity">See all activity</string>
     <string name="home_spent_label">Spent</string>
     <string name="home_funds_remaining">Open tab balance</string>
     <string name="home_no_funds_hint">No open tabs — tap to add loans or shared pots</string>
-    <string name="home_monthly_flow">Monthly flow</string>
-    <string name="home_monthly_flow_empty">Add debits or credits to build your trend</string>
-    <string name="home_months_count">Last %1$d months</string>
+
     <string name="funds_spent">Debited</string>
     <string name="funds_total">Opening</string>
     <string name="tab_they_owe">They owe you</string>

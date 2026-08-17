@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -23,26 +24,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +44,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -64,39 +57,29 @@ import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.RupiyahTheme
 import com.krtky.financetracker.ui.util.inr
-import kotlin.math.abs
 
 /**
- * Home hero card: large balance, hide-toggle, Income | Expense with month-over-month %.
+ * Home hero card: lifetime available balance, with cash vs digital split.
  */
 @Composable
 fun BalanceHeroCard(
     title: String,
     balance: String,
-    monthLabel: String,
-    incomeLabel: String,
-    incomeValue: String,
-    expenseLabel: String,
-    expenseValue: String,
+    subtitle: String,
     hidden: Boolean,
     onToggleHidden: () -> Unit,
     modifier: Modifier = Modifier,
-    remainingProgress: Float = 0.5f,
-    incomeChangePct: Float? = null,
-    expenseChangePct: Float? = null,
-    lastMonthIncomeLabel: String? = null,
-    lastMonthExpenseLabel: String? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val cardBg = scheme.primaryContainer
     val onCard = scheme.onPrimaryContainer
     val muted = onCard.copy(alpha = 0.78f)
-    val incomeUp = (incomeChangePct ?: 0f) >= 0f
-    val expenseUp = (expenseChangePct ?: 0f) >= 0f
-    var showPeriodInfo by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(28.dp),
         color = cardBg,
     ) {
@@ -121,157 +104,29 @@ fun BalanceHeroCard(
                     maxLines = 1,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { showPeriodInfo = true },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = "About this period",
-                            tint = muted,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = onToggleHidden,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .semantics {
-                                contentDescription = if (hidden) "Show balance" else "Hide balance"
-                            },
-                    ) {
-                        Icon(
-                            if (hidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = null,
-                            tint = onCard.copy(alpha = 0.85f),
-                        )
-                    }
-                }
-            }
-            if (showPeriodInfo) {
-                AlertDialog(
-                    onDismissRequest = { showPeriodInfo = false },
-                    title = { Text("This period") },
-                    text = {
-                        Text(
-                            buildString {
-                                append(monthLabel.ifBlank { "Current month" })
-                                append(". Income and expense compare to the previous month.")
-                                if (lastMonthIncomeLabel != null || lastMonthExpenseLabel != null) {
-                                    append("\n\n")
-                                    lastMonthIncomeLabel?.let { append("Last month income: $it\n") }
-                                    lastMonthExpenseLabel?.let { append("Last month expense: $it") }
-                                }
-                            }.trim(),
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showPeriodInfo = false }) {
-                            Text("Got it")
-                        }
-                    },
-                )
-            }
-            Spacer(Modifier.height(20.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                HeroMetricColumn(
-                    label = incomeLabel,
-                    value = if (hidden) "\u20b9 \u2022\u2022\u2022\u2022" else incomeValue,
-                    changePct = incomeChangePct,
-                    changeUpIsGood = true,
-                    isUp = incomeUp,
-                    comparedLabel = lastMonthIncomeLabel?.let {
-                        if (hidden) "Compared to \u20b9\u2022\u2022\u2022\u2022 last month"
-                        else "Compared to $it last month"
-                    },
-                    onCard = onCard,
-                    muted = muted,
-                    modifier = Modifier.weight(1f),
-                )
-                HeroMetricColumn(
-                    label = expenseLabel,
-                    value = if (hidden) "\u20b9 \u2022\u2022\u2022\u2022" else expenseValue,
-                    changePct = expenseChangePct,
-                    changeUpIsGood = false,
-                    isUp = expenseUp,
-                    comparedLabel = lastMonthExpenseLabel?.let {
-                        if (hidden) "Compared to \u20b9\u2022\u2022\u2022\u2022 last month"
-                        else "Compared to $it last month"
-                    },
-                    onCard = onCard,
-                    muted = muted,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HeroMetricColumn(
-    label: String,
-    value: String,
-    changePct: Float?,
-    changeUpIsGood: Boolean,
-    isUp: Boolean,
-    comparedLabel: String?,
-    onCard: Color,
-    muted: Color,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = muted)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                value,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = onCard,
-                maxLines = 1,
-            )
-            if (changePct != null) {
-                val good = if (changeUpIsGood) isUp else !isUp
-                val cardIsLight = onCard.luminance() < 0.5f
-                val tint = when {
-                    good && cardIsLight -> Color(0xFF0B6B45)
-                    good && !cardIsLight -> Color(0xFF8EE8C0)
-                    !good && cardIsLight -> Color(0xFFB3261E)
-                    else -> Color(0xFFFFB4AB)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                IconButton(
+                    onClick = onToggleHidden,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .semantics {
+                            contentDescription = if (hidden) "Show balance" else "Hide balance"
+                        },
                 ) {
                     Icon(
-                        if (isUp) Icons.AutoMirrored.Filled.TrendingUp
-                        else Icons.AutoMirrored.Filled.TrendingDown,
+                        if (hidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Text(
-                        "${if (isUp) "\u2191" else "\u2193"}${abs(changePct).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = tint,
+                        tint = onCard.copy(alpha = 0.85f),
                     )
                 }
             }
-        }
-        if (comparedLabel != null) {
-            Text(
-                comparedLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = muted.copy(alpha = 0.85f),
-                maxLines = 2,
-            )
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = muted,
+                )
+            }
         }
     }
 }
@@ -475,16 +330,10 @@ fun HomeShimmerSkeleton(modifier: Modifier = Modifier) {
 private fun BalanceHeroCardPreview() {
     RupiyahTheme {
         BalanceHeroCard(
-            title = "Net this month",
+            title = "Available balance",
             balance = "₹12,400.00",
-            monthLabel = "Income − expenses · July",
-            incomeLabel = "Income",
-            incomeValue = "₹40,000.00",
-            expenseLabel = "Expense",
-            expenseValue = "₹27,600.00",
+            subtitle = "Cash ₹2,000.00 · Digital ₹10,400.00",
             hidden = false,
-            incomeChangePct = 4.2f,
-            expenseChangePct = -1.5f,
             onToggleHidden = {},
             modifier = Modifier.padding(16.dp),
         )

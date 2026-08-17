@@ -236,10 +236,26 @@ data class CategorySpend(
     val totalPaise: Long,
 )
 
+/** This-month flow grouped by account (source). */
+data class SourceSpend(
+    val accountId: Long?,
+    val accountName: String,
+    val totalPaise: Long,
+)
+
 data class MonthlyTrend(
     val monthKey: String,
     val incomePaise: Long,
     val expensePaise: Long,
+    val topCategoryId: Long? = null,
+    val topCategoryName: String? = null,
+    val topCategoryPaise: Long = 0L,
 ) {
     val netPaise: Long get() = incomePaise - expensePaise
+    val topCategoryShare: Float
+        get() = if (expensePaise > 0L) {
+            (topCategoryPaise.toFloat() / expensePaise.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
 }

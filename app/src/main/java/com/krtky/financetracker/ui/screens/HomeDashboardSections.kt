@@ -36,7 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.R
-import com.krtky.financetracker.domain.model.CategorySpend
+import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.BalanceHeroCard
 import com.krtky.financetracker.ui.navigation.HomeSection
 import com.krtky.financetracker.ui.navigation.HomeSectionConfig
@@ -52,9 +52,10 @@ internal fun LazyListScope.homeDashboardSections(
     onToggleHidden: () -> Unit,
     onOpenFunds: () -> Unit,
     onOpenAccounts: () -> Unit,
-    onOpenCategories: () -> Unit,
     onOpenExpenseActivity: () -> Unit,
-    onCategorySelected: (CategorySpend?) -> Unit,
+    onOpenCreditActivity: () -> Unit,
+    onOpenCategories: () -> Unit,
+    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit,
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -89,9 +90,10 @@ internal fun LazyListScope.homeDashboardSections(
                         onToggleHidden = onToggleHidden,
                         onOpenFunds = onOpenFunds,
                         onOpenAccounts = onOpenAccounts,
-                        onOpenCategories = onOpenCategories,
                         onOpenExpenseActivity = onOpenExpenseActivity,
-                        onCategorySelected = onCategorySelected,
+                        onOpenCreditActivity = onOpenCreditActivity,
+                        onOpenCategories = onOpenCategories,
+                        onOpenMonthFlow = onOpenMonthFlow,
                         onOpenTxn = onOpenTxn,
                         onAddCash = onAddCash,
                         onOpenHistory = onOpenHistory,
@@ -129,9 +131,10 @@ internal fun LazyListScope.homeDashboardSections(
                             onToggleHidden = onToggleHidden,
                             onOpenFunds = onOpenFunds,
                             onOpenAccounts = onOpenAccounts,
-                            onOpenCategories = onOpenCategories,
                             onOpenExpenseActivity = onOpenExpenseActivity,
-                            onCategorySelected = onCategorySelected,
+                            onOpenCreditActivity = onOpenCreditActivity,
+                            onOpenCategories = onOpenCategories,
+                            onOpenMonthFlow = onOpenMonthFlow,
                             onOpenTxn = onOpenTxn,
                             onAddCash = onAddCash,
                             onOpenHistory = onOpenHistory,
@@ -147,9 +150,10 @@ internal fun LazyListScope.homeDashboardSections(
                             onToggleHidden = onToggleHidden,
                             onOpenFunds = onOpenFunds,
                             onOpenAccounts = onOpenAccounts,
-                            onOpenCategories = onOpenCategories,
                             onOpenExpenseActivity = onOpenExpenseActivity,
-                            onCategorySelected = onCategorySelected,
+                            onOpenCreditActivity = onOpenCreditActivity,
+                            onOpenCategories = onOpenCategories,
+                            onOpenMonthFlow = onOpenMonthFlow,
                             onOpenTxn = onOpenTxn,
                             onAddCash = onAddCash,
                             onOpenHistory = onOpenHistory,
@@ -174,9 +178,10 @@ internal fun LazyListScope.homeDashboardSections(
                             onToggleHidden = onToggleHidden,
                             onOpenFunds = onOpenFunds,
                             onOpenAccounts = onOpenAccounts,
-                            onOpenCategories = onOpenCategories,
                             onOpenExpenseActivity = onOpenExpenseActivity,
-                            onCategorySelected = onCategorySelected,
+                            onOpenCreditActivity = onOpenCreditActivity,
+                            onOpenCategories = onOpenCategories,
+                            onOpenMonthFlow = onOpenMonthFlow,
                             onOpenTxn = onOpenTxn,
                             onAddCash = onAddCash,
                             onOpenHistory = onOpenHistory,
@@ -189,7 +194,6 @@ internal fun LazyListScope.homeDashboardSections(
             if (config.section == HomeSection.RECENT) {
                 recentActivityItems(
                     data = data,
-                    onCategorySelected = onCategorySelected,
                     onOpenTxn = onOpenTxn,
                     onAddCash = onAddCash,
                     onOpenHistory = onOpenHistory,
@@ -206,9 +210,10 @@ internal fun LazyListScope.homeDashboardSections(
                     onToggleHidden = onToggleHidden,
                     onOpenFunds = onOpenFunds,
                     onOpenAccounts = onOpenAccounts,
-                    onOpenCategories = onOpenCategories,
                     onOpenExpenseActivity = onOpenExpenseActivity,
-                    onCategorySelected = onCategorySelected,
+                    onOpenCreditActivity = onOpenCreditActivity,
+                    onOpenCategories = onOpenCategories,
+                    onOpenMonthFlow = onOpenMonthFlow,
                     onOpenTxn = onOpenTxn,
                     onAddCash = onAddCash,
                     onOpenHistory = onOpenHistory,
@@ -218,7 +223,6 @@ internal fun LazyListScope.homeDashboardSections(
             if (config.section == HomeSection.RECENT) {
                 recentActivityItems(
                     data = data,
-                    onCategorySelected = onCategorySelected,
                     onOpenTxn = onOpenTxn,
                     onAddCash = onAddCash,
                     onOpenHistory = onOpenHistory,
@@ -325,9 +329,10 @@ private fun HomeSectionBody(
     onToggleHidden: () -> Unit,
     onOpenFunds: () -> Unit,
     onOpenAccounts: () -> Unit,
-    onOpenCategories: () -> Unit,
     onOpenExpenseActivity: () -> Unit,
-    onCategorySelected: (CategorySpend?) -> Unit,
+    onOpenCreditActivity: () -> Unit,
+    onOpenCategories: () -> Unit,
+    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit,
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -342,18 +347,15 @@ private fun HomeSectionBody(
                 exit = fadeOut(),
             ) {
                 BalanceHeroCard(
-                    title = stringResource(R.string.home_net_this_month),
-                    balance = data.net.inr(),
-                    monthLabel = "Credits − lifestyle · ${data.monthLabel}",
-                    incomeLabel = "Credits",
-                    incomeValue = data.income.inr(),
-                    expenseLabel = "Lifestyle",
-                    expenseValue = data.spent.inr(),
+                    title = stringResource(R.string.home_available_balance),
+                    balance = data.availableBalance.inr(),
+                    subtitle = if (data.isNetHidden) {
+                        "Cash · Digital"
+                    } else {
+                        "Cash ${data.cashBal.inr()} · Digital ${data.digitalBal.inr()}"
+                    },
                     hidden = data.isNetHidden,
-                    incomeChangePct = data.mom.incomePct,
-                    expenseChangePct = data.mom.expensePct,
-                    lastMonthIncomeLabel = data.mom.lastIncomeLabel,
-                    lastMonthExpenseLabel = data.mom.lastExpenseLabel,
+                    onClick = onOpenAccounts,
                     onToggleHidden = {
                         onSelectHaptic()
                         onToggleHidden()
@@ -361,30 +363,54 @@ private fun HomeSectionBody(
                 )
             }
         }
-        HomeSection.OVERVIEW -> {
-            HomeTilesSection(
-                data = data,
-                compact = compact,
-                halfWidth = halfWidth,
-                onOpenFunds = onOpenFunds,
-                onOpenAccounts = onOpenAccounts,
-                onOpenCategories = onOpenCategories,
-                onOpenExpenseActivity = onOpenExpenseActivity,
-            )
-        }
         HomeSection.CATEGORY_RING -> {
-            HomeCategoryRingSection(
-                data = data,
+            HomeFlowBreakdownSection(
+                title = stringResource(R.string.home_expenses_this_month),
+                totalPaise = data.spent,
+                monthLabel = data.monthLabel,
+                hidden = data.isNetHidden,
+                byCategory = data.expenseByCategory,
+                bySource = data.expenseBySource,
+                emptyLabel = stringResource(R.string.home_no_expenses_yet),
                 compact = compact,
                 halfWidth = halfWidth,
-                onCategorySelected = onCategorySelected,
+                onOpenCategoryList = {
+                    onOpenMonthFlow(
+                        TransactionType.DEBIT,
+                        MonthFlowGroup.Category,
+                    )
+                },
+                onOpenSourceList = {
+                    onOpenMonthFlow(
+                        TransactionType.DEBIT,
+                        MonthFlowGroup.Source,
+                    )
+                },
             )
         }
-        HomeSection.MONTHLY_TREND -> {
-            HomeTrendSection(
-                monthlyTrend = data.monthlyTrend,
+        HomeSection.INCOME -> {
+            HomeFlowBreakdownSection(
+                title = stringResource(R.string.home_income_this_month),
+                totalPaise = data.income,
+                monthLabel = data.monthLabel,
+                hidden = data.isNetHidden,
+                byCategory = data.incomeByCategory,
+                bySource = data.incomeBySource,
+                emptyLabel = stringResource(R.string.home_no_income_yet),
                 compact = compact,
                 halfWidth = halfWidth,
+                onOpenCategoryList = {
+                    onOpenMonthFlow(
+                        TransactionType.CREDIT,
+                        MonthFlowGroup.Category,
+                    )
+                },
+                onOpenSourceList = {
+                    onOpenMonthFlow(
+                        TransactionType.CREDIT,
+                        MonthFlowGroup.Source,
+                    )
+                },
             )
         }
         HomeSection.RECENT -> {

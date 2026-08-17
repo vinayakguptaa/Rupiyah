@@ -11,7 +11,6 @@ import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CashflowMetrics
 import com.krtky.financetracker.domain.model.FundBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
-import com.krtky.financetracker.domain.model.MonthlyTrend
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.ui.UiMessenger
 import com.krtky.financetracker.ui.navigation.HomeSection
@@ -86,9 +85,6 @@ class HomeViewModel @Inject constructor(
     val paymentBalances: StateFlow<Map<String, Long>> =
         cashflowRepository.observeAccountBalances()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-
-    val monthlyTrend: StateFlow<List<MonthlyTrend>> = homeCashflow.map { it.monthlyTrend }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val displayName: StateFlow<String> = userPreferences.displayName
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")

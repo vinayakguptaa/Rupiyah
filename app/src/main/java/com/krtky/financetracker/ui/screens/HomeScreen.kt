@@ -1,14 +1,7 @@
 package com.krtky.financetracker.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,21 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
-import androidx.compose.material.icons.filled.FilterAltOff
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -45,45 +30,25 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
-import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.TransactionType
-import com.krtky.financetracker.ui.components.TransactionCard
-import com.krtky.financetracker.ui.components.BalanceHeroCard
-import com.krtky.financetracker.ui.components.CategoryInteractivePieChart
-import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
-import com.krtky.financetracker.ui.components.MonthlyExpenseChart
-import com.krtky.financetracker.ui.components.OutlinePillButton
-import com.krtky.financetracker.ui.components.OverviewTile
-import com.krtky.financetracker.ui.navigation.HomeSection
 import com.krtky.financetracker.ui.theme.Dimens
-import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.NavContentInsets
-import com.krtky.financetracker.ui.util.CategoryIcons
-import com.krtky.financetracker.ui.util.categoryColor
-import com.krtky.financetracker.ui.util.onCategoryColor
-import com.krtky.financetracker.ui.util.formatDateTime
-import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.viewmodel.HomeViewModel
 import java.util.Calendar
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,8 +60,9 @@ fun HomeScreen(
     onOpenAccounts: () -> Unit = {},
     /** Open Activity with Expense type filter. */
     onOpenExpenseActivity: () -> Unit = onOpenHistory,
-    /** Open categories list (spend by category). */
+    onOpenCreditActivity: () -> Unit = onOpenHistory,
     onOpenCategories: () -> Unit = {},
+    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit = { _, _ -> },
     /** Open classify sheet for a pending transaction. */
     onClassifyPending: (String) -> Unit = {},
     /** Open Settings detail (e.g. email). */
@@ -108,7 +74,6 @@ fun HomeScreen(
     val openTabs by vm.openTabs.collectAsStateWithLifecycle()
     val paymentBalances by vm.paymentBalances.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
-    val monthlyTrend by vm.monthlyTrend.collectAsStateWithLifecycle()
     val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val initialLoaded by vm.initialLoaded.collectAsStateWithLifecycle()
     val isNetHidden by vm.hideBalances.collectAsStateWithLifecycle()
@@ -116,18 +81,14 @@ fun HomeScreen(
     val firstPendingId by vm.firstPendingId.collectAsStateWithLifecycle()
     val setupChecklist by vm.setupChecklist.collectAsStateWithLifecycle()
     val sectionLayout by vm.homeSectionLayout.collectAsStateWithLifecycle()
-    var selectedCategoryFilter by remember { mutableStateOf<CategorySpend?>(null) }
     var layoutEditMode by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
 
-    // Home uses lifestyle spend (excl. Investment + self-transfer) and credits
-    val cashflow = homeCashflow.metrics
-    val income = cashflow.creditPaise
-    val spent = cashflow.lifestyleSpendPaise
-    val net = income - spent
+    // This month: every credit/debit except self-transfer and tab-transfer.
+    val income = homeCashflow.summary.incomePaise
+    val spent = homeCashflow.summary.expensePaise
     val fundBalance = openTabs.sumOf { it.balancePaise }
-    val lifestyleCategories = cashflow.lifestyleByCategory.ifEmpty { homeCashflow.categorySpend }
     // Cash mode vs everything else (named banks/wallets + unlabelled Digital)
     val cashBal = paymentBalances.entries
         .firstOrNull { it.key.equals("Cash", ignoreCase = true) }
@@ -136,12 +97,6 @@ fun HomeScreen(
         .filter { !it.key.equals("Cash", ignoreCase = true) }
         .sumOf { it.value }
     val accountsTotal = cashBal + digitalBal
-    val topCategory = lifestyleCategories.maxByOrNull { it.totalPaise }
-    val topCategoryPct = if (spent > 0 && topCategory != null) {
-        ((topCategory.totalPaise * 100.0) / spent).roundToInt()
-    } else {
-        null
-    }
     val displayName by vm.displayName.collectAsStateWithLifecycle()
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greetingBase = when {
@@ -159,31 +114,12 @@ fun HomeScreen(
     val monthLabel = Calendar.getInstance()
         .getDisplayName(Calendar.MONTH, Calendar.LONG, java.util.Locale.getDefault()) ?: "This month"
 
-    // MoM % from monthly trend (current vs previous month)
-    val mom = remember(monthlyTrend, income, spent) {
-        val prev = monthlyTrend.getOrNull(monthlyTrend.lastIndex - 1)
-        val incomePct = prev?.let { pctChange(income, it.incomePaise) }
-        val expensePct = prev?.let { pctChange(spent, it.expensePaise) }
-        val lastInc = prev?.incomePaise?.inr()
-        val lastExp = prev?.expensePaise?.inr()
-        MomMetrics(incomePct, expensePct, lastInc, lastExp)
-    }
-
     var heroVisible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         heroVisible = true
     }
 
-    val filtered = remember(recent, selectedCategoryFilter) {
-        val base = recent.take(6)
-        val sel = selectedCategoryFilter ?: return@remember base
-        base.filter { t ->
-            when {
-                sel.categoryId != null -> t.categoryId == sel.categoryId
-                else -> t.categoryId == null || t.categoryName.equals(sel.categoryName, true)
-            }
-        }
-    }
+    val filtered = remember(recent) { recent.take(6) }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -332,25 +268,20 @@ fun HomeScreen(
                     editMode = layoutEditMode,
                     data = HomeDashboardData(
                         heroVisible = heroVisible,
-                        net = net,
+                        availableBalance = accountsTotal,
                         income = income,
                         spent = spent,
                         monthLabel = monthLabel,
                         isNetHidden = isNetHidden,
-                        mom = mom,
                         funds = openTabs.ifEmpty { funds },
                         fundBalance = fundBalance,
-                        accountsTotal = accountsTotal,
                         cashBal = cashBal,
                         digitalBal = digitalBal,
-                        topCategory = topCategory,
-                        topCategoryPct = topCategoryPct,
-                        categorySpend = lifestyleCategories,
-                        monthlyTrend = monthlyTrend,
+                        expenseByCategory = homeCashflow.categorySpend,
+                        expenseBySource = homeCashflow.expenseBySource,
+                        incomeByCategory = homeCashflow.incomeByCategory,
+                        incomeBySource = homeCashflow.incomeBySource,
                         filtered = filtered,
-                        selectedCategoryFilter = selectedCategoryFilter,
-                        investedPaise = cashflow.investedPaise,
-                        redeemedPaise = cashflow.redeemedPaise,
                     ),
                     onMoveSection = { from, to ->
                         haptics.select()
@@ -363,9 +294,10 @@ fun HomeScreen(
                     onToggleHidden = { vm.setHideBalances(!isNetHidden) },
                     onOpenFunds = onOpenFunds,
                     onOpenAccounts = onOpenAccounts,
-                    onOpenCategories = onOpenCategories,
                     onOpenExpenseActivity = onOpenExpenseActivity,
-                    onCategorySelected = { selectedCategoryFilter = it },
+                    onOpenCreditActivity = onOpenCreditActivity,
+                    onOpenCategories = onOpenCategories,
+                    onOpenMonthFlow = onOpenMonthFlow,
                     onOpenTxn = onOpenTxn,
                     onAddCash = onAddCash,
                     onOpenHistory = onOpenHistory,
@@ -414,9 +346,4 @@ private fun SetupCheckRow(
     }
 }
 
-/** Percent change current vs previous; null if previous is zero and current is zero. */
-private fun pctChange(current: Long, previous: Long): Float? {
-    if (previous == 0L && current == 0L) return 0f
-    if (previous == 0L) return 100f
-    return ((current - previous).toFloat() / previous.toFloat()) * 100f
-}
+

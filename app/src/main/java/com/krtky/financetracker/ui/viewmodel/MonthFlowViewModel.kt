@@ -3,8 +3,10 @@ package com.krtky.financetracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.repository.CashflowRepository
+import com.krtky.financetracker.data.repository.HomeCashflowSnapshot
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.domain.model.CategorySpend
+import com.krtky.financetracker.domain.model.CashflowMetrics
+import com.krtky.financetracker.domain.model.MonthlySummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,19 +17,24 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class CategoriesViewModel @Inject constructor(
+class MonthFlowViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val cashflowRepository: CashflowRepository,
 ) : ViewModel() {
     private val refresh = MutableStateFlow(0)
 
-    val categorySpend: StateFlow<List<CategorySpend>> = refresh.map {
-        cashflowRepository.homeCashflowSnapshot().categorySpend
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    val totalExpense: StateFlow<Long> = categorySpend.map { list ->
-        list.sumOf { it.totalPaise }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    val snapshot: StateFlow<HomeCashflowSnapshot> = refresh.map {
+        cashflowRepository.homeCashflowSnapshot()
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        HomeCashflowSnapshot(
+            MonthlySummary(0, 0),
+            CashflowMetrics(0, 0, 0, 0),
+            emptyList(),
+            emptyList(),
+        ),
+    )
 
     init {
         viewModelScope.launch {

@@ -7,19 +7,15 @@ package com.krtky.financetracker.ui.navigation
  */
 enum class HomeSection(val id: String, val title: String) {
     HERO("hero", "Balance"),
-    OVERVIEW("overview", "Overview"),
-    CATEGORY_RING("category_ring", "Spending by category"),
-    MONTHLY_TREND("monthly_trend", "Monthly flow"),
+    CATEGORY_RING("category_ring", "Expenses"),
+    INCOME("income", "Income"),
     RECENT("recent", "Recent activity"),
     FUNDS_SUMMARY("funds_summary", "Open Tabs"),
     ;
 
     /** Half-width is useful for compact tiles; hero + recent stay full for readability. */
     val allowsHalfWidth: Boolean
-        get() = this == OVERVIEW ||
-            this == CATEGORY_RING ||
-            this == MONTHLY_TREND ||
-            this == FUNDS_SUMMARY
+        get() = this == CATEGORY_RING || this == INCOME || this == FUNDS_SUMMARY
 
     companion object {
         val DEFAULT_ORDER: List<HomeSection> = entries.toList()
@@ -28,7 +24,8 @@ enum class HomeSection(val id: String, val title: String) {
             DEFAULT_ORDER.map { HomeSectionConfig(it, span = 2) }
 
         /**
-         * Parses `hero:2,overview:1,...` or legacy `hero,overview,...` (all span 2).
+         * Parses `hero:2,overview:2,...` or legacy `hero,overview,...` (all span 2).
+         * Unknown ids (e.g. a removed monthly_trend token) are skipped.
          */
         fun parseLayout(raw: String?): List<HomeSectionConfig> {
             if (raw.isNullOrBlank()) return DEFAULT_LAYOUT
