@@ -35,11 +35,11 @@ fun matchesPaymentFilter(txn: Transaction, pay: String): Boolean {
     }
 }
 
-/** Credits only hit the pot when [addToFund] is on; debits always do when fund is set. */
-fun effectiveFundId(type: TransactionType, fundId: Long?, addToFund: Boolean): Long? = when {
-    fundId == null -> null
-    type == TransactionType.DEBIT -> fundId
-    type == TransactionType.CREDIT && addToFund -> fundId
+/** Credits only hit the pot when [addToTab] is on; debits always do when tab is set. */
+fun effectiveTabId(type: TransactionType, tabId: Long?, addToTab: Boolean): Long? = when {
+    tabId == null -> null
+    type == TransactionType.DEBIT -> tabId
+    type == TransactionType.CREDIT && addToTab -> tabId
     else -> null
 }
 
@@ -134,15 +134,15 @@ fun ViewModel.activeBankNamesState(accountRepository: AccountRepository): StateF
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-fun ViewModel.fundsState(transactionRepository: TransactionRepository) =
-    transactionRepository.observeFunds()
+fun ViewModel.tabsState(transactionRepository: TransactionRepository) =
+    transactionRepository.observeTabs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-suspend fun ViewModel.recommendFundForCategory(
+suspend fun ViewModel.recommendTabForCategory(
     transactionRepository: TransactionRepository,
     categoryId: Long?,
 ): Long? {
     if (categoryId == null) return null
-    return transactionRepository.getRecommendedFundForCategory(categoryId)
+    return transactionRepository.getRecommendedTabForCategory(categoryId)
 }
 

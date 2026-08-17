@@ -48,7 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.AmountRupeeField
@@ -72,7 +72,7 @@ import java.util.Date
 internal fun TransactionDetailEdit(
     t: Transaction,
     categories: List<Category>,
-    funds: List<FundBalance>,
+    tabs: List<TabBalance>,
     pickerAccounts: List<Account>,
     defaultDigital: String,
     defaultPay: String,
@@ -82,10 +82,10 @@ internal fun TransactionDetailEdit(
     onCounterparty: (String) -> Unit,
     categoryId: Long?,
     onCategoryId: (Long?) -> Unit,
-    fundId: Long?,
-    onFundId: (Long?) -> Unit,
-    addToFund: Boolean,
-    onAddToFund: (Boolean) -> Unit,
+    tabId: Long?,
+    onTabId: (Long?) -> Unit,
+    addToTab: Boolean,
+    onAddToTab: (Boolean) -> Unit,
     amount: String,
     type: TransactionType,
     onType: (TransactionType) -> Unit,
@@ -95,7 +95,7 @@ internal fun TransactionDetailEdit(
     onUseCurrentLocation: (Boolean) -> Unit,
     displayReceiptUri: Uri?,
     onReceiptChange: (Uri?) -> Unit,
-    recommendedFundId: Long?,
+    recommendedTabId: Long?,
     displayWhen: Long,
     paymentExpanded: Boolean,
     onPaymentExpanded: (Boolean) -> Unit,
@@ -383,7 +383,7 @@ internal fun TransactionDetailEdit(
             }
         }
 
-        if (funds.isNotEmpty()) {
+        if (tabs.isNotEmpty()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -393,16 +393,16 @@ internal fun TransactionDetailEdit(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                val recFundName = recommendedFundId?.let { id ->
-                    funds.firstOrNull { it.fund.id == id }?.fund?.name
+                val recTabName = recommendedTabId?.let { id ->
+                    tabs.firstOrNull { it.tab.id == id }?.tab?.name
                 }
-                if (recFundName != null && fundId == null) {
+                if (recTabName != null && tabId == null) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = scheme.tertiaryContainer,
                     ) {
                         Text(
-                            "Spend from $recFundName",
+                            "Spend from $recTabName",
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
@@ -420,22 +420,22 @@ internal fun TransactionDetailEdit(
                 FormCategoryChip(
                     label = "None",
                     icon = Icons.Default.Delete,
-                    selected = fundId == null,
-                    onClick = { onFundId(null) },
+                    selected = tabId == null,
+                    onClick = { onTabId(null) },
                 )
-                funds.forEach { f ->
+                tabs.forEach { f ->
                     FormCategoryChip(
-                        label = f.fund.name,
+                        label = f.tab.name,
                         icon = Icons.Default.Payments,
-                        selected = fundId == f.fund.id,
+                        selected = tabId == f.tab.id,
                         onClick = {
-                            onFundId(f.fund.id)
-                            onAddToFund(true)
+                            onTabId(f.tab.id)
+                            onAddToTab(true)
                         },
                     )
                 }
             }
-            AnimatedVisibility(visible = type == TransactionType.CREDIT && fundId != null) {
+            AnimatedVisibility(visible = type == TransactionType.CREDIT && tabId != null) {
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = fieldBg,
@@ -449,12 +449,12 @@ internal fun TransactionDetailEdit(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Add to fund balance",
+                            "Add to tab balance",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Switch(
-                            checked = addToFund,
-                            onCheckedChange = onAddToFund,
+                            checked = addToTab,
+                            onCheckedChange = onAddToTab,
                         )
                     }
                 }

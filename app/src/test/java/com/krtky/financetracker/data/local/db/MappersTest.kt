@@ -29,8 +29,8 @@ class MappersTest {
     }
 
     @Test
-    fun `FundEntity toDomain maps correctly`() {
-        val entity = FundEntity(id = 1, name = "Groceries", archived = false, budgetPaise = 50_00_00L)
+    fun `TabEntity toDomain maps correctly`() {
+        val entity = TabEntity(id = 1, name = "Groceries", archived = false, budgetPaise = 50_00_00L)
         val domain = entity.toDomain()
         assertThat(domain.name).isEqualTo("Groceries")
         assertThat(domain.budgetPaise).isEqualTo(50_00_00L)
@@ -38,8 +38,8 @@ class MappersTest {
     }
 
     @Test
-    fun `Fund toEntity maps correctly`() {
-        val domain = Fund(id = 2, name = "Fuel", budgetPaise = 30_00_00L)
+    fun `Tab toEntity maps correctly`() {
+        val domain = Tab(id = 2, name = "Fuel", budgetPaise = 30_00_00L)
         val entity = domain.toEntity()
         assertThat(entity.name).isEqualTo("Fuel")
         assertThat(entity.budgetPaise).isEqualTo(30_00_00L)
@@ -80,13 +80,13 @@ class MappersTest {
         val txn = Transaction(
             id = "txn-3", type = TransactionType.CREDIT, amountPaise = 1_00_00_00L,
             occurredAt = 1_000_000L, source = TransactionSource.SMS, accountName = "HDFC",
-            categoryId = 1, fundId = 2, note = "Salary",
+            categoryId = 1, tabId = 2, note = "Salary",
         )
         val entity = txn.toEntity()
         assertThat(entity.type).isEqualTo("CREDIT")
         assertThat(entity.source).isEqualTo("SMS")
         assertThat(entity.categoryId).isEqualTo(1)
-        assertThat(entity.fundId).isEqualTo(2)
+        assertThat(entity.tabId).isEqualTo(2)
         assertThat(entity.note).isEqualTo("Salary")
     }
 }

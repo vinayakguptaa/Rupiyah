@@ -55,7 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
@@ -72,7 +72,7 @@ private data class SplitDraft(
     val amountText: String = "",
     val categoryId: Long? = null,
     val counterparty: String = "",
-    val fundId: Long? = null,
+    val tabId: Long? = null,
     val note: String = "",
 )
 
@@ -89,7 +89,7 @@ fun SplitTransactionScreen(
     val txn by vm.transaction.collectAsStateWithLifecycle()
     val splits by vm.splits.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val parent = txn
     val parentAmount by vm.parentAmountPaise.collectAsStateWithLifecycle()
 
@@ -129,7 +129,7 @@ fun SplitTransactionScreen(
         parentAmountPaise = parentAmount,
         initialSplits = splits,
         categories = categories,
-        funds = funds,
+        tabs = tabs,
         onBack = onBack,
         allowClear = splits.isNotEmpty(),
         onSave = { lines -> vm.saveSplit(lines) },
@@ -147,7 +147,7 @@ fun SplitEditorScreen(
     parentAmountPaise: Long,
     initialSplits: List<SplitPart>,
     categories: List<Category>,
-    funds: List<FundBalance>,
+    tabs: List<TabBalance>,
     onBack: () -> Unit,
     allowClear: Boolean = false,
     saveLabel: String = "Save splits",
@@ -174,7 +174,7 @@ fun SplitEditorScreen(
                             },
                             categoryId = s.categoryId,
                             counterparty = s.counterparty.orEmpty(),
-                            fundId = s.fundId,
+                            tabId = s.tabId,
                             note = s.note.orEmpty(),
                         ),
                     )
@@ -266,7 +266,7 @@ fun SplitEditorScreen(
                                         amountPaise = amounts[index],
                                         categoryId = d.categoryId,
                                         counterparty = d.counterparty.ifBlank { null },
-                                        fundId = d.fundId,
+                                        tabId = d.tabId,
                                         note = d.note.ifBlank { null },
                                     )
                                 }
@@ -453,7 +453,7 @@ fun SplitEditorScreen(
                                 )
                             }
                         }
-                        if (funds.isNotEmpty()) {
+                        if (tabs.isNotEmpty()) {
                             Text(
                                 "Tab",
                                 style = MaterialTheme.typography.labelMedium,
@@ -466,17 +466,17 @@ fun SplitEditorScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 FilterChip(
-                                    selected = draft.fundId == null,
-                                    onClick = { drafts[index] = draft.copy(fundId = null) },
+                                    selected = draft.tabId == null,
+                                    onClick = { drafts[index] = draft.copy(tabId = null) },
                                     label = { Text("None") },
                                 )
-                                funds.forEach { fb ->
+                                tabs.forEach { fb ->
                                     FilterChip(
-                                        selected = draft.fundId == fb.fund.id,
+                                        selected = draft.tabId == fb.tab.id,
                                         onClick = {
-                                            drafts[index] = draft.copy(fundId = fb.fund.id)
+                                            drafts[index] = draft.copy(tabId = fb.tab.id)
                                         },
-                                        label = { Text(fb.fund.name) },
+                                        label = { Text(fb.tab.name) },
                                     )
                                 }
                             }

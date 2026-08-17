@@ -49,7 +49,7 @@ fun downloadTransactionsCsv(
             String.format(Locale.US, "%.2f", t.amountPaise / 100.0),
             t.counterparty.orEmpty(),
             t.categoryName.orEmpty(),
-            t.fundName.orEmpty(),
+            t.tabName.orEmpty(),
             t.accountName.orEmpty(),
             if (t.isCash) "Cash" else "Digital",
             t.note.orEmpty(),

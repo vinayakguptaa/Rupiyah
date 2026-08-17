@@ -31,10 +31,10 @@ class TransactionFormState(
     var counterparty by mutableStateOf("")
     var note by mutableStateOf("")
     var categoryId by mutableStateOf<Long?>(null)
-    var fundId by mutableStateOf<Long?>(null)
+    var tabId by mutableStateOf<Long?>(null)
 
-    /** For Detail edit this mirrors `addToFund`; for Add it drives the credit-to-tab toggle. */
-    var addToFund by mutableStateOf(true)
+    /** For Detail edit this mirrors `addToTab`; for Add it drives the credit-to-tab toggle. */
+    var addToTab by mutableStateOf(true)
 
     var selectedAccountId by mutableStateOf<Long?>(null)
     var useLocation by mutableStateOf(false)
@@ -98,8 +98,8 @@ class TransactionFormState(
         note = t.note.orEmpty()
         counterparty = t.counterparty.orEmpty()
         categoryId = t.categoryId
-        fundId = t.fundId
-        addToFund = t.fundId != null || t.type == TransactionType.CREDIT
+        tabId = t.tabId
+        addToTab = t.tabId != null || t.type == TransactionType.CREDIT
         amount = "%.2f".format(Locale.US, t.amountPaise / 100.0)
         type = t.type
         selectedAccountId = t.accountId ?: resolveAccountId(t.accountName, t.isCash)
@@ -123,8 +123,8 @@ class TransactionFormState(
         counterparty = ""
         note = ""
         categoryId = null
-        fundId = null
-        addToFund = true
+        tabId = null
+        addToTab = true
         selectedAccountId = null
         useLocation = false
         receiptUri = null

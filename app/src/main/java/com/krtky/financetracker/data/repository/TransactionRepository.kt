@@ -4,8 +4,8 @@ import androidx.room.withTransaction
 import com.krtky.financetracker.data.local.db.AccountEntity
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.CategoryEntity
-import com.krtky.financetracker.data.local.db.FundEntity
-import com.krtky.financetracker.data.local.db.FundLedgerEntity
+import com.krtky.financetracker.data.local.db.TabEntity
+import com.krtky.financetracker.data.local.db.TabLedgerEntity
 import com.krtky.financetracker.data.local.db.PendingClassificationEntity
 import com.krtky.financetracker.data.local.db.SyncOutboxEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
@@ -13,8 +13,8 @@ import com.krtky.financetracker.data.local.db.parseTransactionType
 import com.krtky.financetracker.data.local.db.toDomain
 import com.krtky.financetracker.data.local.db.toEntity
 import com.krtky.financetracker.domain.model.ClassificationStatus
-import com.krtky.financetracker.domain.model.FundBalance
-import com.krtky.financetracker.domain.model.FundEntryType
+import com.krtky.financetracker.domain.model.TabBalance
+import com.krtky.financetracker.domain.model.TabEntryType
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
 import com.krtky.financetracker.domain.model.Transaction
@@ -35,25 +35,25 @@ class TransactionRepository @Inject constructor(
 ) {
     private val txnDao = db.transactionDao()
     private val categoryDao = db.categoryDao()
-    private val fundDao = db.fundDao()
+    private val tabDao = db.tabDao()
     private val accountDao = db.accountDao()
-    private val ledgerDao = db.fundLedgerDao()
+    private val ledgerDao = db.tabLedgerDao()
     private val pendingDao = db.pendingClassificationDao()
     private val outboxDao = db.syncOutboxDao()
 
     private fun mapTxns(
         txns: List<TransactionEntity>,
         cats: List<CategoryEntity>,
-        funds: List<FundEntity>,
+        tabs: List<TabEntity>,
         accounts: List<AccountEntity>,
     ): List<Transaction> {
         val catMap = cats.associate { it.id to it.toDomain() }
-        val fundMap = funds.associate { it.id to it.name }
+        val tabMap = tabs.associate { it.id to it.name }
         val accountMap = accounts.associate { it.id to it.name }
         return txns.map {
             it.toDomain(
                 category = catMap[it.categoryId],
-                fundName = fundMap[it.fundId],
+                tabName = tabMap[it.tabId],
                 accountName = accountMap[it.accountId],
             )
         }
@@ -77,11 +77,11 @@ class TransactionRepository @Inject constructor(
         combine(
             txnDao.observeAll(),
             categoryDao.observeAll(),
-            fundDao.observeActive(),
+            tabDao.observeActive(),
             // All accounts (incl. archived) so history rows keep their account name.
             accountDao.observeAll(),
-        ) { txns, cats, funds, accounts ->
-            mapTxns(txns, cats, funds, accounts)
+        ) { txns, cats, tabs, accounts ->
+            mapTxns(txns, cats, tabs, accounts)
         }
 
     /** Count of transactions awaiting category assignment. */
@@ -99,38 +99,38 @@ class TransactionRepository @Inject constructor(
 
     /**
      * General transaction list. Split parts are standalone rows, so SQL filtering by
-     * category / fund / account just works (parents were soft-deleted at split time).
+     * category / tab / account just works (parents were soft-deleted at split time).
      */
     fun observeFiltered(
         query: String,
         type: TransactionType?,
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         fromTs: Long,
         toTs: Long,
         accountId: Long? = null,
     ): Flow<List<Transaction>> =
         combine(
-            txnDao.observeFiltered(query, type?.name, categoryId, fundId, fromTs, toTs, accountId),
+            txnDao.observeFiltered(query, type?.name, categoryId, tabId, fromTs, toTs, accountId),
             categoryDao.observeAll(),
-            fundDao.observeActive(),
+            tabDao.observeActive(),
             accountDao.observeAll(),
-        ) { txns, cats, funds, accounts ->
-            mapTxns(txns, cats, funds, accounts)
+        ) { txns, cats, tabs, accounts ->
+            mapTxns(txns, cats, tabs, accounts)
         }
 
     /**
-     * Tab activity: rows linked by [fundId]. Self-transfers never sit on tabs
-     * (they have no fundId); tab transfers do.
+     * Tab activity: rows linked by [tabId]. Self-transfers never sit on tabs
+     * (they have no tabId); tab transfers do.
      */
     fun observeForTab(
-        fundId: Long,
+        tabId: Long,
         type: TransactionType?,
         categoryId: Long?,
         fromTs: Long,
         toTs: Long,
     ): Flow<List<Transaction>> =
-        observeFiltered("", type, categoryId, fundId, fromTs, toTs)
+        observeFiltered("", type, categoryId, tabId, fromTs, toTs)
 
     /**
      * Category activity. Pass [categoryId] = null for uncategorized rows.
@@ -149,9 +149,9 @@ class TransactionRepository @Inject constructor(
     suspend fun getById(id: String): Transaction? {
         val e = txnDao.getById(id) ?: return null
         val cat = e.categoryId?.let { categoryDao.getById(it)?.toDomain() }
-        val fund = e.fundId?.let { fundDao.getById(it)?.name }
+        val tab = e.tabId?.let { tabDao.getById(it)?.name }
         val account = e.accountId?.let { accountDao.getById(it)?.name }
-        return e.toDomain(cat, fund, account)
+        return e.toDomain(cat, tab, account)
     }
 
     /**
@@ -162,15 +162,15 @@ class TransactionRepository @Inject constructor(
         combine(
             txnDao.observeAll(),
             categoryDao.observeAll(),
-            fundDao.observeActive(),
+            tabDao.observeActive(),
             accountDao.observeAll(),
-        ) { txns, cats, funds, accounts ->
+        ) { txns, cats, tabs, accounts ->
             val me = txns.firstOrNull { it.id == transactionId } ?: return@combine emptyList()
             val groupId = me.splitGroupId ?: return@combine emptyList()
             mapTxns(
                 txns.filter { it.splitGroupId == groupId },
                 cats,
-                funds,
+                tabs,
                 accounts,
             )
         }
@@ -180,14 +180,14 @@ class TransactionRepository @Inject constructor(
         val me = txnDao.getById(transactionId) ?: return emptyList()
         val groupId = me.splitGroupId ?: return emptyList()
         val cats = categoryDao.getAll().associate { it.id to it.toDomain() }
-        val funds = fundDao.getAll().associate { it.id to it.name }
+        val tabs = tabDao.getAll().associate { it.id to it.name }
         val accounts = accountDao.getAll().associate { it.id to it.name }
         return txnDao.getAllNonDeleted()
             .filter { it.splitGroupId == groupId }
             .map {
                 it.toDomain(
                     category = cats[it.categoryId],
-                    fundName = funds[it.fundId],
+                    tabName = tabs[it.tabId],
                     accountName = accounts[it.accountId],
                 )
             }
@@ -222,10 +222,10 @@ class TransactionRepository @Inject constructor(
 
         val groupId = parent.id
         val existingChildren = txnDao.getAllNonDeleted().filter { it.splitGroupId == groupId }
-        val affectedFunds = (
-            existingChildren.mapNotNull { it.fundId } +
-                listOfNotNull(parent.fundId) +
-                parts.mapNotNull { it.fundId }
+        val affectedTabs = (
+            existingChildren.mapNotNull { it.tabId } +
+                listOfNotNull(parent.tabId) +
+                parts.mapNotNull { it.tabId }
             ).toSet()
 
         db.withTransaction {
@@ -261,7 +261,7 @@ class TransactionRepository @Inject constructor(
                     recordedAt = System.currentTimeMillis(),
                     counterparty = party,
                     categoryId = part.categoryId,
-                    fundId = part.fundId,
+                    tabId = part.tabId,
                     accountId = parent.accountId,
                     isCash = parent.isCash,
                     source = TransactionSource.MANUAL,
@@ -279,16 +279,16 @@ class TransactionRepository @Inject constructor(
                     splitGroupId = groupId,
                     receiptUri = if (index == 0) parent.receiptUri else null,
                 )
-                insertManual(child, addToFund = child.fundId != null)
+                insertManual(child, addToTab = child.tabId != null)
             }
         }
-        affectedFunds.forEach { recalculateFundLedger(it) }
+        affectedTabs.forEach { recalculateTabLedger(it) }
         return Result.success(groupId)
     }
 
     /**
      * Merge a split group back into its parent: soft-delete all parts and restore
-     * the parent row (it keeps its own category / fund / note).
+     * the parent row (it keeps its own category / tab / note).
      */
     suspend fun mergeSplitGroup(transactionId: String): Result<Unit> {
         val target = txnDao.getById(transactionId)
@@ -304,7 +304,7 @@ class TransactionRepository @Inject constructor(
         if (children.isEmpty()) {
             return Result.failure(IllegalArgumentException("No split parts to merge"))
         }
-        val funds = (children.mapNotNull { it.fundId } + listOfNotNull(parent.fundId)).toSet()
+        val tabs = (children.mapNotNull { it.tabId } + listOfNotNull(parent.tabId)).toSet()
 
         db.withTransaction {
             children.forEach { child ->
@@ -333,14 +333,14 @@ class TransactionRepository @Inject constructor(
             if (reopenClassify) scheduleClassification(parent.id)
             enqueueSync(parent.id)
         }
-        funds.forEach { recalculateFundLedger(it) }
+        tabs.forEach { recalculateTabLedger(it) }
         return Result.success(Unit)
     }
 
     /**
      * Combine [ids] into one transaction row. All rows must be the same type and
      * neither a transfer leg nor a split part. The combined row keeps a category /
-     * fund only when every source shares the same value.
+     * tab only when every source shares the same value.
      *
      * @return the new transaction id, or null on validation failure.
      */
@@ -362,8 +362,8 @@ class TransactionRepository @Inject constructor(
         } else {
             null
         }
-        val fundId = if (loaded.map { it.fundId }.distinct().size == 1) {
-            loaded.first().fundId
+        val tabId = if (loaded.map { it.tabId }.distinct().size == 1) {
+            loaded.first().tabId
         } else {
             null
         }
@@ -393,7 +393,7 @@ class TransactionRepository @Inject constructor(
                 recordedAt = System.currentTimeMillis(),
                 counterparty = party,
                 categoryId = categoryId,
-                fundId = fundId,
+                tabId = tabId,
                 accountId = loaded.first().accountId,
                 isCash = isCash,
                 source = TransactionSource.MANUAL,
@@ -404,7 +404,7 @@ class TransactionRepository @Inject constructor(
                     ClassificationStatus.PENDING
                 },
             )
-            val newId = insertManual(merged, addToFund = fundId != null)
+            val newId = insertManual(merged, addToTab = tabId != null)
             loaded.forEach { delete(it.id) }
             newId
         }
@@ -420,11 +420,11 @@ class TransactionRepository @Inject constructor(
     suspend fun insertManualWithSplits(
         txn: Transaction,
         parts: List<SplitPart>,
-        addToFund: Boolean = false,
+        addToTab: Boolean = false,
     ): String = db.withTransaction {
         val groupId = txn.id.ifBlank { UUID.randomUUID().toString() }
         if (parts.isEmpty()) {
-            val id = insertManual(txn.copy(id = groupId), addToFund)
+            val id = insertManual(txn.copy(id = groupId), addToTab)
             return@withTransaction id
         }
         SplitRules.validateSum(txn.amountPaise, parts.map { it.amountPaise })
@@ -446,7 +446,7 @@ class TransactionRepository @Inject constructor(
                 amountPaise = firstPart.amountPaise,
                 counterparty = party,
                 categoryId = firstPart.categoryId,
-                fundId = firstPart.fundId,
+                tabId = firstPart.tabId,
                 note = partNote.ifBlank { null },
                 splitGroupId = groupId,
                 smsMessageId = null,
@@ -458,7 +458,7 @@ class TransactionRepository @Inject constructor(
                     ClassificationStatus.PENDING
                 },
             )
-            insertManual(child, addToFund = child.fundId != null)
+            insertManual(child, addToTab = child.tabId != null)
         }
         parts.drop(1).forEach { part ->
             val party = part.counterparty?.trim()?.takeIf { it.isNotBlank() } ?: partyBase
@@ -472,7 +472,7 @@ class TransactionRepository @Inject constructor(
                 amountPaise = part.amountPaise,
                 counterparty = party,
                 categoryId = part.categoryId,
-                fundId = part.fundId,
+                tabId = part.tabId,
                 note = partNote.ifBlank { null },
                 splitGroupId = groupId,
                 smsMessageId = null,
@@ -484,12 +484,12 @@ class TransactionRepository @Inject constructor(
                     ClassificationStatus.PENDING
                 },
             )
-            insertManual(child, addToFund = child.fundId != null)
+            insertManual(child, addToTab = child.tabId != null)
         }
         firstId
     }
 
-    suspend fun insertManual(txn: Transaction, addToFund: Boolean = false): String {
+    suspend fun insertManual(txn: Transaction, addToTab: Boolean = false): String {
         val id = txn.id.ifBlank { UUID.randomUUID().toString() }
         val now = System.currentTimeMillis()
         val hash = contentHash(txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, "manual-$id")
@@ -502,7 +502,7 @@ class TransactionRepository @Inject constructor(
         ).toEntity()
         val rowId = txnDao.insert(entity)
         if (rowId == -1L) return id
-        handleFundOnInsert(entity.id, entity.fundId, entity.type, entity.amountPaise, addToFund, entity.note)
+        handleTabOnInsert(entity.id, entity.tabId, entity.type, entity.amountPaise, addToTab, entity.note)
         if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
             scheduleClassification(entity.id)
         }
@@ -596,13 +596,13 @@ class TransactionRepository @Inject constructor(
     /** Non-deleted domain transactions for an account (dedupe candidates). */
     suspend fun getForAccount(accountId: Long): List<Transaction> {
         val cats = categoryDao.getAll().associate { it.id to it.toDomain() }
-        val funds = fundDao.getAll().associate { it.id to it.name }
+        val tabs = tabDao.getAll().associate { it.id to it.name }
         val accounts = accountDao.getAll().associate { it.id to it.name }
         return txnDao.getForAccount(accountId).map { e ->
             val cat = e.categoryId?.let { cats[it] }
             e.toDomain(
                 category = cat,
-                fundName = e.fundId?.let { funds[it] },
+                tabName = e.tabId?.let { tabs[it] },
                 accountName = e.accountId?.let { accounts[it] },
             )
         }
@@ -610,7 +610,7 @@ class TransactionRepository @Inject constructor(
 
     suspend fun update(txn: Transaction) {
         val existing = txnDao.getById(txn.id) ?: return
-        val oldFund = existing.fundId
+        val oldTab = existing.tabId
         val updated = txn.copy(
             updatedAt = System.currentTimeMillis(),
             version = existing.version + 1,
@@ -618,14 +618,14 @@ class TransactionRepository @Inject constructor(
             classificationStatus = if (txn.categoryId != null) ClassificationStatus.CLASSIFIED else txn.classificationStatus,
         )
         txnDao.update(updated.toEntity())
-        val fundsToRebuild = mutableSetOf<Long>()
-        if (oldFund != null) fundsToRebuild.add(oldFund)
-        if (updated.fundId != null) fundsToRebuild.add(updated.fundId)
-        if (oldFund != updated.fundId ||
+        val tabsToRebuild = mutableSetOf<Long>()
+        if (oldTab != null) tabsToRebuild.add(oldTab)
+        if (updated.tabId != null) tabsToRebuild.add(updated.tabId)
+        if (oldTab != updated.tabId ||
             existing.amountPaise != updated.amountPaise ||
             existing.type != updated.type.name
         ) {
-            fundsToRebuild.forEach { recalculateFundLedger(it) }
+            tabsToRebuild.forEach { recalculateTabLedger(it) }
         }
         pendingDao.delete(txn.id)
         enqueueSync(txn.id)
@@ -635,7 +635,7 @@ class TransactionRepository @Inject constructor(
         transactionId: String,
         categoryId: Long?,
         note: String?,
-        fundId: Long?,
+        tabId: Long?,
         receiptUri: String? = null,
     ) {
         val existing = txnDao.getById(transactionId) ?: return
@@ -645,15 +645,15 @@ class TransactionRepository @Inject constructor(
             existing.note == note -> existing.note
             else -> "${existing.note} · $note"
         }
-        val newFund = fundId ?: existing.fundId
+        val newTab = tabId ?: existing.tabId
         val newCat = categoryId ?: existing.categoryId
-        val status = if (newCat != null || !mergedNote.isNullOrBlank() || newFund != null) {
+        val status = if (newCat != null || !mergedNote.isNullOrBlank() || newTab != null) {
             if (newCat != null) ClassificationStatus.CLASSIFIED.name else existing.classificationStatus
         } else existing.classificationStatus
         val updated = existing.copy(
             categoryId = newCat,
             note = mergedNote,
-            fundId = newFund,
+            tabId = newTab,
             classificationStatus = status,
             updatedAt = System.currentTimeMillis(),
             version = existing.version + 1,
@@ -661,10 +661,10 @@ class TransactionRepository @Inject constructor(
             receiptUri = receiptUri ?: existing.receiptUri,
         )
         txnDao.update(updated)
-        if (existing.fundId != updated.fundId) {
-            // Rebuild both sides so old fund loses the spend and new fund gains it cleanly
-            if (existing.fundId != null) recalculateFundLedger(existing.fundId)
-            if (updated.fundId != null) recalculateFundLedger(updated.fundId)
+        if (existing.tabId != updated.tabId) {
+            // Rebuild both sides so old tab loses the spend and new tab gains it cleanly
+            if (existing.tabId != null) recalculateTabLedger(existing.tabId)
+            if (updated.tabId != null) recalculateTabLedger(updated.tabId)
         }
         if (newCat != null) pendingDao.delete(transactionId)
         enqueueSync(transactionId)
@@ -678,7 +678,7 @@ class TransactionRepository @Inject constructor(
             existing.kind == TransactionKind.TAB_TRANSFER.name
         if (linkedKind && !groupId.isNullOrBlank()) {
             val legs = txnDao.getByTransferGroup(groupId)
-            val fundsToRebuild = legs.mapNotNull { it.fundId }.toSet()
+            val tabsToRebuild = legs.mapNotNull { it.tabId }.toSet()
             db.withTransaction {
                 for (leg in legs) {
                     ledgerDao.deleteForTransaction(leg.id)
@@ -686,20 +686,20 @@ class TransactionRepository @Inject constructor(
                     pendingDao.delete(leg.id)
                 }
             }
-            fundsToRebuild.forEach { recalculateFundLedger(it) }
+            tabsToRebuild.forEach { recalculateTabLedger(it) }
             legs.forEach { enqueueSync(it.id) }
             return
         }
         ledgerDao.deleteForTransaction(id)
         txnDao.softDelete(id)
-        existing.fundId?.let { recalculateFundLedger(it) }
+        existing.tabId?.let { recalculateTabLedger(it) }
         pendingDao.delete(id)
         enqueueSync(id)
     }
 
     /**
      * Self transfer between owned accounts: debit on [fromAccountId], credit on [toAccountId].
-     * No category / fund / splits. Both legs share [transferGroupId] and kind SELF_TRANSFER.
+     * No category / tab / splits. Both legs share [transferGroupId] and kind SELF_TRANSFER.
      */
     suspend fun createSelfTransfer(
         amountPaise: Long,
@@ -771,11 +771,11 @@ class TransactionRepository @Inject constructor(
         enqueueSync(transactionId)
     }
 
-    suspend fun getRecommendedFundForCategory(categoryId: Long): Long? {
+    suspend fun getRecommendedTabForCategory(categoryId: Long): Long? {
         val txns = txnDao.getAllForCategory(categoryId)
-            .filter { it.fundId != null && it.deletedAt == null }
+            .filter { it.tabId != null && it.deletedAt == null }
         if (txns.isEmpty()) return null
-        return txns.groupBy { it.fundId }
+        return txns.groupBy { it.tabId }
             .maxByOrNull { (_, items) -> items.size }
             ?.key
     }
@@ -789,27 +789,27 @@ class TransactionRepository @Inject constructor(
         txnDao.observeAccountUsage().map { rows -> rows.associate { it.id to it.useCount } }
 
     /**
-     * Open Tab balances (fund table).
+     * Open Tab balances (tab table).
      * balance = opening + debits − credits  (+ they owe you / − you owe them).
-     * Split parts are standalone rows, so each row is counted once against its fund.
+     * Split parts are standalone rows, so each row is counted once against its tab.
      * Self-transfers never sit on tabs.
      */
-    fun observeFunds(): Flow<List<FundBalance>> = combine(
-        fundDao.observeActive(),
+    fun observeTabs(): Flow<List<TabBalance>> = combine(
+        tabDao.observeActive(),
         txnDao.observeAll(),
-    ) { funds, allTxns ->
-        val byFund = allTxns
+    ) { tabs, allTxns ->
+        val byTab = allTxns
             .asSequence()
             .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
-            .filter { it.fundId != null }
-            .groupBy { it.fundId!! }
-        funds.map { fund ->
-            val rows = byFund[fund.id].orEmpty()
+            .filter { it.tabId != null }
+            .groupBy { it.tabId!! }
+        tabs.map { tab ->
+            val rows = byTab[tab.id].orEmpty()
             val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
             val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
-            val opening = fund.budgetPaise.coerceAtLeast(0L)
-            FundBalance(
-                fund = fund.toDomain(),
+            val opening = tab.budgetPaise.coerceAtLeast(0L)
+            TabBalance(
+                tab = tab.toDomain(),
                 balancePaise = opening + debits - credits,
                 creditedPaise = credits,
                 debitedPaise = debits,
@@ -818,50 +818,50 @@ class TransactionRepository @Inject constructor(
         }
     }
 
-    suspend fun addFund(name: String, budgetPaise: Long = 0L): Long {
+    suspend fun addTab(name: String, budgetPaise: Long = 0L): Long {
         val amount = budgetPaise.coerceAtLeast(0L)
-        val id = fundDao.upsert(
-            FundEntity(
+        val id = tabDao.upsert(
+            TabEntity(
                 name = name.trim(),
                 budgetPaise = amount,
             ),
         )
         // Keep ledger aligned (history); display uses budget + transactions only
-        recalculateFundLedger(id)
+        recalculateTabLedger(id)
         return id
     }
 
-    /** Absolute fund amount / limit. Restarts the baseline; txns still apply on top. */
-    suspend fun setFundBudget(fundId: Long, budgetPaise: Long) {
-        val fund = fundDao.getById(fundId) ?: return
+    /** Absolute tab amount / limit. Restarts the baseline; txns still apply on top. */
+    suspend fun setTabBudget(tabId: Long, budgetPaise: Long) {
+        val tab = tabDao.getById(tabId) ?: return
         val amount = budgetPaise.coerceAtLeast(0L)
-        fundDao.update(fund.copy(budgetPaise = amount))
-        recalculateFundLedger(fundId)
+        tabDao.update(tab.copy(budgetPaise = amount))
+        recalculateTabLedger(tabId)
     }
 
-    /** Rebuild every active fund ledger from budget + linked transactions. */
-    suspend fun repairAllFundLedgers() {
-        fundDao.getAll().filter { !it.archived }.forEach { f ->
+    /** Rebuild every active tab ledger from budget + linked transactions. */
+    suspend fun repairAllTabLedgers() {
+        tabDao.getAll().filter { !it.archived }.forEach { f ->
             // If amount was never stored, try to infer from old opening adjustment once
             if (f.budgetPaise <= 0L) {
-                val manuals = ledgerDao.getForFund(f.id)
+                val manuals = ledgerDao.getForTab(f.id)
                     .filter { it.transactionId == null && it.amountPaise > 0 }
                     .minByOrNull { it.id }
                 if (manuals != null) {
-                    fundDao.update(f.copy(budgetPaise = manuals.amountPaise))
+                    tabDao.update(f.copy(budgetPaise = manuals.amountPaise))
                 }
             }
-            recalculateFundLedger(f.id)
+            recalculateTabLedger(f.id)
         }
     }
 
-    suspend fun deleteFund(fundId: Long) {
-        val fund = fundDao.getById(fundId) ?: return
-        fundDao.update(fund.copy(archived = true))
+    suspend fun deleteTab(tabId: Long) {
+        val tab = tabDao.getById(tabId) ?: return
+        tabDao.update(tab.copy(archived = true))
     }
 
     /**
-     * Move open-tab balance from [fromFundId] to [toFundId].
+     * Move open-tab balance from [fromTabId] to [toTabId].
      *
      * Open-tab formula is `opening + debits − credits`, so:
      * - source tab gets a **CREDIT** (balance decreases — less they owe you)
@@ -869,15 +869,15 @@ class TransactionRepository @Inject constructor(
      *
      * Kind is [TransactionKind.TAB_TRANSFER] so these rows never enter lifestyle/credit metrics.
      */
-    suspend fun transferBetweenFunds(
-        fromFundId: Long,
-        toFundId: Long,
+    suspend fun transferBetweenTabs(
+        fromTabId: Long,
+        toTabId: Long,
         amountPaise: Long,
         note: String? = null,
     ) {
-        if (fromFundId == toFundId || amountPaise <= 0L) return
-        val fromName = fundDao.getById(fromFundId)?.name ?: "source"
-        val toName = fundDao.getById(toFundId)?.name ?: "target"
+        if (fromTabId == toTabId || amountPaise <= 0L) return
+        val fromName = tabDao.getById(fromTabId)?.name ?: "source"
+        val toName = tabDao.getById(toTabId)?.name ?: "target"
         val now = System.currentTimeMillis()
         val transferRef = UUID.randomUUID().toString()
         // CREDIT on source reduces open-tab balance; DEBIT on dest increases it.
@@ -886,7 +886,7 @@ class TransactionRepository @Inject constructor(
             type = TransactionType.CREDIT,
             amountPaise = amountPaise,
             occurredAt = now,
-            fundId = fromFundId,
+            tabId = fromTabId,
             source = TransactionSource.MANUAL,
             note = note ?: "Transfer to $toName",
             externalRefId = "fund_transfer_${transferRef}_out",
@@ -899,7 +899,7 @@ class TransactionRepository @Inject constructor(
             type = TransactionType.DEBIT,
             amountPaise = amountPaise,
             occurredAt = now,
-            fundId = toFundId,
+            tabId = toTabId,
             source = TransactionSource.MANUAL,
             note = note ?: "Transfer from $fromName",
             externalRefId = "fund_transfer_${transferRef}_in",
@@ -908,20 +908,20 @@ class TransactionRepository @Inject constructor(
             transferGroupId = transferRef,
         )
         db.withTransaction {
-            insertManual(txnOut, addToFund = true)
-            insertManual(txnIn, addToFund = true)
+            insertManual(txnOut, addToTab = true)
+            insertManual(txnIn, addToTab = true)
         }
     }
 
-    suspend fun creditFundFromIncome(fundId: Long, transactionId: String, amountPaise: Long, note: String?) {
-        val current = ledgerDao.latestBalance(fundId) ?: 0L
+    suspend fun creditTabFromIncome(tabId: Long, transactionId: String, amountPaise: Long, note: String?) {
+        val current = ledgerDao.latestBalance(tabId) ?: 0L
         // Open-tab signs: credit decreases balance (they paid you / settled).
         val after = current - amountPaise
         ledgerDao.insert(
-            FundLedgerEntity(
-                fundId = fundId,
+            TabLedgerEntity(
+                tabId = tabId,
                 transactionId = transactionId,
-                entryType = FundEntryType.CREDIT.name,
+                entryType = TabEntryType.CREDIT.name,
                 amountPaise = amountPaise,
                 balanceAfterPaise = after,
                 note = note,
@@ -932,32 +932,32 @@ class TransactionRepository @Inject constructor(
     /**
      * Ledger rebuild aligned with open-tab formula:
      * `balance = opening + debits − credits`.
-     * Single baseline (= fund amount) + every linked transaction / split part.
+     * Single baseline (= tab amount) + every linked transaction / split part.
      */
-    private suspend fun recalculateFundLedger(fundId: Long) {
-        val fund = fundDao.getById(fundId) ?: return
-        val baseline = fund.budgetPaise.coerceAtLeast(0L)
+    private suspend fun recalculateTabLedger(tabId: Long) {
+        val tab = tabDao.getById(tabId) ?: return
+        val baseline = tab.budgetPaise.coerceAtLeast(0L)
 
-        ledgerDao.deleteAllForFund(fundId)
+        ledgerDao.deleteAllForTab(tabId)
 
         var runningBalance = baseline
         if (baseline > 0L) {
             ledgerDao.insert(
-                FundLedgerEntity(
-                    fundId = fundId,
+                TabLedgerEntity(
+                    tabId = tabId,
                     transactionId = null,
-                    entryType = FundEntryType.ADJUSTMENT.name,
+                    entryType = TabEntryType.ADJUSTMENT.name,
                     amountPaise = baseline,
                     balanceAfterPaise = runningBalance,
-                    note = "Fund amount",
-                    createdAt = fund.createdAt,
+                    note = "Tab amount",
+                    createdAt = tab.createdAt,
                 ),
             )
         }
 
-        // Split parts are standalone rows, so fund linking is a direct row filter.
-        // Scope the scan to this fund's rows instead of the whole transactions table.
-        val hits = txnDao.getAllForFund(fundId)
+        // Split parts are standalone rows, so tab linking is a direct row filter.
+        // Scope the scan to this tab's rows instead of the whole transactions table.
+        val hits = txnDao.getAllForTab(tabId)
             .asSequence()
             .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
             .sortedWith(compareBy({ it.occurredAt }, { it.id }))
@@ -968,13 +968,13 @@ class TransactionRepository @Inject constructor(
             // opening + debits − credits
             runningBalance += if (isCredit) -amount else amount
             ledgerDao.insert(
-                FundLedgerEntity(
-                    fundId = fundId,
+                TabLedgerEntity(
+                    tabId = tabId,
                     transactionId = txn.id,
                     entryType = if (isCredit) {
-                        FundEntryType.CREDIT.name
+                        TabEntryType.CREDIT.name
                     } else {
-                        FundEntryType.DEBIT.name
+                        TabEntryType.DEBIT.name
                     },
                     amountPaise = amount,
                     balanceAfterPaise = runningBalance,
@@ -985,25 +985,25 @@ class TransactionRepository @Inject constructor(
         }
     }
 
-    private suspend fun handleFundOnInsert(
+    private suspend fun handleTabOnInsert(
         transactionId: String,
-        fundId: Long?,
+        tabId: Long?,
         type: String,
         amountPaise: Long,
-        @Suppress("UNUSED_PARAMETER") addToFund: Boolean,
+        @Suppress("UNUSED_PARAMETER") addToTab: Boolean,
         note: String?,
     ) {
-        if (fundId == null) return
-        val current = ledgerDao.latestBalance(fundId) ?: 0L
+        if (tabId == null) return
+        val current = ledgerDao.latestBalance(tabId) ?: 0L
         // Open-tab: debits raise balance (they owe you more), credits lower it.
         when {
             isCreditType(type) -> {
                 val after = current - amountPaise
                 ledgerDao.insert(
-                    FundLedgerEntity(
-                        fundId = fundId,
+                    TabLedgerEntity(
+                        tabId = tabId,
                         transactionId = transactionId,
-                        entryType = FundEntryType.CREDIT.name,
+                        entryType = TabEntryType.CREDIT.name,
                         amountPaise = amountPaise,
                         balanceAfterPaise = after,
                         note = note,
@@ -1013,10 +1013,10 @@ class TransactionRepository @Inject constructor(
             isDebitType(type) -> {
                 val after = current + amountPaise
                 ledgerDao.insert(
-                    FundLedgerEntity(
-                        fundId = fundId,
+                    TabLedgerEntity(
+                        tabId = tabId,
                         transactionId = transactionId,
-                        entryType = FundEntryType.DEBIT.name,
+                        entryType = TabEntryType.DEBIT.name,
                         amountPaise = amountPaise,
                         balanceAfterPaise = after,
                         note = note,

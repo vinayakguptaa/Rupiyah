@@ -18,7 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.ui.util.AppHaptics
@@ -29,7 +29,7 @@ internal fun TransactionDetailSplits(
     t: Transaction,
     splits: List<SplitPart>,
     categories: List<Category>,
-    funds: List<FundBalance>,
+    tabs: List<TabBalance>,
     onOpenSplit: () -> Unit,
     onClearSplits: () -> Unit,
     haptics: AppHaptics,
@@ -96,13 +96,13 @@ internal fun TransactionDetailSplits(
                             Text(
                                 line.counterparty
                                     ?: categories.firstOrNull { it.id == line.categoryId }?.name
-                                    ?: funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name
+                                    ?: tabs.firstOrNull { it.tab.id == line.tabId }?.tab?.name
                                     ?: "Line",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             val bits = buildList {
                                 line.counterparty?.takeIf { it.isNotBlank() }?.let { add(it) }
-                                funds.firstOrNull { it.fund.id == line.fundId }?.fund?.name?.let { add(it) }
+                                tabs.firstOrNull { it.tab.id == line.tabId }?.tab?.name?.let { add(it) }
                                 line.note?.takeIf { it.isNotBlank() }?.let { add(it) }
                             }
                             if (bits.isNotEmpty()) {

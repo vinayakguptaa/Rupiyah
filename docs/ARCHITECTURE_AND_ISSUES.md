@@ -7,12 +7,13 @@
 
 ## 1. Executive summary
 
-Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.financetracker`). Money is recorded in ₹ via **manual spend**, **account-to-account transfer**, **SMS auto-import (LLM-assisted)**, **paste / share-to-AI** (same parser), or **CSV bank-statement import**, then organised under **accounts**, **categories**, **tabs** (open IOUs; code still says `Fund`), and **splits**.
+Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.financetracker`). Money is recorded in ₹ via **manual spend**, **account-to-account transfer**, **SMS auto-import (LLM-assisted)**, **paste / share-to-AI** (same parser), or **CSV bank-statement import**, then organised under **accounts**, **categories**, **tabs** (open IOUs), and **splits**.
 
 - Layering is conventional: UI → ViewModel → Repository → Room/DAO. One Hilt-injected `AppDatabase`.
 - A transaction is the source of truth. Self/tab transfers and split children are ordinary rows linked by `transferGroupId` / `splitGroupId` and are excluded from lifestyle cashflow metrics.
 - Persistence is single-field: one `counterparty`, one `accountId`, one `smsMessageId`; types are `DEBIT` / `CREDIT`. Sources are `SMS` / `MANUAL` / `IMPORT` / `PASTE`. Email ingest is gone.
-- **Add UX, Home, and account/category drill-down are done.** Remaining work is three items: `Fund`→`Tab` naming, host/write-path size, and leftover email-removal hygiene.
+- Kotlin types, routes, ViewModels, and the Glance widget now say **Tab**. Room tables stay `funds` / `fund_ledger` and the column stays `fundId` (mapped with `@ColumnInfo`) so v11 installs do not migrate.
+- **Add UX, Home, drill-down, and `Fund`→`Tab` naming are done.** Remaining work is host/write-path size (only if it still hurts) and leftover email-removal hygiene.
 
 ---
 
@@ -24,7 +25,7 @@ Rupiyah is a single-module, offline-first personal finance tracker (`com.krtky.f
 | --- | --- | --- |
 | **UI** | `ui/` | Compose screens, ViewModels (`StateFlow`), navigation, charts, formatters, theme |
 | **Settings UI** | `ui/screens/settings/` | Per-domain settings (profile, backup, LLM, SMS, location, Sheets, Google auth, categories, banks, dev) |
-| **Domain** | `domain/model/` | Pure types (`Transaction`, `Account`, `Fund`, `Money`, `SplitRules`, `SourceSpend`, …) |
+| **Domain** | `domain/model/` | Pure types (`Transaction`, `Account`, `Tab`, `Money`, `SplitRules`, `SourceSpend`, …) |
 | **Data** | `data/` | Room, repositories, `SecureStore` / DataStore, SMS/paste parser, LLM client, CSV import, Sheets, receipts |
 | **Services** | `sms/`, `notification/`, `location/`, `widget/`, `workers/`, `system/` | SMS ingest, classify notifications, optional location, Glance widgets, WorkManager, boot reschedule |
 | **DI** | `di/AppModule.kt` | Provides `AppDatabase` + migrations 2→11 |
@@ -37,7 +38,7 @@ Empty leftover: `data/email/` (no sources).
 SMS (SmsReceiver)          ─┐
 Paste / share (FAB sheet)  ─┼─► TransactionParser ──┐
 CSV import wizard          ─┤                       ├─► TransactionRepository
-Manual spend (FAB → Add)   ─┘ CsvStatementParser ───┘     (dedupe, classify, fund ledger)
+Manual spend (FAB → Add)   ─┘ CsvStatementParser ───┘     (dedupe, classify, tab ledger)
 Transfer (FAB sheet) ──► createSelfTransfer ────────┘
                                                     │
                                                     ▼
@@ -64,7 +65,7 @@ Transfer (FAB sheet) ──► createSelfTransfer ────────┘
 | Receiver | `sms.SmsReceiver` | `SMS_RECEIVED`; gated by SMS enabled + LLM ready. |
 | Receiver | `system.BootReceiver` | `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` / `USER_PRESENT`; reschedules work. |
 | Receiver | `notification.ClassificationActionReceiver` | Notification actions. |
-| Receivers | `widget.*WidgetReceiver` (×5) | Overview, Transactions, AddButton, Funds, Spending (Glance). |
+| Receivers | `widget.*WidgetReceiver` (×5) | Overview, Transactions, AddButton, Funds (class name kept; UI says Tabs), Spending (Glance). |
 | Service | `location.LocationTrackingService` | Foreground location; started from Settings when enabled. |
 | Provider | `FileProvider`, `InitializationProvider` | Receipts; WorkManager init (default initializer removed). |
 
@@ -80,9 +81,9 @@ Transfer (FAB sheet) ──► createSelfTransfer ────────┘
 | --- | --- |
 | `categories` | Taxonomy (seeded defaults). |
 | `accounts` | Owned ledgers: `kind` BANK / CARD / CASH / WALLET, `openingBalancePaise`, `archived`. |
-| `funds` | Tabs (open IOUs). `budgetPaise` is the envelope / opening figure. |
-| `transactions` | Ledger. String PK; `type`, `amountPaise`, `occurredAt`, `counterparty`, `categoryId`, `fundId`, `accountId`, `source`, `kind`, `transferGroupId`, `splitGroupId`, `smsMessageId`, `externalRefId`, `contentHash`, `deletedAt`, `receiptUri`. |
-| `fund_ledger` | Materialised tab running balance; rebuilt by `recalculateFundLedger`. |
+| `funds` | Tabs (open IOUs). Kotlin `TabEntity` / `TabDao`. `budgetPaise` is the envelope / opening figure. |
+| `transactions` | Ledger. String PK; `type`, `amountPaise`, `occurredAt`, `counterparty`, `categoryId`, `fundId` (Kotlin `tabId`), `accountId`, `source`, `kind`, `transferGroupId`, `splitGroupId`, `smsMessageId`, `externalRefId`, `contentHash`, `deletedAt`, `receiptUri`. |
+| `fund_ledger` | Materialised tab running balance; rebuilt by `recalculateTabLedger`. Kotlin `TabLedgerEntity` / `TabLedgerDao`. |
 | `location_samples` | Optional location history. |
 | `pending_classification` | Queue for `ClassificationWorker`. |
 | `sync_outbox` / `sync_state` | Sheets outbox and cursors. |
@@ -117,9 +118,9 @@ Registered in `AppModule`: `2→3` … `10→11`. **No `1→2`.** `fallbackToDes
 
 ## 4. Screens
 
-Type-safe navigation (`ui/navigation/AppRoutes.kt`). Bottom nav: **Home / Activity / Funds / Settings** (`FloatingBottomNav` dock + side FAB).
+Type-safe navigation (`ui/navigation/AppRoutes.kt`). Bottom nav: **Home / Activity / Tabs / Settings** (`FloatingBottomNav` dock + side FAB). Route ids are `tabs` / `tab`; `destinationFromNavigateExtra` still accepts legacy `funds` and `fund/{id}`.
 
-**Add is not a hub screen.** On Home and Activity the + FAB opens a menu above the dock (56dp chips, grow-from-right). Funds FAB still creates a tab; Settings FAB searches.
+**Add is not a hub screen.** On Home and Activity the + FAB opens a menu above the dock (56dp chips, grow-from-right). Tabs FAB still creates a tab; Settings FAB searches.
 
 | Action | Lands on |
 | --- | --- |
@@ -135,7 +136,7 @@ The old Overview tiles, standalone category ring, and 6-month trend block are go
 
 | Screen | ~Lines | Role |
 | --- | --- | --- |
-| `MainActivity.kt` | 784 | Host, `NavHost`, floating nav + FAB menu, share/paste overlays, theme, onboarding gate |
+| `MainActivity.kt` | 755 | Host, `NavHost`, floating nav + FAB menu, share/paste overlays, theme, onboarding gate |
 | `NavigationComponents.kt` | 347 | Dock + overlay FAB menu (does not reflow the bar) |
 | `HomeScreen.kt` | 349 | Greeting, pending, setup, reorderable dashboard |
 | `HomeDashboardSections.kt` | 430 | Section chrome, span, drag reorder |
@@ -153,7 +154,7 @@ The old Overview tiles, standalone category ring, and 6-month trend block are go
 | `TransactionDetailScreen.kt` | 577 | Host: view-first + dirty/save; edit is `TransactionDetailEdit` |
 | `TransactionDetailEdit.kt` | 508 | Dedicated edit composable |
 | `SplitTransactionScreen.kt` | 510 | Split editor destination |
-| `FundsScreen.kt` / `FundDetailScreen.kt` | 479 / 262 | Tabs list + per-tab activity |
+| `TabsScreen.kt` / `TabDetailScreen.kt` | 464 / 256 | Tabs list + per-tab activity |
 | `AccountsScreen.kt` | 363 | Ledgers, archive, Digital bucket, CSV import entry |
 | `AccountDetailScreen.kt` | 247 | Per-account (or Digital) activity + filters + CSV |
 | `CategoriesScreen.kt` | 23 | Thin wrapper → MonthFlow (expenses × category) |
@@ -164,7 +165,7 @@ The old Overview tiles, standalone category ring, and 6-month trend block are go
 | `OnboardingScreen.kt` | 858 | First-run monolith |
 | `AppearanceSettingsContent.kt` | 369 | Theme studio (still under `ui/screens/`) |
 
-Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add spend and Detail edit). Widgets: Overview, Transactions, Spending, Funds, AddButton.
+Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add spend and Detail edit). Widgets: Overview, Transactions, Spending, Tabs (`TabsWidget`; receiver stays `FundsWidgetReceiver` so home-screen placements survive), AddButton.
 
 ---
 
@@ -174,7 +175,7 @@ Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add spend
 
 | Repository | ~Lines | Role |
 | --- | --- | --- |
-| `TransactionRepository` | 1064 | CRUD, splits, merges, self/tab transfer, fund ledger, dedupe, classify |
+| `TransactionRepository` | 1011 | CRUD, splits, merges, self/tab transfer, tab ledger, dedupe, classify |
 | `CashflowRepository` | 237 | Read-only metrics; `homeCashflowSnapshot` is the single Home/widget/category scan |
 | `AccountRepository` | 252 | Account CRUD, balances, `observeUnassignedDigital`, `syncFromBankList` |
 | `CategoryRepository` | 89 | Seed + CRUD |
@@ -182,7 +183,7 @@ Shared form: `TransactionFormState` + `TransactionFormFields` (used by Add spend
 | `BackupRepository` | 441 | JSON export/import |
 | `LocationRepository` | 74 | Optional stamp + place match (`location/`) |
 
-Accounts created/archived/restored from `AccountsViewModel` call `mirrorBankPrefs()` so Settings `bank_accounts` stays aligned. Cold start in `FinanceApp` still bidirectional-syncs bank names and repairs fund ledgers.
+Accounts created/archived/restored from `AccountsViewModel` call `mirrorBankPrefs()` so Settings `bank_accounts` stays aligned. Cold start in `FinanceApp` still bidirectional-syncs bank names and repairs tab ledgers (`repairAllTabLedgers`).
 
 ### 5.2 Workers (`workers/AppWorkers.kt`)
 
@@ -207,29 +208,39 @@ A typical merchant SMS names **one** account and stays a debit. The parser canno
 
 ## 6. Remaining issues
 
-Closed this pass: Settings god-file, Detail view-first + edit extract, Add as FAB menu (not a second picker screen), transfer + paste as sheets, pre-create splits removed, paste/share ingest, self-transfer hint from paste, Home tile/ring/trend de-dupe, MonthFlow + AccountDetail drill-down, Digital unassigned bucket.
+Closed this pass: Settings god-file, Detail view-first + edit extract, Add as FAB menu (not a second picker screen), transfer + paste as sheets, pre-create splits removed, paste/share ingest, self-transfer hint from paste, Home tile/ring/trend de-dupe, MonthFlow + AccountDetail drill-down, Digital unassigned bucket, **`Fund`→`Tab` Kotlin/route/widget rename**.
 
-Three open items, in order.
+Two open items, in order. Size work stays optional.
 
-### 6.1 `Fund` → `Tab` rename (P1)
+### 6.1 `Fund` → `Tab` rename — **done**
 
-UI copy already says **Tabs**. Types, DAOs, `FundsViewModel`, `FundsWidget`, `fund_ledger`, and route ids still say `Fund`. Mechanical rename (~15 files), no behaviour change. Last user-visible naming debt.
+Kotlin types, files, ViewModels, routes, form fields, and widget UI now say **Tab** (`Tab`, `TabBalance`, `TabEntity`, `TabDao`, `TabsViewModel`, `TabsScreen`, `TabsRoute` / `TabRoute`, `TabsWidget`). No schema bump.
+
+Left on purpose so existing installs keep working:
+
+- Room tables `funds` / `fund_ledger` and column `fundId` (`@ColumnInfo` on `tabId`).
+- Backup JSON keys `"funds"` / `"fundId"`.
+- DataStore key `last_used_fund_id`.
+- Home-section id `funds_summary`.
+- Glance receiver class `FundsWidgetReceiver` (AndroidManifest / existing widgets).
+- `destinationFromNavigateExtra` still accepts `funds` and `fund/{id}`.
+- Google Sheets worksheet title stays `Funds` (QUERY / existing workbooks). Header cell is now `Tab`.
 
 ### 6.2 Host and write-path size (P2)
 
 | File | ~Lines | Why it still matters |
 | --- | --- | --- |
-| `TransactionRepository` | 1064 | Writes + splits + transfers + ledger + dedupe + classify |
-| `ThemeColorPicker` / `Theme.kt` | 1031 / 951 | Theme heavier than the ledger |
-| `SheetsSyncService` | 998 | Client + table assembly + worker glue |
-| `OnboardingScreen` | 858 | First-run monolith |
-| `MainActivity` | 784 | Host + FAB menu + share overlays + new routes; grew this pass |
-| `AddCashScreen` | 705 | Full spend form (no longer a mode picker) |
-| `SettingsViewModel` | 511 | Profile, SMS, theme, LLM, Sheets, location, banks, backup, dev |
+| `TransactionRepository` | 1011 | Writes + splits + transfers + ledger + dedupe + classify |
+| `ThemeColorPicker` / `Theme.kt` | 996 / 887 | Theme heavier than the ledger |
+| `SheetsSyncService` | 963 | Client + table assembly + worker glue |
+| `OnboardingScreen` | 819 | First-run monolith |
+| `MainActivity` | 755 | Host + FAB menu + share overlays + routes |
+| `AddCashScreen` | 676 | Full spend form (no longer a mode picker) |
+| `SettingsViewModel` | 460 | Profile, SMS, theme, LLM, Sheets, location, banks, backup, dev |
 
-Do not slice Home further. Next cut is `MainActivity` overlay state if it grows again, then `TransactionRepository` write vs classify vs ledger. Theme/Sheets/Onboarding are optional and must not block 6.1.
+Do not slice Home further. Next size cut is `MainActivity` overlay/share state if it grows again, then `TransactionRepository` write vs classify vs ledger. Theme/Sheets/Onboarding are optional and must not block 6.3.
 
-### 6.3 Email-removal leftovers (P3)
+### 6.3 Email-removal leftovers (P3) — **next**
 
 One small hygiene PR:
 
@@ -238,7 +249,7 @@ One small hygiene PR:
 - Fix `SecureStore` comments that still say “email/SMS auto-import”.
 - Record `1→2` as unsupported (or add a no-op) if v1 installs no longer matter. Schema JSON exists only from v10.
 
-Parked (not in the three): `recalculateFundLedger` full-table rebuild; `observeAll()` on several screens; optional `osmdroid` / location / camera permission story; unused `AddTransferContent`; LLM `toBank` not applied in `mapExtracted`; `PASTE` not shown in Activity filters.
+Parked (not in the two): `recalculateTabLedger` full-table rebuild; `observeAll()` on several screens; optional `osmdroid` / location / camera permission story; unused `AddTransferContent`; LLM `toBank` not applied in `mapExtracted`; `PASTE` not shown in Activity filters.
 
 ---
 
@@ -254,9 +265,9 @@ Parked (not in the three): `recalculateFundLedger` full-table rebuild; `observeA
 | Self-transfer from AI/paste | **Done (heuristic).** Two owned account names (+ transfer language). Single-account SMS stays a spend. |
 | P2 Home de-dupe tiles / keep reorder | **Done.** Overview tiles, standalone ring, and 6-month trend block removed. Expenses + Income (category/source). Reorder/spans kept. |
 | MonthFlow + AccountDetail | **Done.** `MonthFlowRoute` / `AccountRoute`. Digital unassigned is a nav sentinel, not a fake account row. |
-| P2 `Fund` → `Tab` rename | **Not started** — now the only P1. |
-| P3 `1→2` / drop `FOREGROUND_SERVICE_DATA_SYNC` / empty `data/email/` | **Not started** — bundled as 6.3. |
-| P3 Leave `recalculateFundLedger` | **Deferred** (intentional). |
+| P2 `Fund` → `Tab` rename | **Done.** Kotlin + routes + widget UI. SQL / backup / DataStore / widget receiver unchanged. |
+| P3 `1→2` / drop `FOREGROUND_SERVICE_DATA_SYNC` / empty `data/email/` | **Not started** — now the next item (6.3). |
+| P3 Leave `recalculateTabLedger` | **Deferred** (intentional). |
 
 Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
@@ -266,20 +277,20 @@ Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-d
 
 **P1 — Naming**
 
-1. `Fund` → `Tab` across model + DAO + ViewModel + widget + route ids when convenient (no behaviour change).
+1. `Fund` → `Tab` — **done** (Kotlin / routes / widget UI; persistence names kept).
+
+**P3 — Hygiene (next; one PR, mechanical)**
+
+2. Drop `FOREGROUND_SERVICE_DATA_SYNC` and empty `data/email/`.
+3. Fix leftover comments (`SecureStore` “email/SMS”).
+4. Document `1→2` as unsupported (or add a no-op) in `AppModule` and here.
+5. Leave `recalculateTabLedger` until a tab has enough rows to hurt.
 
 **P2 — Size (only if something still hurts)**
 
-2. Slim `MainActivity` overlay/share state if it grows past the current host role.
-3. Optional later: split `TransactionRepository` (writes vs classify vs ledger). Do not block P1.
-4. Optional later: split `SheetsSyncService` (HTTP vs table assembly) and slice `OnboardingScreen` by step. Do not block product work on theme files.
-
-**P3 — Hygiene (one PR, mechanical)**
-
-5. Drop `FOREGROUND_SERVICE_DATA_SYNC` and empty `data/email/`.
-6. Fix leftover comments (`SecureStore` “email/SMS”).
-7. Document `1→2` as unsupported (or add a no-op) in `AppModule` and here.
-8. Leave `recalculateFundLedger` until a tab has enough rows to hurt.
+6. Slim `MainActivity` overlay/share state if it grows past the current host role.
+7. Optional later: split `TransactionRepository` (writes vs classify vs ledger). Do not block 6.3.
+8. Optional later: split `SheetsSyncService` (HTTP vs table assembly) and slice `OnboardingScreen` by step. Do not block product work on theme files.
 
 **Parked (do not schedule unless a real miss shows up)**
 
@@ -301,7 +312,7 @@ Verify: `./gradlew assembleDebug`. Debug APK: `app/build/outputs/apk/debug/app-d
 | Home | Balance + expenses/income (category or source) + recent + tabs; reorder kept |
 | Drill-down | MonthFlow → CategoryDetail / AccountDetail (incl. Digital unassigned) |
 | Structure | Settings split done; Detail view-first; repo / Sheets / Onboarding / host still large |
-| Naming | Tabs in UI, `Fund` in code |
+| Naming | `Tab` in Kotlin / routes / widget UI; SQL tables still `funds` / `fund_ledger` |
 | Security | Encrypted prefs; secrets opt-in on backup; cleartext HTTP blocked; LLM is SMS + paste parse |
 
-**Next:** `Fund`→`Tab` rename. Then one hygiene PR (6.3). Size work only if the host or write path keeps growing.
+**Next:** one hygiene PR (6.3): drop `FOREGROUND_SERVICE_DATA_SYNC`, delete empty `data/email/`, fix `SecureStore` comments, record `1→2` as unsupported. Size work only if the host or write path keeps growing.

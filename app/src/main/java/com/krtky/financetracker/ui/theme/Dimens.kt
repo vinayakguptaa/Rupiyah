@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Shared layout tokens for Rupiyah tab and stack screens.
  *
- * Prefer these over one-off spacing so Home / Activity / Funds / Settings stay aligned.
+ * Prefer these over one-off spacing so Home / Activity / Tabs / Settings stay aligned.
  * See plan §3.1 — design tokens.
  */
 object Dimens {

@@ -43,8 +43,8 @@ class FinanceApp : Application(), Configuration.Provider {
             if (active.joinToString(",") != banks.joinToString(",")) {
                 userPreferences.setBankAccounts(active.joinToString(","))
             }
-            // Rebuild fund ledgers after a migration (split parents are now child rows).
-            runCatching { transactionRepository.repairAllFundLedgers() }
+            // Rebuild tab ledgers after a migration (split parents are now child rows).
+            runCatching { transactionRepository.repairAllTabLedgers() }
             // Email ingest removed from product path — SMS + CSV + manual only.
             // Prime widgets on cold start so they are not stuck on empty chrome.
             runCatching {

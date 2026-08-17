@@ -9,15 +9,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class FundsViewModel @Inject constructor(
+class TabsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
 ) : ViewModel() {
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
 
     init {
         // One-shot ledger repair: restore wiped openings and re-link txn debits/credits
         viewModelScope.launch {
-            runCatching { transactionRepository.repairAllFundLedgers() }
+            runCatching { transactionRepository.repairAllTabLedgers() }
         }
     }
 
@@ -25,16 +25,16 @@ class FundsViewModel @Inject constructor(
         if (name.isBlank()) return
         val opening = Money.fromRupeesString(openingAmountText)
         val amount = opening?.paise?.coerceAtLeast(0L) ?: 0L
-        transactionRepository.addFund(name.trim(), budgetPaise = amount)
+        transactionRepository.addTab(name.trim(), budgetPaise = amount)
     }
 
-    /** Set fund amount absolutely (restarts baseline; linked txns still apply). */
-    suspend fun adjust(fundId: Long, amountText: String) {
+    /** Set tab amount absolutely (restarts baseline; linked txns still apply). */
+    suspend fun adjust(tabId: Long, amountText: String) {
         val money = Money.fromRupeesString(amountText) ?: return
-        transactionRepository.setFundBudget(fundId, money.paise.coerceAtLeast(0L))
+        transactionRepository.setTabBudget(tabId, money.paise.coerceAtLeast(0L))
     }
 
-    suspend fun delete(fundId: Long) {
-        transactionRepository.deleteFund(fundId)
+    suspend fun delete(tabId: Long) {
+        transactionRepository.deleteTab(tabId)
     }
 }

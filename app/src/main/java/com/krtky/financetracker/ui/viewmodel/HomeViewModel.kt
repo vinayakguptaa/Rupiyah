@@ -9,7 +9,7 @@ import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.HomeCashflowSnapshot
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CashflowMetrics
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.ui.UiMessenger
@@ -69,11 +69,11 @@ class HomeViewModel @Inject constructor(
         ),
     )
 
-    val funds: StateFlow<List<FundBalance>> = transactionRepository.observeFunds()
+    val tabs: StateFlow<List<TabBalance>> = transactionRepository.observeTabs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Open tabs only (non-zero balance), for Home strip. */
-    val openTabs: StateFlow<List<FundBalance>> = funds
+    val openTabs: StateFlow<List<TabBalance>> = tabs
         .map { list -> list.filter { it.balancePaise != 0L } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -137,7 +137,7 @@ class HomeViewModel @Inject constructor(
         }
         // Refresh widgets when home data changes (and once on open).
         viewModelScope.launch {
-            combine(homeCashflow, recent, funds) { _, _, _ -> }
+            combine(homeCashflow, recent, tabs) { _, _, _ -> }
                 .collect {
                     WidgetUpdater.refreshAll(context)
                 }

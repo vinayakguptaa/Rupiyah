@@ -93,9 +93,9 @@ fun TransactionsScreen(
     val type by vm.typeFilter.collectAsStateWithLifecycle()
     val payment by vm.paymentFilter.collectAsStateWithLifecycle()
     val categoryId by vm.categoryFilter.collectAsStateWithLifecycle()
-    val fundId by vm.fundFilter.collectAsStateWithLifecycle()
+    val tabId by vm.tabFilter.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val bankAccounts by vm.bankAccounts.collectAsStateWithLifecycle()
     val sortOrder by vm.sortOrder.collectAsStateWithLifecycle()
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
@@ -253,9 +253,9 @@ fun TransactionsScreen(
                     com.krtky.financetracker.ui.components.CategoryFilterOption(it.id, it.name)
                 },
                 bankAccounts = bankAccounts,
-                fundId = fundId,
-                funds = funds.map {
-                    com.krtky.financetracker.ui.components.FundFilterOption(it.fund.id, it.fund.name)
+                tabId = tabId,
+                tabs = tabs.map {
+                    com.krtky.financetracker.ui.components.TabFilterOption(it.tab.id, it.tab.name)
                 },
                 timeRange = timeRange,
                 customFromMillis = customFrom,
@@ -272,9 +272,9 @@ fun TransactionsScreen(
                     haptics.select()
                     vm.setPayment(it)
                 },
-                onFundChange = {
+                onTabChange = {
                     haptics.select()
-                    vm.setFund(it)
+                    vm.setTab(it)
                 },
                 onTimeRangeChange = {
                     haptics.select()
@@ -378,7 +378,7 @@ fun TransactionsScreen(
                                 t.occurredAt.formatDateTime(),
                                 t.categoryName,
                                 t.note?.take(32),
-                                t.fundName,
+                                t.tabName,
                                 t.accountName,
                             ).joinToString(" · "),
                             amount = "$sign${t.amountPaise.inr()}",

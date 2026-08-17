@@ -20,8 +20,8 @@ data object HomeRoute
 data object TransactionsRoute
 
 @Serializable
-@SerialName("funds")
-data object FundsRoute
+@SerialName("tabs")
+data object TabsRoute
 
 @Serializable
 @SerialName("settings")
@@ -61,8 +61,8 @@ data class TxnRoute(val id: String)
 data class SplitRoute(val id: String)
 
 @Serializable
-@SerialName("fund")
-data class FundRoute(val id: Long)
+@SerialName("tab")
+data class TabRoute(val id: Long)
 
 @Serializable
 @SerialName("category")
@@ -94,15 +94,15 @@ data class SettingsSectionRoute(val section: String)
 object MainTabs {
     const val HOME = "home"
     const val TRANSACTIONS = "transactions"
-    const val FUNDS = "funds"
+    const val TABS = "tabs"
     const val SETTINGS = "settings"
 
-    val all = listOf(HOME, TRANSACTIONS, FUNDS, SETTINGS)
+    val all = listOf(HOME, TRANSACTIONS, TABS, SETTINGS)
 
     fun routeObject(tab: String): Any = when (tab) {
         HOME -> HomeRoute
         TRANSACTIONS -> TransactionsRoute
-        FUNDS -> FundsRoute
+        TABS -> TabsRoute
         SETTINGS -> SettingsRoute
         else -> HomeRoute
     }
@@ -112,7 +112,7 @@ object MainTabs {
 fun destinationFromNavigateExtra(raw: String): Any? = when (raw) {
     MainTabs.HOME, "home" -> HomeRoute
     MainTabs.TRANSACTIONS, "transactions" -> TransactionsRoute
-    MainTabs.FUNDS, "funds" -> FundsRoute
+    MainTabs.TABS, "tabs", "funds" -> TabsRoute
     MainTabs.SETTINGS, "settings" -> SettingsRoute
     "add_cash", "add-cash" -> AddCashRoute
     "accounts" -> AccountsRoute
@@ -120,7 +120,8 @@ fun destinationFromNavigateExtra(raw: String): Any? = when (raw) {
     else -> when {
         raw.startsWith("txn/split/") -> SplitRoute(raw.removePrefix("txn/split/"))
         raw.startsWith("txn/") -> TxnRoute(raw.removePrefix("txn/"))
-        raw.startsWith("fund/") -> raw.removePrefix("fund/").toLongOrNull()?.let { FundRoute(it) }
+        raw.startsWith("tab/") -> raw.removePrefix("tab/").toLongOrNull()?.let { TabRoute(it) }
+        raw.startsWith("fund/") -> raw.removePrefix("fund/").toLongOrNull()?.let { TabRoute(it) }
         raw.startsWith("settings/") -> SettingsSectionRoute(raw.removePrefix("settings/"))
         else -> null
     }

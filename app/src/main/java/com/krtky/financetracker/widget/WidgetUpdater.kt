@@ -17,7 +17,7 @@ object WidgetUpdater {
             runCatching { OverviewWidget().updateAll(app) }
             runCatching { TransactionsWidget().updateAll(app) }
             runCatching { AddButtonWidget().updateAll(app) }
-            runCatching { FundsWidget().updateAll(app) }
+            runCatching { TabsWidget().updateAll(app) }
             runCatching { SpendingWidget().updateAll(app) }
         }
     }

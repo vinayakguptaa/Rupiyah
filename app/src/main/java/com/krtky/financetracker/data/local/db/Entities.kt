@@ -1,5 +1,6 @@
 package com.krtky.financetracker.data.local.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -28,7 +29,7 @@ data class AccountEntity(
 )
 
 @Entity(tableName = "funds")
-data class FundEntity(
+data class TabEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val archived: Boolean = false,
@@ -62,7 +63,7 @@ data class TransactionEntity(
     val recordedAt: Long,
     val counterparty: String? = null,
     val categoryId: Long? = null,
-    val fundId: Long? = null,
+    @ColumnInfo(name = "fundId") val tabId: Long? = null,
     val accountId: Long? = null,
     val source: String,
     val note: String? = null,
@@ -93,9 +94,9 @@ data class TransactionEntity(
 )
 
 @Entity(tableName = "fund_ledger")
-data class FundLedgerEntity(
+data class TabLedgerEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val fundId: Long,
+    @ColumnInfo(name = "fundId") val tabId: Long,
     val transactionId: String? = null,
     val entryType: String,
     val amountPaise: Long,

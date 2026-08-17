@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
@@ -58,7 +58,7 @@ import com.krtky.financetracker.ui.util.mapsUri
 internal fun TransactionDetailView(
     t: Transaction,
     categories: List<Category>,
-    funds: List<FundBalance>,
+    tabs: List<TabBalance>,
     splits: List<SplitPart>,
     existingReceiptUri: Uri?,
     context: Context,
@@ -76,7 +76,7 @@ internal fun TransactionDetailView(
         else -> "Digital"
     }
     val categoryName = t.categoryName ?: categories.firstOrNull { it.id == t.categoryId }?.name
-    val fundName = funds.firstOrNull { it.fund.id == t.fundId }?.fund?.name
+    val tabName = tabs.firstOrNull { it.tab.id == t.tabId }?.tab?.name
 
     Column(
         modifier
@@ -133,18 +133,18 @@ internal fun TransactionDetailView(
             receiptUri = existingReceiptUri,
             context = context,
         )
-        if (fundName != null) {
+        if (tabName != null) {
             InfoRow(
                 icon = Icons.Default.AccountBalance,
                 label = "Tab",
-                value = fundName,
+                value = tabName,
             )
         }
         TransactionDetailSplits(
             t = t,
             splits = splits,
             categories = categories,
-            funds = funds,
+            tabs = tabs,
             onOpenSplit = onOpenSplit,
             onClearSplits = onClearSplits,
             haptics = haptics,

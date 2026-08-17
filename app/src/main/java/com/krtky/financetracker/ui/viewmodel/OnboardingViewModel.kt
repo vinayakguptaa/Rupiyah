@@ -23,8 +23,8 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.double
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.CategoryEntity
-import com.krtky.financetracker.data.local.db.FundEntity
-import com.krtky.financetracker.data.local.db.FundLedgerEntity
+import com.krtky.financetracker.data.local.db.TabEntity
+import com.krtky.financetracker.data.local.db.TabLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
 import com.krtky.financetracker.ui.theme.ThemeMode
 import com.krtky.financetracker.ui.theme.ThemePreset
@@ -195,8 +195,8 @@ class OnboardingViewModel @Inject constructor(
                         }
                         jsonObj["funds"]?.jsonArray?.forEach { item ->
                             val obj = item.jsonObject
-                            val fundId = db.fundDao().upsert(
-                                FundEntity(
+                            val tabId = db.tabDao().upsert(
+                                TabEntity(
                                     id = obj["id"]?.jsonPrimitive?.long ?: 0L,
                                     name = obj["name"]?.jsonPrimitive?.content.orEmpty(),
                                     archived = obj["archived"]?.jsonPrimitive?.boolean ?: false,
@@ -205,9 +205,9 @@ class OnboardingViewModel @Inject constructor(
                             )
                             obj["ledger"]?.jsonArray?.forEach { led ->
                                 val lObj = led.jsonObject
-                                db.fundLedgerDao().insert(
-                                    FundLedgerEntity(
-                                        fundId = fundId,
+                                db.tabLedgerDao().insert(
+                                    TabLedgerEntity(
+                                        tabId = tabId,
                                         entryType = lObj["entryType"]?.jsonPrimitive?.content ?: "ADJUSTMENT",
                                         amountPaise = lObj["amountPaise"]?.jsonPrimitive?.long ?: 0L,
                                         balanceAfterPaise = lObj["balanceAfterPaise"]?.jsonPrimitive?.long ?: 0L,
@@ -234,7 +234,7 @@ class OnboardingViewModel @Inject constructor(
                                     recordedAt = obj["recordedAt"]?.jsonPrimitive?.long ?: System.currentTimeMillis(),
                                     counterparty = obj["counterparty"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
                                     categoryId = catId,
-                                    fundId = fId,
+                                    tabId = fId,
                                     source = obj["source"]?.jsonPrimitive?.content ?: "MANUAL",
                                     note = obj["note"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
                                     isCash = obj["isCash"]?.jsonPrimitive?.boolean ?: false,

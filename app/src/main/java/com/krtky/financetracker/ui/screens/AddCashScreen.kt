@@ -92,7 +92,7 @@ fun AddCashScreen(
     vm: AddCashViewModel = hiltViewModel(),
 ) {
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val defaultPay by vm.defaultPaymentMethod.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
@@ -113,13 +113,13 @@ fun AddCashScreen(
     var showTransferSheet by remember { mutableStateOf(false) }
     var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var recommendedFundId by remember { mutableStateOf<Long?>(null) }
+    var recommendedTabId by remember { mutableStateOf<Long?>(null) }
     var appliedLastUsed by remember { mutableStateOf(false) }
     var transferAmount by remember { mutableStateOf(initialAmount) }
     val scope = rememberCoroutineScope()
 
     val lastCategory by vm.lastUsedCategoryId.collectAsStateWithLifecycle()
-    val lastFund by vm.lastUsedFundId.collectAsStateWithLifecycle()
+    val lastTab by vm.lastUsedTabId.collectAsStateWithLifecycle()
     val lastPayment by vm.lastUsedPaymentMethod.collectAsStateWithLifecycle()
 
     LaunchedEffect(formState.showAmountPad) {
@@ -173,18 +173,18 @@ fun AddCashScreen(
     }
 
     LaunchedEffect(formState.categoryId) {
-        val rec = formState.categoryId?.let { vm.recommendFundForCategory(it) }
-        recommendedFundId = rec
+        val rec = formState.categoryId?.let { vm.recommendTabForCategory(it) }
+        recommendedTabId = rec
     }
 
-    LaunchedEffect(lastCategory, lastFund, categories, funds, reviewFromAi) {
+    LaunchedEffect(lastCategory, lastTab, categories, tabs, reviewFromAi) {
         if (appliedLastUsed || reviewFromAi) return@LaunchedEffect
         if (lastCategory != null && categories.any { it.id == lastCategory }) {
             formState.categoryId = lastCategory
         }
-        if (lastFund != null && funds.any { it.fund.id == lastFund }) {
-            formState.fundId = lastFund
-            formState.addToFund = true
+        if (lastTab != null && tabs.any { it.tab.id == lastTab }) {
+            formState.tabId = lastTab
+            formState.addToTab = true
         }
         appliedLastUsed = true
     }
@@ -261,13 +261,13 @@ fun AddCashScreen(
                                     amountText = formState.amount,
                                     type = formState.type,
                                     categoryId = formState.categoryId,
-                                    fundId = formState.fundId,
+                                    tabId = formState.tabId,
                                     note = formState.note,
                                     counterparty = formState.counterparty,
                                     paymentMethod = method,
                                     accountId = formState.selectedAccountId,
                                     useLocation = formState.useLocation,
-                                    addToFund = formState.addToFund,
+                                    addToTab = formState.addToTab,
                                     occurredAt = whenMs,
                                     receiptLocalUri = formState.receiptUri,
                                     source = saveSource,
@@ -524,8 +524,8 @@ fun AddCashScreen(
                             title = "More",
                             subtitle = buildString {
                                 val bits = mutableListOf<String>()
-                                if (formState.fundId != null) {
-                                    bits += funds.firstOrNull { it.fund.id == formState.fundId }?.fund?.name ?: "Tab"
+                                if (formState.tabId != null) {
+                                    bits += tabs.firstOrNull { it.tab.id == formState.tabId }?.tab?.name ?: "Tab"
                                 }
                                 if (formState.useLocation) bits += "Location"
                                 append(bits.joinToString(" · ").ifBlank { "Tab, location" })
@@ -543,7 +543,7 @@ fun AddCashScreen(
                             exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                if (funds.isNotEmpty()) {
+                                if (tabs.isNotEmpty()) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -554,16 +554,16 @@ fun AddCashScreen(
                                             fontWeight = FontWeight.SemiBold,
                                             color = scheme.onSurface,
                                         )
-                                        val recFundName = recommendedFundId?.let { id ->
-                                            funds.firstOrNull { it.fund.id == id }?.fund?.name
+                                        val recTabName = recommendedTabId?.let { id ->
+                                            tabs.firstOrNull { it.tab.id == id }?.tab?.name
                                         }
-                                        if (recFundName != null && formState.fundId == null) {
+                                        if (recTabName != null && formState.tabId == null) {
                                             Surface(
                                                 shape = RoundedCornerShape(12.dp),
                                                 color = scheme.tertiaryContainer,
                                             ) {
                                                 Text(
-                                                    "Spend from $recFundName",
+                                                    "Spend from $recTabName",
                                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.SemiBold,
@@ -581,26 +581,26 @@ fun AddCashScreen(
                                         FormCategoryChip(
                                             label = "None",
                                             icon = Icons.Default.Clear,
-                                            selected = formState.fundId == null,
-                                            onClick = { formState.fundId = null },
+                                            selected = formState.tabId == null,
+                                            onClick = { formState.tabId = null },
                                         )
-                                        funds.forEach { f ->
+                                        tabs.forEach { f ->
                                             FormCategoryChip(
-                                                label = f.fund.name,
+                                                label = f.tab.name,
                                                 icon = Icons.Default.Payments,
-                                                selected = formState.fundId == f.fund.id,
+                                                selected = formState.tabId == f.tab.id,
                                                 onClick = {
-                                                    formState.fundId = f.fund.id
-                                                    formState.addToFund = true
+                                                    formState.tabId = f.tab.id
+                                                    formState.addToTab = true
                                                 },
                                             )
                                         }
                                     }
-                                    AnimatedVisibility(visible = formState.type == TransactionType.CREDIT && formState.fundId != null) {
+                                    AnimatedVisibility(visible = formState.type == TransactionType.CREDIT && formState.tabId != null) {
                                         FormToggleRow(
                                             title = "Apply credit to tab balance",
-                                            checked = formState.addToFund,
-                                            onCheckedChange = { formState.addToFund = it },
+                                            checked = formState.addToTab,
+                                            onCheckedChange = { formState.addToTab = it },
                                         )
                                     }
                                 }

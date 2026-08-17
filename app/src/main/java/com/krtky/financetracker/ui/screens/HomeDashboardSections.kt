@@ -50,7 +50,7 @@ internal fun LazyListScope.homeDashboardSections(
     onMoveSection: (from: Int, to: Int) -> Unit,
     onToggleSpan: (HomeSection) -> Unit,
     onToggleHidden: () -> Unit,
-    onOpenFunds: () -> Unit,
+    onOpenTabs: () -> Unit,
     onOpenAccounts: () -> Unit,
     onOpenExpenseActivity: () -> Unit,
     onOpenCreditActivity: () -> Unit,
@@ -88,7 +88,7 @@ internal fun LazyListScope.homeDashboardSections(
                         compact = true,
                         halfWidth = config.effectiveSpan == 1,
                         onToggleHidden = onToggleHidden,
-                        onOpenFunds = onOpenFunds,
+                        onOpenTabs = onOpenTabs,
                         onOpenAccounts = onOpenAccounts,
                         onOpenExpenseActivity = onOpenExpenseActivity,
                         onOpenCreditActivity = onOpenCreditActivity,
@@ -129,7 +129,7 @@ internal fun LazyListScope.homeDashboardSections(
                             compact = false,
                             halfWidth = true,
                             onToggleHidden = onToggleHidden,
-                            onOpenFunds = onOpenFunds,
+                            onOpenTabs = onOpenTabs,
                             onOpenAccounts = onOpenAccounts,
                             onOpenExpenseActivity = onOpenExpenseActivity,
                             onOpenCreditActivity = onOpenCreditActivity,
@@ -148,7 +148,7 @@ internal fun LazyListScope.homeDashboardSections(
                             compact = false,
                             halfWidth = true,
                             onToggleHidden = onToggleHidden,
-                            onOpenFunds = onOpenFunds,
+                            onOpenTabs = onOpenTabs,
                             onOpenAccounts = onOpenAccounts,
                             onOpenExpenseActivity = onOpenExpenseActivity,
                             onOpenCreditActivity = onOpenCreditActivity,
@@ -176,7 +176,7 @@ internal fun LazyListScope.homeDashboardSections(
                             compact = false,
                             halfWidth = true,
                             onToggleHidden = onToggleHidden,
-                            onOpenFunds = onOpenFunds,
+                            onOpenTabs = onOpenTabs,
                             onOpenAccounts = onOpenAccounts,
                             onOpenExpenseActivity = onOpenExpenseActivity,
                             onOpenCreditActivity = onOpenCreditActivity,
@@ -208,7 +208,7 @@ internal fun LazyListScope.homeDashboardSections(
                     compact = false,
                     halfWidth = false,
                     onToggleHidden = onToggleHidden,
-                    onOpenFunds = onOpenFunds,
+                    onOpenTabs = onOpenTabs,
                     onOpenAccounts = onOpenAccounts,
                     onOpenExpenseActivity = onOpenExpenseActivity,
                     onOpenCreditActivity = onOpenCreditActivity,
@@ -327,7 +327,7 @@ private fun HomeSectionBody(
     compact: Boolean,
     halfWidth: Boolean,
     onToggleHidden: () -> Unit,
-    onOpenFunds: () -> Unit,
+    onOpenTabs: () -> Unit,
     onOpenAccounts: () -> Unit,
     onOpenExpenseActivity: () -> Unit,
     onOpenCreditActivity: () -> Unit,
@@ -419,11 +419,11 @@ private fun HomeSectionBody(
                 compact = compact,
             )
         }
-        HomeSection.FUNDS_SUMMARY -> {
+        HomeSection.TABS_SUMMARY -> {
             HomeOpenTabsSection(
                 data = data,
                 compact = compact,
-                onOpenFunds = onOpenFunds,
+                onOpenTabs = onOpenTabs,
             )
         }
     }

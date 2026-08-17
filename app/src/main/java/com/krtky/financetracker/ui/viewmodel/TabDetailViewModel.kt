@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.util.TransactionSortOrder
@@ -24,17 +24,17 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class FundDetailViewModel @Inject constructor(
+class TabDetailViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     categoryRepository: CategoryRepository,
     accountRepository: AccountRepository,
 ) : ViewModel() {
-    private val fundIdFlow = MutableStateFlow<Long?>(null)
-    private val _fund = MutableStateFlow<FundBalance?>(null)
+    private val tabIdFlow = MutableStateFlow<Long?>(null)
+    private val _tab = MutableStateFlow<TabBalance?>(null)
     private val filters = TransactionFilterState()
 
-    val fund: StateFlow<FundBalance?> = _fund
-    val allFunds = fundsState(transactionRepository)
+    val tab: StateFlow<TabBalance?> = _tab
+    val allTabs = tabsState(transactionRepository)
     val typeFilter: StateFlow<TransactionType?> = filters.type
     val paymentFilter: StateFlow<String?> = filters.payment
     val categoryFilter: StateFlow<Long?> = filters.categoryId
@@ -59,7 +59,7 @@ class FundDetailViewModel @Inject constructor(
     val transactions: StateFlow<List<Transaction>> =
         combine(
             combine(
-                fundIdFlow,
+                tabIdFlow,
                 filters.typeFlow,
                 filters.paymentFlow,
                 filters.categoryIdFlow,
@@ -83,9 +83,9 @@ class FundDetailViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun load(id: Long) {
-        fundIdFlow.value = id
+        tabIdFlow.value = id
         viewModelScope.launch {
-            _fund.value = transactionRepository.observeFunds().first().firstOrNull { it.fund.id == id }
+            _tab.value = transactionRepository.observeTabs().first().firstOrNull { it.tab.id == id }
         }
     }
 
@@ -95,21 +95,21 @@ class FundDetailViewModel @Inject constructor(
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)
-    fun clearFilters() = filters.clear(type = null, clearFund = false)
+    fun clearFilters() = filters.clear(type = null, clearTab = false)
 
-    suspend fun deleteFund(): Boolean {
-        val id = fundIdFlow.value ?: return false
-        transactionRepository.deleteFund(id)
+    suspend fun deleteTab(): Boolean {
+        val id = tabIdFlow.value ?: return false
+        transactionRepository.deleteTab(id)
         return true
     }
 
-    suspend fun transferBetweenFunds(
-        fromFundId: Long,
-        toFundId: Long,
+    suspend fun transferBetweenTabs(
+        fromTabId: Long,
+        toTabId: Long,
         amountPaise: Long,
         note: String,
     ): Boolean {
-        transactionRepository.transferBetweenFunds(fromFundId, toFundId, amountPaise, note.ifBlank { null })
+        transactionRepository.transferBetweenTabs(fromTabId, toTabId, amountPaise, note.ifBlank { null })
         return true
     }
 }

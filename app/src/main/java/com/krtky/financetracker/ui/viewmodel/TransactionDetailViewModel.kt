@@ -40,7 +40,7 @@ class TransactionDetailViewModel @Inject constructor(
     private val txnIdFlow = MutableStateFlow<String?>(null)
     val transaction: StateFlow<Transaction?> = _txn
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
     /** Active accounts for the account picker (Add-style). */
     val accounts = accountRepository.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -67,7 +67,7 @@ class TransactionDetailViewModel @Inject constructor(
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
             else transactionRepository.observeSplitGroup(id).map { parts ->
-                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.fundId, it.note) }
+                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.tabId, it.note) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -107,11 +107,11 @@ class TransactionDetailViewModel @Inject constructor(
         occurredAt: Long,
         accountId: Long?,
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         note: String,
         counterparty: String = "",
         useCurrentLocation: Boolean,
-        addToFund: Boolean = true,
+        addToTab: Boolean = true,
         receiptLocalUri: Uri? = null,
         clearReceipt: Boolean = false,
     ): Boolean {
@@ -124,7 +124,7 @@ class TransactionDetailViewModel @Inject constructor(
             ?: "Cash"
         val isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH"
         val catName = categories.value.firstOrNull { it.id == categoryId }?.name
-        val resolvedFundId = effectiveFundId(type, fundId, addToFund)
+        val resolvedTabId = effectiveTabId(type, tabId, addToTab)
         val newReceipt = when {
             clearReceipt -> {
                 receiptStore.delete(t.receiptUri)
@@ -145,7 +145,7 @@ class TransactionDetailViewModel @Inject constructor(
             isCash = isCash,
             categoryId = categoryId,
             categoryName = catName,
-            fundId = resolvedFundId,
+            tabId = resolvedTabId,
             note = note.ifBlank { null },
             counterparty = counterparty.ifBlank { null },
             latitude = location?.latitude ?: t.latitude,
@@ -171,8 +171,8 @@ class TransactionDetailViewModel @Inject constructor(
         }
     }
 
-    suspend fun recommendFundForCategory(categoryId: Long?): Long? {
+    suspend fun recommendTabForCategory(categoryId: Long?): Long? {
         if (categoryId == null) return null
-        return transactionRepository.getRecommendedFundForCategory(categoryId)
+        return transactionRepository.getRecommendedTabForCategory(categoryId)
     }
 }

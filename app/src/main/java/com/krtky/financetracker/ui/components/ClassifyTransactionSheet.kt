@@ -56,7 +56,7 @@ fun ClassifyTransactionSheet(
 ) {
     val txn by vm.transaction.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val shapes = MaterialTheme.shapes
@@ -64,7 +64,7 @@ fun ClassifyTransactionSheet(
     val context = LocalContext.current
 
     var categoryId by remember { mutableStateOf<Long?>(null) }
-    var fundId by remember { mutableStateOf<Long?>(null) }
+    var tabId by remember { mutableStateOf<Long?>(null) }
     var note by remember { mutableStateOf("") }
     var receiptUri by remember { mutableStateOf<Uri?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -72,7 +72,7 @@ fun ClassifyTransactionSheet(
     LaunchedEffect(transactionId) {
         vm.open(transactionId)
         categoryId = null
-        fundId = null
+        tabId = null
         note = ""
         receiptUri = null
         saving = false
@@ -183,16 +183,16 @@ fun ClassifyTransactionSheet(
             )
             ChipCarousel {
                 FilterChip(
-                    selected = fundId == null,
-                    onClick = { fundId = null },
+                    selected = tabId == null,
+                    onClick = { tabId = null },
                     label = { Text("None") },
                     shape = shapes.large,
                 )
-                funds.forEach { f ->
+                tabs.forEach { f ->
                     FilterChip(
-                        selected = fundId == f.fund.id,
-                        onClick = { fundId = f.fund.id },
-                        label = { Text(f.fund.name) },
+                        selected = tabId == f.tab.id,
+                        onClick = { tabId = f.tab.id },
+                        label = { Text(f.tab.name) },
                         shape = shapes.large,
                     )
                 }
@@ -224,7 +224,7 @@ fun ClassifyTransactionSheet(
                         if (saving) return@Button
                         scope.launch {
                             saving = true
-                            vm.save(categoryId, fundId, note, receiptLocalUri = receiptUri)
+                            vm.save(categoryId, tabId, note, receiptLocalUri = receiptUri)
                             NotificationManagerCompat.from(context)
                                 .cancel(10_000 + (transactionId.hashCode() and 0xFFFF))
                             onDismiss()

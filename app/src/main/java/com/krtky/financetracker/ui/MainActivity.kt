@@ -75,8 +75,8 @@ import com.krtky.financetracker.ui.screens.CategoryDetailScreen
 import com.krtky.financetracker.ui.screens.MonthFlowGroup
 import com.krtky.financetracker.ui.screens.MonthFlowScreen
 import com.krtky.financetracker.ui.screens.CsvImportScreen
-import com.krtky.financetracker.ui.screens.FundDetailScreen
-import com.krtky.financetracker.ui.screens.FundsScreen
+import com.krtky.financetracker.ui.screens.TabDetailScreen
+import com.krtky.financetracker.ui.screens.TabsScreen
 import com.krtky.financetracker.ui.screens.HomeScreen
 import com.krtky.financetracker.ui.screens.SettingsDetailScreen
 import com.krtky.financetracker.ui.screens.OnboardingScreen
@@ -94,8 +94,8 @@ import com.krtky.financetracker.ui.navigation.CategoriesRoute
 import com.krtky.financetracker.ui.navigation.CategoryRoute
 import com.krtky.financetracker.ui.navigation.MonthFlowRoute
 import com.krtky.financetracker.ui.navigation.UNASSIGNED_DIGITAL_ACCOUNT_ID
-import com.krtky.financetracker.ui.navigation.FundRoute
-import com.krtky.financetracker.ui.navigation.FundsRoute
+import com.krtky.financetracker.ui.navigation.TabRoute
+import com.krtky.financetracker.ui.navigation.TabsRoute
 import com.krtky.financetracker.ui.navigation.HomeRoute
 import com.krtky.financetracker.ui.navigation.MainTabs
 import com.krtky.financetracker.ui.navigation.OnboardingRoute
@@ -236,7 +236,7 @@ class MainActivity : ComponentActivity() {
                     val tabRoute = when {
                         destination?.hasRoute<HomeRoute>() == true -> MainTabs.HOME
                         destination?.hasRoute<TransactionsRoute>() == true -> MainTabs.TRANSACTIONS
-                        destination?.hasRoute<FundsRoute>() == true -> MainTabs.FUNDS
+                        destination?.hasRoute<TabsRoute>() == true -> MainTabs.TABS
                         destination?.hasRoute<SettingsRoute>() == true -> MainTabs.SETTINGS
                         else -> null
                     }
@@ -299,7 +299,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Tick signals so tab FABs can open create/search without Scaffold bottomBar
-                    var fundsCreateTick by remember { mutableIntStateOf(0) }
+                    var tabsCreateTick by remember { mutableIntStateOf(0) }
                     var settingsSearchTick by remember { mutableIntStateOf(0) }
                     // Activity deep-link filters live on the transactions SavedStateHandle
                     // (see ActivityFilterArgs) — not a pile of ticks here.
@@ -363,7 +363,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
                                     onAddCash = { nav.navigate(AddCashRoute) },
                                     onOpenHistory = { nav.tab(MainTabs.TRANSACTIONS) },
-                                    onOpenFunds = { nav.tab(MainTabs.FUNDS) },
+                                    onOpenTabs = { nav.tab(MainTabs.TABS) },
                                     onOpenAccounts = { nav.navigate(AccountsRoute) },
                                     onOpenExpenseActivity = {
                                         nav.openActivityWithFilters(
@@ -521,16 +521,16 @@ class MainActivity : ComponentActivity() {
                                     savedStateHandle = entry.savedStateHandle,
                                 )
                             }
-                            composable<FundsRoute> {
-                                FundsScreen(
-                                    onOpenFund = { nav.navigate(FundRoute(it)) },
-                                    createRequestTick = fundsCreateTick,
+                            composable<TabsRoute> {
+                                TabsScreen(
+                                    onOpenTab = { nav.navigate(TabRoute(it)) },
+                                    createRequestTick = tabsCreateTick,
                                 )
                             }
-                            composable<FundRoute> { entry ->
-                                val args = entry.toRoute<FundRoute>()
-                                FundDetailScreen(
-                                    fundId = args.id,
+                            composable<TabRoute> { entry ->
+                                val args = entry.toRoute<TabRoute>()
+                                TabDetailScreen(
+                                    tabId = args.id,
                                     onBack = { nav.popBackStack() },
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
                                 )
@@ -597,7 +597,7 @@ class MainActivity : ComponentActivity() {
                         if (tabRoute != null) {
                             val usesAddMenu = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
                             val fab: Pair<ImageVector, () -> Unit> = when (tabRoute) {
-                                MainTabs.FUNDS -> Icons.Default.Add to { fundsCreateTick++ }
+                                MainTabs.TABS -> Icons.Default.Add to { tabsCreateTick++ }
                                 MainTabs.SETTINGS -> Icons.Default.Search to { settingsSearchTick++ }
                                 else -> Icons.Default.Add to { addMenuOpen = !addMenuOpen }
                             }
@@ -614,7 +614,7 @@ class MainActivity : ComponentActivity() {
                                 showFab = true,
                                 fabIcon = fab.first,
                                 fabContentDescription = when (tabRoute) {
-                                    MainTabs.FUNDS -> "Add tab"
+                                    MainTabs.TABS -> "Add tab"
                                     MainTabs.SETTINGS -> "Search settings"
                                     else -> stringResource(R.string.cd_fab_log)
                                 },

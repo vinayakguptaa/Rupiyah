@@ -32,8 +32,8 @@ class ClassificationActionReceiver : BroadcastReceiver() {
                         NotificationManagerCompat.from(context).cancel(txnId.hashCode())
                     }
                     ACTION_FUND -> {
-                        val fundId = intent.getLongExtra(EXTRA_FUND_ID, -1L).takeIf { it > 0 }
-                        transactionRepository.classify(txnId, null, null, fundId)
+                        val tabId = intent.getLongExtra(EXTRA_TAB_ID, -1L).takeIf { it > 0 }
+                        transactionRepository.classify(txnId, null, null, tabId)
                         // Keep notification so user can still add a note
                         notifier.notifyPayment(txnId)
                     }
@@ -72,7 +72,7 @@ class ClassificationActionReceiver : BroadcastReceiver() {
         const val ACTION_REPLY = "com.krtky.financetracker.ACTION_REPLY"
         const val EXTRA_TXN_ID = "txn_id"
         const val EXTRA_CATEGORY_ID = "category_id"
-        const val EXTRA_FUND_ID = "fund_id"
+        const val EXTRA_TAB_ID = "fund_id"
         const val KEY_REPLY = "key_reply"
     }
 }

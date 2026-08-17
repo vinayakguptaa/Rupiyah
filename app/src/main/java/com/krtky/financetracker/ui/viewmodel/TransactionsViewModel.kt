@@ -33,14 +33,14 @@ class TransactionsViewModel @Inject constructor(
     val typeFilter: StateFlow<TransactionType?> = filters.type
     val paymentFilter: StateFlow<String?> = filters.payment
     val categoryFilter: StateFlow<Long?> = filters.categoryId
-    val fundFilter: StateFlow<Long?> = filters.fundId
+    val tabFilter: StateFlow<Long?> = filters.tabId
     val sortOrder: StateFlow<TransactionSortOrder> = filters.sort
     val timeRange: StateFlow<TimeRange> = filters.range
     val customFrom: StateFlow<Long> = filters.customFrom
     val customTo: StateFlow<Long> = filters.customTo
 
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
     /** Active + archived account names for filters (history on old banks stays findable). */
     val bankAccounts = filterAccountNamesState(accountRepository, transactionRepository)
 
@@ -49,7 +49,7 @@ class TransactionsViewModel @Inject constructor(
         val t: TransactionType?,
         val pay: String?,
         val cat: Long?,
-        val fund: Long?,
+        val tab: Long?,
     )
     private data class Tail(
         val range: TimeRange,
@@ -66,8 +66,8 @@ class TransactionsViewModel @Inject constructor(
                 filters.typeFlow,
                 filters.paymentFlow,
                 filters.categoryIdFlow,
-                filters.fundIdFlow,
-            ) { q, t, pay, cat, fund -> Head(q, t, pay, cat, fund) },
+                filters.tabIdFlow,
+            ) { q, t, pay, cat, tab -> Head(q, t, pay, cat, tab) },
             combine(
                 filters.rangeFlow,
                 filters.customFromFlow,
@@ -77,7 +77,7 @@ class TransactionsViewModel @Inject constructor(
         ) { head, tail -> head to tail }
             .flatMapLatest { (head, tail) ->
                 val (from, to) = tail.range.toMillisRange(tail.from, tail.to)
-                transactionRepository.observeFiltered(head.q, head.t, head.cat, head.fund, from, to)
+                transactionRepository.observeFiltered(head.q, head.t, head.cat, head.tab, from, to)
                     .map { applyPaymentAndSort(it, head.pay, tail.sort) }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -86,7 +86,7 @@ class TransactionsViewModel @Inject constructor(
     fun setType(t: TransactionType?) = filters.setType(t)
     fun setPayment(p: String?) = filters.setPayment(p)
     fun setCategory(id: Long?) = filters.setCategory(id)
-    fun setFund(id: Long?) = filters.setFund(id)
+    fun setTab(id: Long?) = filters.setTab(id)
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)

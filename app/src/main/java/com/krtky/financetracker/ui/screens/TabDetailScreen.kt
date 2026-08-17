@@ -45,7 +45,7 @@ import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.FundTransferSheet
+import com.krtky.financetracker.ui.components.TabTransferSheet
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.TransactionSortButton
@@ -56,17 +56,17 @@ import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.formatDateTime
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
-import com.krtky.financetracker.ui.viewmodel.FundDetailViewModel
+import com.krtky.financetracker.ui.viewmodel.TabDetailViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun FundDetailScreen(
-    fundId: Long,
+fun TabDetailScreen(
+    tabId: Long,
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit,
-    vm: FundDetailViewModel = hiltViewModel(),
+    vm: TabDetailViewModel = hiltViewModel(),
 ) {
-    val fund by vm.fund.collectAsStateWithLifecycle()
+    val tab by vm.tab.collectAsStateWithLifecycle()
     val txns by vm.transactions.collectAsStateWithLifecycle()
     val type by vm.typeFilter.collectAsStateWithLifecycle()
     val payment by vm.paymentFilter.collectAsStateWithLifecycle()
@@ -77,7 +77,7 @@ fun FundDetailScreen(
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
     val customTo by vm.customTo.collectAsStateWithLifecycle()
-    val allFunds by vm.allFunds.collectAsStateWithLifecycle()
+    val allTabs by vm.allTabs.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
     val context = LocalContext.current
     val haptics = rememberAppHaptics()
@@ -85,7 +85,7 @@ fun FundDetailScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
 
-    LaunchedEffect(fundId) { vm.load(fundId) }
+    LaunchedEffect(tabId) { vm.load(tabId) }
 
     Column(
         Modifier
@@ -99,7 +99,7 @@ fun FundDetailScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
-                fund?.fund?.name ?: "Tab",
+                tab?.tab?.name ?: "Tab",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
@@ -114,14 +114,14 @@ fun FundDetailScreen(
             IconButton(
                 onClick = {
                     haptics.select()
-                    val name = fund?.fund?.name ?: "fund"
+                    val name = tab?.tab?.name ?: "tab"
                     downloadTransactionsCsv(context, txns, "fund_$name")
                 },
                 enabled = txns.isNotEmpty(),
             ) {
                 Icon(Icons.Default.FileDownload, contentDescription = "Download CSV")
             }
-            if (allFunds.size > 1) {
+            if (allTabs.size > 1) {
                 IconButton(onClick = { showTransfer = true }) {
                     Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer")
                 }
@@ -131,7 +131,7 @@ fun FundDetailScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
-        if (fund == null) {
+        if (tab == null) {
             Column(
                 Modifier.fillMaxWidth().padding(top = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -139,8 +139,8 @@ fun FundDetailScreen(
                 M3LoadingIndicator()
             }
         } else {
-            val youOweThem = fund!!.youOweThem()
-            val settled = fund!!.isSettled()
+            val youOweThem = tab!!.youOweThem()
+            val settled = tab!!.isSettled()
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -158,14 +158,14 @@ fun FundDetailScreen(
                         color = onC.copy(alpha = 0.75f),
                     )
                     Text(
-                        if (settled) "₹0" else fund!!.balancePaise.let { if (it < 0) -it else it }.inr(),
+                        if (settled) "₹0" else tab!!.balancePaise.let { if (it < 0) -it else it }.inr(),
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                         color = onC,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "In ${fund!!.creditedPaise.inr()} · Out ${fund!!.debitedPaise.inr()}",
+                        "In ${tab!!.creditedPaise.inr()} · Out ${tab!!.debitedPaise.inr()}",
                         style = MaterialTheme.typography.bodySmall,
                         color = onC.copy(alpha = 0.7f),
                     )
@@ -199,7 +199,7 @@ fun FundDetailScreen(
                 },
                 onCustomRange = vm::setCustomRange,
                 onClearAll = vm::clearFilters,
-                showFundFilter = false,
+                showTabFilter = false,
             )
             Spacer(Modifier.height(12.dp))
             Text("Transactions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -242,7 +242,7 @@ fun FundDetailScreen(
             onDismiss = { confirmDelete = false },
             onConfirmDelete = {
                 scope.launch {
-                    if (vm.deleteFund()) onBack()
+                    if (vm.deleteTab()) onBack()
                     confirmDelete = false
                 }
             },
@@ -250,13 +250,13 @@ fun FundDetailScreen(
         )
     }
 
-    if (showTransfer && fund != null) {
-        FundTransferSheet(
-            sourceFundId = fund!!.fund.id,
-            sourceFundName = fund!!.fund.name,
-            allFunds = allFunds,
+    if (showTransfer && tab != null) {
+        TabTransferSheet(
+            sourceTabId = tab!!.tab.id,
+            sourceTabName = tab!!.tab.name,
+            allTabs = allTabs,
             onDismiss = { showTransfer = false },
-            onTransfer = vm::transferBetweenFunds,
+            onTransfer = vm::transferBetweenTabs,
         )
     }
 }

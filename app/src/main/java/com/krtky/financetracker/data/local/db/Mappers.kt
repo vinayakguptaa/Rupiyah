@@ -4,7 +4,7 @@ import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.AccountKind
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.ClassificationStatus
-import com.krtky.financetracker.domain.model.Fund
+import com.krtky.financetracker.domain.model.Tab
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionSource
@@ -52,7 +52,7 @@ fun Account.toEntity() = AccountEntity(
     createdAt = createdAt,
 )
 
-fun FundEntity.toDomain() = Fund(
+fun TabEntity.toDomain() = Tab(
     id = id,
     name = name,
     archived = archived,
@@ -60,7 +60,7 @@ fun FundEntity.toDomain() = Fund(
     budgetPaise = budgetPaise,
 )
 
-fun Fund.toEntity() = FundEntity(
+fun Tab.toEntity() = TabEntity(
     id = id,
     name = name,
     archived = archived,
@@ -84,7 +84,7 @@ fun parseTransactionKind(raw: String?): TransactionKind =
 
 fun TransactionEntity.toDomain(
     category: Category? = null,
-    fundName: String? = null,
+    tabName: String? = null,
     accountName: String? = null,
 ) = Transaction(
     id = id,
@@ -95,7 +95,7 @@ fun TransactionEntity.toDomain(
     recordedAt = recordedAt,
     counterparty = counterparty,
     categoryId = categoryId,
-    fundId = fundId,
+    tabId = tabId,
     accountId = accountId,
     source = runCatching { TransactionSource.valueOf(source) }.getOrDefault(TransactionSource.MANUAL),
     note = note,
@@ -123,7 +123,7 @@ fun TransactionEntity.toDomain(
     categoryName = category?.name,
     categoryIcon = category?.icon,
     categoryColor = category?.color,
-    fundName = fundName,
+    tabName = tabName,
     accountName = accountName,
     splitGroupId = splitGroupId,
 )
@@ -137,7 +137,7 @@ fun Transaction.toEntity() = TransactionEntity(
     recordedAt = recordedAt,
     counterparty = counterparty,
     categoryId = categoryId,
-    fundId = fundId,
+    tabId = tabId,
     accountId = accountId,
     source = source.name,
     note = note,

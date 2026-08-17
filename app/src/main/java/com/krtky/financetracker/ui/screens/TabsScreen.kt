@@ -57,7 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.chrome.ScreenHeader
 import com.krtky.financetracker.ui.theme.Dimens
@@ -65,26 +65,26 @@ import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.NavContentInsets
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.inrCompact
-import com.krtky.financetracker.ui.viewmodel.FundsViewModel
+import com.krtky.financetracker.ui.viewmodel.TabsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FundsScreen(
-    onOpenFund: (Long) -> Unit = {},
+fun TabsScreen(
+    onOpenTab: (Long) -> Unit = {},
     /** Incremented by the floating nav FAB to open create sheet. */
     createRequestTick: Int = 0,
-    vm: FundsViewModel = hiltViewModel(),
+    vm: TabsViewModel = hiltViewModel(),
 ) {
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
     var showAdjust by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var newAmount by remember { mutableStateOf("") }
     var adjustAmount by remember { mutableStateOf("") }
-    var adjustFundId by remember { mutableStateOf<Long?>(null) }
-    var adjustFundName by remember { mutableStateOf("") }
+    var adjustTabId by remember { mutableStateOf<Long?>(null) }
+    var adjustTabName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     var ready by remember { mutableStateOf(false) }
@@ -99,10 +99,10 @@ fun FundsScreen(
     }
 
     // Open-balance hero: money outstanding across tabs, not an envelope budget.
-    val netOpen = funds.sumOf { it.balancePaise }
-    val theyOwe = funds.filter { it.theyOweYou() }.sumOf { it.balancePaise }
-    val youOwe = funds.filter { it.youOweThem() }.sumOf { -it.balancePaise }
-    val openTabCount = funds.count { it.balancePaise != 0L }
+    val netOpen = tabs.sumOf { it.balancePaise }
+    val theyOwe = tabs.filter { it.theyOweYou() }.sumOf { it.balancePaise }
+    val youOwe = tabs.filter { it.youOweThem() }.sumOf { -it.balancePaise }
+    val openTabCount = tabs.count { it.balancePaise != 0L }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -152,19 +152,19 @@ fun FundsScreen(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FundStatChip(
+                            TabStatChip(
                                 label = stringResource(R.string.tab_they_owe),
                                 value = theyOwe.inrCompact(),
                                 icon = Icons.Default.AccountBalanceWallet,
                                 modifier = Modifier.weight(1f),
                             )
-                            FundStatChip(
+                            TabStatChip(
                                 label = stringResource(R.string.tab_you_owe),
                                 value = youOwe.inrCompact(),
                                 icon = Icons.Default.CreditCard,
                                 modifier = Modifier.weight(1f),
                             )
-                            FundStatChip(
+                            TabStatChip(
                                 label = stringResource(R.string.tab_open_count),
                                 value = openTabCount.toString(),
                                 icon = Icons.Default.AccountBalanceWallet,
@@ -182,14 +182,14 @@ fun FundsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "${funds.size} tab${if (funds.size == 1) "" else "s"}",
+                        "${tabs.size} tab${if (tabs.size == 1) "" else "s"}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
 
-            if (funds.isEmpty()) {
+            if (tabs.isEmpty()) {
                 item {
                     EmptyState(
                         icon = Icons.Default.AccountBalanceWallet,
@@ -201,7 +201,7 @@ fun FundsScreen(
                 }
             }
 
-            itemsIndexed(funds, key = { _, f -> f.fund.id }) { index, f ->
+            itemsIndexed(tabs, key = { _, f -> f.tab.id }) { index, f ->
                 AnimatedVisibility(
                     visible = ready,
                     enter = fadeIn(M3EMotion.effectsDefault()) +
@@ -214,14 +214,14 @@ fun FundsScreen(
                         scheme.primaryContainer to scheme.onPrimaryContainer,
                         scheme.tertiaryContainer to scheme.onTertiaryContainer,
                     )[index % 5]
-                    BudgetStyleFundCard(
-                        fund = f,
+                    BudgetStyleTabCard(
+                        tab = f,
                         headerColor = colors.first,
                         onHeaderColor = colors.second,
-                        onOpen = { onOpenFund(f.fund.id) },
+                        onOpen = { onOpenTab(f.tab.id) },
                         onAdjust = {
-                            adjustFundId = f.fund.id
-                            adjustFundName = f.fund.name
+                            adjustTabId = f.tab.id
+                            adjustTabName = f.tab.name
                             adjustAmount = if (f.limitPaise() > 0L) {
                                 val r = f.limitPaise() / 100.0
                                 if (r == r.toLong().toDouble()) {
@@ -297,7 +297,7 @@ fun FundsScreen(
         }
     }
 
-    if (showAdjust && adjustFundId != null) {
+    if (showAdjust && adjustTabId != null) {
         ModalBottomSheet(
             onDismissRequest = { showAdjust = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -311,7 +311,7 @@ fun FundsScreen(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Edit $adjustFundName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Edit $adjustTabName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
                     "Opening balance for this tab. Open = opening + debits − credits. + means they owe you.",
                     style = MaterialTheme.typography.bodySmall,
@@ -330,7 +330,7 @@ fun FundsScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            vm.adjust(adjustFundId!!, adjustAmount)
+                            vm.adjust(adjustTabId!!, adjustAmount)
                             showAdjust = false
                             adjustAmount = ""
                         }
@@ -342,7 +342,7 @@ fun FundsScreen(
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            vm.delete(adjustFundId!!)
+                            vm.delete(adjustTabId!!)
                             showAdjust = false
                         }
                     },
@@ -360,7 +360,7 @@ fun FundsScreen(
 }
 
 @Composable
-private fun FundStatChip(
+private fun TabStatChip(
     label: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -388,16 +388,16 @@ private fun FundStatChip(
 
 /** Open-balance tab card: who owes whom, not an envelope budget bar. */
 @Composable
-private fun BudgetStyleFundCard(
-    fund: FundBalance,
+private fun BudgetStyleTabCard(
+    tab: TabBalance,
     headerColor: Color,
     onHeaderColor: Color,
     onOpen: () -> Unit,
     onAdjust: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val youOweThem = fund.youOweThem()
-    val settled = fund.isSettled()
+    val youOweThem = tab.youOweThem()
+    val settled = tab.isSettled()
     val cardHeader = if (youOweThem) scheme.error else headerColor
     val cardOnHeader = if (youOweThem) scheme.onError else onHeaderColor
 
@@ -422,7 +422,7 @@ private fun BudgetStyleFundCard(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            fund.fund.name,
+                            tab.tab.name,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = cardOnHeader,
@@ -430,9 +430,9 @@ private fun BudgetStyleFundCard(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             when {
-                                youOweThem -> "You owe ${(-fund.balancePaise).inr()}"
+                                youOweThem -> "You owe ${(-tab.balancePaise).inr()}"
                                 settled -> "Settled"
-                                else -> "They owe ${fund.balancePaise.inr()}"
+                                else -> "They owe ${tab.balancePaise.inr()}"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = cardOnHeader.copy(alpha = 0.9f),
@@ -461,7 +461,7 @@ private fun BudgetStyleFundCard(
                         color = scheme.onSurfaceVariant,
                     )
                     Text(
-                        if (settled) "₹0" else fund.balancePaise.let { if (it < 0) -it else it }.inr(),
+                        if (settled) "₹0" else tab.balancePaise.let { if (it < 0) -it else it }.inr(),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = if (youOweThem) scheme.error else scheme.onSurface,
@@ -469,7 +469,7 @@ private fun BudgetStyleFundCard(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "In ${fund.creditedPaise.inr()} · Out ${fund.debitedPaise.inr()}",
+                    "In ${tab.creditedPaise.inr()} · Out ${tab.debitedPaise.inr()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )

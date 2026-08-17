@@ -20,7 +20,7 @@ class TransactionFilterStateTest {
         assertThat(state.type.value).isNull()
         assertThat(state.payment.value).isNull()
         assertThat(state.categoryId.value).isNull()
-        assertThat(state.fundId.value).isNull()
+        assertThat(state.tabId.value).isNull()
         assertThat(state.sort.value).isEqualTo(TransactionSortOrder.NEWEST)
         assertThat(state.range.value).isEqualTo(TimeRange.MONTH)
     }
@@ -44,9 +44,9 @@ class TransactionFilterStateTest {
     }
 
     @Test
-    fun `setFund updates fund`() {
-        state.setFund(3L)
-        assertThat(state.fundId.value).isEqualTo(3L)
+    fun `setTab updates tab`() {
+        state.setTab(3L)
+        assertThat(state.tabId.value).isEqualTo(3L)
     }
 
     @Test
@@ -74,13 +74,13 @@ class TransactionFilterStateTest {
         state.setType(TransactionType.DEBIT)
         state.setPayment("ICICI")
         state.setCategory(1L)
-        state.setFund(2L)
+        state.setTab(2L)
         var queryCleared = false
         state.clear(type = null, clearQuery = { queryCleared = true })
         assertThat(state.type.value).isNull()
         assertThat(state.payment.value).isNull()
         assertThat(state.categoryId.value).isNull()
-        assertThat(state.fundId.value).isNull()
+        assertThat(state.tabId.value).isNull()
         assertThat(state.range.value).isEqualTo(TimeRange.MONTH)
         assertThat(queryCleared).isTrue()
     }

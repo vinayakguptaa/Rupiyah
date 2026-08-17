@@ -62,24 +62,24 @@ interface AccountDao {
 }
 
 @Dao
-interface FundDao {
+interface TabDao {
     @Query("SELECT * FROM funds WHERE archived = 0 ORDER BY name")
-    fun observeActive(): Flow<List<FundEntity>>
+    fun observeActive(): Flow<List<TabEntity>>
 
     @Query("SELECT * FROM funds ORDER BY name")
-    suspend fun getAll(): List<FundEntity>
+    suspend fun getAll(): List<TabEntity>
 
     @Query("SELECT * FROM funds WHERE id = :id")
-    suspend fun getById(id: Long): FundEntity?
+    suspend fun getById(id: Long): TabEntity?
 
     @Query("SELECT * FROM funds WHERE name = :name LIMIT 1")
-    suspend fun getByName(name: String): FundEntity?
+    suspend fun getByName(name: String): TabEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsert(entity: FundEntity): Long
+    suspend fun upsert(entity: TabEntity): Long
 
     @Update
-    suspend fun update(entity: FundEntity)
+    suspend fun update(entity: TabEntity)
 }
 
 @Dao
@@ -122,7 +122,7 @@ interface TransactionDao {
           AND (:query = '' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR rawDescription LIKE '%' || :query || '%')
           AND (:type IS NULL OR type = :type)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
-          AND (:fundId IS NULL OR fundId = :fundId)
+          AND (:tabId IS NULL OR fundId = :tabId)
           AND (:accountId IS NULL OR accountId = :accountId)
           AND occurredAt >= :fromTs AND occurredAt <= :toTs
         ORDER BY occurredAt DESC, recordedAt DESC, id DESC
@@ -132,7 +132,7 @@ interface TransactionDao {
         query: String,
         type: String?,
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         fromTs: Long,
         toTs: Long,
         accountId: Long?,
@@ -256,11 +256,11 @@ interface TransactionDao {
 
     @Query("""
         SELECT * FROM transactions 
-        WHERE fundId = :fundId 
+        WHERE fundId = :tabId 
           AND deletedAt IS NULL 
         ORDER BY occurredAt ASC
     """)
-    suspend fun getAllForFund(fundId: Long): List<TransactionEntity>
+    suspend fun getAllForTab(tabId: Long): List<TransactionEntity>
 
     @Query("""
         SELECT * FROM transactions
@@ -289,21 +289,21 @@ data class UsageCountRow(
 )
 
 @Dao
-interface FundLedgerDao {
+interface TabLedgerDao {
     @Insert
-    suspend fun insert(entity: FundLedgerEntity): Long
+    suspend fun insert(entity: TabLedgerEntity): Long
 
-    @Query("SELECT * FROM fund_ledger WHERE fundId = :fundId ORDER BY createdAt DESC")
-    fun observeForFund(fundId: Long): Flow<List<FundLedgerEntity>>
+    @Query("SELECT * FROM fund_ledger WHERE fundId = :tabId ORDER BY createdAt DESC")
+    fun observeForTab(tabId: Long): Flow<List<TabLedgerEntity>>
 
-    @Query("SELECT * FROM fund_ledger WHERE fundId = :fundId ORDER BY createdAt DESC")
-    suspend fun getForFund(fundId: Long): List<FundLedgerEntity>
+    @Query("SELECT * FROM fund_ledger WHERE fundId = :tabId ORDER BY createdAt DESC")
+    suspend fun getForTab(tabId: Long): List<TabLedgerEntity>
 
-    @Query("SELECT balanceAfterPaise FROM fund_ledger WHERE fundId = :fundId ORDER BY id DESC LIMIT 1")
-    suspend fun latestBalance(fundId: Long): Long?
+    @Query("SELECT balanceAfterPaise FROM fund_ledger WHERE fundId = :tabId ORDER BY id DESC LIMIT 1")
+    suspend fun latestBalance(tabId: Long): Long?
 
     @Query("SELECT * FROM fund_ledger ORDER BY id DESC")
-    fun observeAll(): Flow<List<FundLedgerEntity>>
+    fun observeAll(): Flow<List<TabLedgerEntity>>
 
     @Query(
         """
@@ -314,10 +314,10 @@ interface FundLedgerDao {
                 ELSE 0
             END
         ), 0)
-        FROM fund_ledger WHERE fundId = :fundId
+        FROM fund_ledger WHERE fundId = :tabId
         """
     )
-    suspend fun totalCredits(fundId: Long): Long
+    suspend fun totalCredits(tabId: Long): Long
 
     @Query(
         """
@@ -328,16 +328,16 @@ interface FundLedgerDao {
                 ELSE 0
             END
         )), 0)
-        FROM fund_ledger WHERE fundId = :fundId
+        FROM fund_ledger WHERE fundId = :tabId
         """
     )
-    suspend fun totalDebits(fundId: Long): Long
+    suspend fun totalDebits(tabId: Long): Long
 
     @Query("DELETE FROM fund_ledger WHERE transactionId = :transactionId")
     suspend fun deleteForTransaction(transactionId: String)
 
-    @Query("DELETE FROM fund_ledger WHERE fundId = :fundId")
-    suspend fun deleteAllForFund(fundId: Long)
+    @Query("DELETE FROM fund_ledger WHERE fundId = :tabId")
+    suspend fun deleteAllForTab(tabId: Long)
 }
 
 @Dao

@@ -26,36 +26,36 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 
-class FundsWidget : GlanceAppWidget() {
+class TabsWidget : GlanceAppWidget() {
 
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val funds = WidgetDataLoader.loadFunds(context)
+        val tabs = WidgetDataLoader.loadTabs(context)
         provideContent {
             GlanceTheme {
-                FundsWidgetContent(funds)
+                TabsWidgetContent(tabs)
             }
         }
     }
 }
 
 @Composable
-private fun FundsWidgetContent(funds: List<FundRow>) {
+private fun TabsWidgetContent(tabs: List<TabRow>) {
     val colors = GlanceTheme.colors
 
     WidgetCard(
         modifier = GlanceModifier.clickable(actionRunCallback<OpenAppAction>()),
     ) {
-        WidgetTitle("Funds")
+        WidgetTitle("Tabs")
         Spacer(modifier = GlanceModifier.height(4.dp))
         WidgetCaption("Who owes whom")
         Spacer(modifier = GlanceModifier.height(10.dp))
 
-        if (funds.isEmpty()) {
+        if (tabs.isEmpty()) {
             WidgetEmpty("No tabs yet — open the app to create one")
         } else {
-            funds.take(4).forEach { fund ->
+            tabs.take(4).forEach { tab ->
                 Column(
                     modifier = GlanceModifier
                         .fillMaxWidth()
@@ -68,7 +68,7 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = fund.name,
+                            text = tab.name,
                             style = TextStyle(
                                 color = colors.onSurface,
                                 fontSize = 13.sp,
@@ -78,9 +78,9 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
                             modifier = GlanceModifier.defaultWeight(),
                         )
                         Text(
-                            text = fund.balance,
+                            text = tab.balance,
                             style = TextStyle(
-                                color = if (!fund.owedToMe && !fund.settled) colors.error else colors.primary,
+                                color = if (!tab.owedToMe && !tab.settled) colors.error else colors.primary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                             ),
@@ -90,8 +90,8 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
                     Spacer(modifier = GlanceModifier.height(2.dp))
                     Text(
                         text = when {
-                            fund.settled -> "settled"
-                            fund.owedToMe -> "they owe you"
+                            tab.settled -> "settled"
+                            tab.owedToMe -> "they owe you"
                             else -> "you owe them"
                         },
                         style = TextStyle(
@@ -108,5 +108,5 @@ private fun FundsWidgetContent(funds: List<FundRow>) {
 }
 
 class FundsWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = FundsWidget()
+    override val glanceAppWidget: GlanceAppWidget = TabsWidget()
 }

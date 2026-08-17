@@ -53,7 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.RupiyahTheme
 import com.krtky.financetracker.ui.util.inr
@@ -131,20 +131,20 @@ fun BalanceHeroCard(
     }
 }
 
-/** Funds summary using M3 Expressive LinearWavyProgressIndicator. */
+/** Tabs summary using M3 Expressive LinearWavyProgressIndicator. */
 @Composable
-fun FundsWaveSummary(
-    funds: List<FundBalance>,
+fun TabsWaveSummary(
+    tabs: List<TabBalance>,
     hidden: Boolean,
-    onOpenFunds: () -> Unit,
+    onOpenTabs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val netOpen = funds.sumOf { it.balancePaise }
-    val openCount = funds.count { it.balancePaise != 0L }
+    val netOpen = tabs.sumOf { it.balancePaise }
+    val openCount = tabs.count { it.balancePaise != 0L }
 
     Surface(
-        onClick = onOpenFunds,
+        onClick = onOpenTabs,
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         color = scheme.surfaceContainerHigh,
@@ -168,14 +168,14 @@ fun FundsWaveSummary(
                     color = if (netOpen != 0L) scheme.primary else scheme.onSurfaceVariant,
                 )
             }
-            if (funds.isEmpty()) {
+            if (tabs.isEmpty()) {
                 Text(
                     stringResource(com.krtky.financetracker.R.string.home_no_funds_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
                 )
             } else {
-                funds.take(5).forEach { fb ->
+                tabs.take(5).forEach { fb ->
                     val youOweThem = fb.youOweThem()
                     val settled = fb.isSettled()
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -184,7 +184,7 @@ fun FundsWaveSummary(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                fb.fund.name,
+                                fb.tab.name,
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -206,7 +206,7 @@ fun FundsWaveSummary(
                         }
                     }
                 }
-                if (openCount == 0 && funds.isNotEmpty()) {
+                if (openCount == 0 && tabs.isNotEmpty()) {
                     Text(
                         "All tabs settled",
                         style = MaterialTheme.typography.bodyMedium,
@@ -345,7 +345,7 @@ private fun BalanceHeroCardPreview() {
 private fun OverviewTilePreview() {
     RupiyahTheme {
         OverviewTile(
-            title = "Funds",
+            title = "Tabs",
             value = "3",
             subtitle = "₹8,200 total",
             icon = Icons.Default.Savings,

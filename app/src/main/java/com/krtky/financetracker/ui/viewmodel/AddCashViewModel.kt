@@ -39,7 +39,7 @@ class AddCashViewModel @Inject constructor(
     private val llmClient: LlmClient,
 ) : ViewModel() {
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
     /** Active accounts only — archived banks hidden from Add. */
     val accounts = accountRepository.observeActive()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -51,7 +51,7 @@ class AddCashViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val lastUsedCategoryId = userPreferences.lastUsedCategoryId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val lastUsedFundId = userPreferences.lastUsedFundId
+    val lastUsedTabId = userPreferences.lastUsedTabId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val lastUsedPaymentMethod = userPreferences.lastUsedPaymentMethod
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -82,9 +82,9 @@ class AddCashViewModel @Inject constructor(
         )
     }
 
-    suspend fun recommendFundForCategory(categoryId: Long?): Long? {
+    suspend fun recommendTabForCategory(categoryId: Long?): Long? {
         if (categoryId == null) return null
-        return transactionRepository.getRecommendedFundForCategory(categoryId)
+        return transactionRepository.getRecommendedTabForCategory(categoryId)
     }
 
     /**
@@ -95,13 +95,13 @@ class AddCashViewModel @Inject constructor(
         amountText: String,
         type: TransactionType,
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         note: String,
         counterparty: String = "",
         paymentMethod: String,
         accountId: Long? = null,
         useLocation: Boolean,
-        addToFund: Boolean,
+        addToTab: Boolean,
         occurredAt: Long = System.currentTimeMillis(),
         receiptLocalUri: Uri? = null,
         splits: List<SplitPart> = emptyList(),
@@ -136,7 +136,7 @@ class AddCashViewModel @Inject constructor(
             occurredAt = occurredAt,
             counterparty = party,
             categoryId = primaryCat,
-            fundId = if (splits.isNotEmpty()) null else fundId,
+            tabId = if (splits.isNotEmpty()) null else tabId,
             accountId = resolvedAccountId,
             source = source,
             note = note.ifBlank { null },
@@ -153,19 +153,19 @@ class AddCashViewModel @Inject constructor(
             locationMatchedAt = if (loc != null) System.currentTimeMillis() else null,
             receiptUri = receiptPath,
         )
-        val resolvedFundId = if (splits.isNotEmpty()) {
+        val resolvedTabId = if (splits.isNotEmpty()) {
             null
         } else {
-            effectiveFundId(type, fundId, addToFund)
+            effectiveTabId(type, tabId, addToTab)
         }
         transactionRepository.insertManualWithSplits(
-            txn = txn.copy(fundId = resolvedFundId),
+            txn = txn.copy(tabId = resolvedTabId),
             parts = splits,
-            addToFund = resolvedFundId != null,
+            addToTab = resolvedTabId != null,
         )
         userPreferences.setLastUsedDefaults(
             categoryId = primaryCat,
-            fundId = resolvedFundId,
+            tabId = resolvedTabId,
             paymentMethod = methodLabel,
         )
         return id

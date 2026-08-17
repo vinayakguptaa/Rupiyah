@@ -68,7 +68,7 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
     SettingsBlock(
         title = "Save or restore your data",
         helpTitle = "Backup & restore",
-        helpMessage = "Export creates a file with your transactions, categories, funds, and settings. Keep it somewhere safe (like Google Drive). Import puts that data back. The file may include API keys if you saved any.",
+        helpMessage = "Export creates a file with your transactions, categories, tabs, and settings. Keep it somewhere safe (like Google Drive). Import puts that data back. The file may include API keys if you saved any.",
     ) {
         Text(
             "Use Export to make a safety copy. Use Import only when you want to restore an old copy.",

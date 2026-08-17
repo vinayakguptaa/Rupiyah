@@ -81,7 +81,7 @@ fun TransactionDetailScreen(
     val txn by vm.transaction.collectAsStateWithLifecycle()
     val splits by vm.splits.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val accounts by vm.accounts.collectAsStateWithLifecycle()
     val archivedCurrent by vm.archivedCurrentAccount.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
@@ -94,8 +94,8 @@ fun TransactionDetailScreen(
     var note by remember { mutableStateOf("") }
     var counterparty by remember { mutableStateOf("") }
     var categoryId by remember { mutableStateOf<Long?>(null) }
-    var fundId by remember { mutableStateOf<Long?>(null) }
-    var addToFund by remember { mutableStateOf(true) }
+    var tabId by remember { mutableStateOf<Long?>(null) }
+    var addToTab by remember { mutableStateOf(true) }
     var amount by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(TransactionType.DEBIT) }
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
@@ -109,7 +109,7 @@ fun TransactionDetailScreen(
     var categoryExpanded by remember { mutableStateOf(true) }
     var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var recommendedFundId by remember { mutableStateOf<Long?>(null) }
+    var recommendedTabId by remember { mutableStateOf<Long?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showAmountPad by remember { mutableStateOf(false) }
@@ -153,8 +153,8 @@ fun TransactionDetailScreen(
     LaunchedEffect(Unit) { contentVisible = true }
 
     LaunchedEffect(categoryId) {
-        val rec = categoryId?.let { vm.recommendFundForCategory(it) }
-        recommendedFundId = rec
+        val rec = categoryId?.let { vm.recommendTabForCategory(it) }
+        recommendedTabId = rec
     }
 
     LaunchedEffect(txn, accounts, archivedCurrent, defaultDigital, defaultPay) {
@@ -162,8 +162,8 @@ fun TransactionDetailScreen(
             note = it.note.orEmpty()
             counterparty = it.counterparty.orEmpty()
             categoryId = it.categoryId
-            fundId = it.fundId
-            addToFund = it.fundId != null || it.type == TransactionType.CREDIT
+            tabId = it.tabId
+            addToTab = it.tabId != null || it.type == TransactionType.CREDIT
             amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
             type = it.type
             selectedAccountId = when {
@@ -195,7 +195,7 @@ fun TransactionDetailScreen(
     }
 
     val isDirty = remember(
-        txn, note, counterparty, categoryId, fundId, addToFund, amount, type, selectedAccountId,
+        txn, note, counterparty, categoryId, tabId, addToTab, amount, type, selectedAccountId,
         selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute, useCurrentLocation,
         receiptLocalUri, receiptCleared,
     ) {
@@ -212,17 +212,17 @@ fun TransactionDetailScreen(
                 selectedDay == origCal.get(Calendar.DAY_OF_MONTH) &&
                 selectedHour == origCal.get(Calendar.HOUR_OF_DAY) &&
                 selectedMinute == origCal.get(Calendar.MINUTE)
-        val effectiveFundId = when {
-            fundId == null -> null
-            type == TransactionType.DEBIT -> fundId
-            type == TransactionType.CREDIT && addToFund -> fundId
+        val effectiveTabId = when {
+            tabId == null -> null
+            type == TransactionType.DEBIT -> tabId
+            type == TransactionType.CREDIT && addToTab -> tabId
             else -> null
         }
         val origAccountId = t.accountId
         note != t.note.orEmpty() ||
             counterparty != originalParty ||
             categoryId != t.categoryId ||
-            effectiveFundId != t.fundId ||
+            effectiveTabId != t.tabId ||
             type != t.type ||
             selectedAccountId != origAccountId ||
             amountPaise != t.amountPaise ||
@@ -248,11 +248,11 @@ fun TransactionDetailScreen(
             occurredAt = displayWhen,
             accountId = selectedAccountId,
             categoryId = categoryId,
-            fundId = fundId,
+            tabId = tabId,
             note = note,
             counterparty = counterparty,
             useCurrentLocation = useCurrentLocation,
-            addToFund = addToFund,
+            addToTab = addToTab,
             receiptLocalUri = receiptLocalUri,
             clearReceipt = receiptCleared && receiptLocalUri == null,
         )
@@ -408,7 +408,7 @@ fun TransactionDetailScreen(
                 TransactionDetailView(
                     t = t,
                     categories = categories,
-                    funds = funds,
+                    tabs = tabs,
                     splits = splits,
                     existingReceiptUri = existingReceiptUri,
                     context = context,
@@ -420,7 +420,7 @@ fun TransactionDetailScreen(
                 TransactionDetailEdit(
                     t = t,
                     categories = categories,
-                    funds = funds,
+                    tabs = tabs,
                     pickerAccounts = pickerAccounts,
                     defaultDigital = defaultDigital,
                     defaultPay = defaultPay,
@@ -430,10 +430,10 @@ fun TransactionDetailScreen(
                     onCounterparty = { counterparty = it },
                     categoryId = categoryId,
                     onCategoryId = { categoryId = it },
-                    fundId = fundId,
-                    onFundId = { fundId = it },
-                    addToFund = addToFund,
-                    onAddToFund = { addToFund = it },
+                    tabId = tabId,
+                    onTabId = { tabId = it },
+                    addToTab = addToTab,
+                    onAddToTab = { addToTab = it },
                     amount = amount,
                     type = type,
                     onType = { type = it },
@@ -451,7 +451,7 @@ fun TransactionDetailScreen(
                             receiptCleared = false
                         }
                     },
-                    recommendedFundId = recommendedFundId,
+                    recommendedTabId = recommendedTabId,
                     displayWhen = displayWhen,
                     paymentExpanded = paymentExpanded,
                     onPaymentExpanded = { paymentExpanded = it },
@@ -532,8 +532,8 @@ fun TransactionDetailScreen(
                     note = it.note.orEmpty()
                     counterparty = it.counterparty.orEmpty()
                     categoryId = it.categoryId
-                    fundId = it.fundId
-                    addToFund = it.fundId != null || it.type == TransactionType.CREDIT
+                    tabId = it.tabId
+                    addToTab = it.tabId != null || it.type == TransactionType.CREDIT
                     amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
                     type = it.type
                     selectedAccountId = it.accountId

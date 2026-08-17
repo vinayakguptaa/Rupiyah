@@ -41,20 +41,20 @@ class ViewModelHelpersTest {
     }
 
     @Test
-    fun `effectiveFundId returns null when fundId is null`() {
-        assertThat(effectiveFundId(TransactionType.DEBIT, null, false)).isNull()
-        assertThat(effectiveFundId(TransactionType.CREDIT, null, true)).isNull()
+    fun `effectiveTabId returns null when tabId is null`() {
+        assertThat(effectiveTabId(TransactionType.DEBIT, null, false)).isNull()
+        assertThat(effectiveTabId(TransactionType.CREDIT, null, true)).isNull()
     }
 
     @Test
-    fun `effectiveFundId returns fundId for expense`() {
-        assertThat(effectiveFundId(TransactionType.DEBIT, 1L, false)).isEqualTo(1L)
+    fun `effectiveTabId returns tabId for expense`() {
+        assertThat(effectiveTabId(TransactionType.DEBIT, 1L, false)).isEqualTo(1L)
     }
 
     @Test
-    fun `effectiveFundId returns fundId for income only when addToFund is true`() {
-        assertThat(effectiveFundId(TransactionType.CREDIT, 1L, false)).isNull()
-        assertThat(effectiveFundId(TransactionType.CREDIT, 1L, true)).isEqualTo(1L)
+    fun `effectiveTabId returns tabId for income only when addToTab is true`() {
+        assertThat(effectiveTabId(TransactionType.CREDIT, 1L, false)).isNull()
+        assertThat(effectiveTabId(TransactionType.CREDIT, 1L, true)).isEqualTo(1L)
     }
 
     @Test

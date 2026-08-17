@@ -13,16 +13,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class FundDaoTest {
+class TabDaoTest {
 
     private lateinit var db: AppDatabase
-    private lateinit var dao: FundDao
+    private lateinit var dao: TabDao
 
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
-        dao = db.fundDao()
+        dao = db.tabDao()
     }
 
     @After
@@ -32,7 +32,7 @@ class FundDaoTest {
 
     @Test
     fun insertAndGetById() = runBlocking {
-        val id = dao.upsert(FundEntity(name = "Groceries", budgetPaise = 50_00_00L))
+        val id = dao.upsert(TabEntity(name = "Groceries", budgetPaise = 50_00_00L))
         val loaded = dao.getById(id)
         assertThat(loaded).isNotNull()
         assertThat(loaded!!.name).isEqualTo("Groceries")
@@ -41,8 +41,8 @@ class FundDaoTest {
 
     @Test
     fun observeActive_excludesArchived() = runBlocking {
-        val activeId = dao.upsert(FundEntity(name = "Active"))
-        dao.upsert(FundEntity(name = "Archived", archived = true))
+        val activeId = dao.upsert(TabEntity(name = "Active"))
+        dao.upsert(TabEntity(name = "Archived", archived = true))
         val active = dao.observeActive().first()
         assertThat(active).hasSize(1)
         assertThat(active[0].id).isEqualTo(activeId)
@@ -50,23 +50,23 @@ class FundDaoTest {
 
     @Test
     fun update_modifiesEntity() = runBlocking {
-        val id = dao.upsert(FundEntity(name = "Old Name"))
-        dao.update(FundEntity(id = id, name = "New Name"))
+        val id = dao.upsert(TabEntity(name = "Old Name"))
+        dao.update(TabEntity(id = id, name = "New Name"))
         val loaded = dao.getById(id)
         assertThat(loaded!!.name).isEqualTo("New Name")
     }
 
     @Test
     fun getByName_findsByName() = runBlocking {
-        dao.upsert(FundEntity(name = "Fuel"))
+        dao.upsert(TabEntity(name = "Fuel"))
         val found = dao.getByName("Fuel")
         assertThat(found).isNotNull()
     }
 
     @Test
     fun getAll_returnsAllIncludingArchived() = runBlocking {
-        dao.upsert(FundEntity(name = "A"))
-        dao.upsert(FundEntity(name = "B", archived = true))
+        dao.upsert(TabEntity(name = "A"))
+        dao.upsert(TabEntity(name = "B", archived = true))
         assertThat(dao.getAll()).hasSize(2)
     }
 }

@@ -23,7 +23,7 @@ class ClassifyViewModel @Inject constructor(
     private val _txn = MutableStateFlow<Transaction?>(null)
     val transaction: StateFlow<Transaction?> = _txn
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
 
     fun open(id: String) {
         _txnId.value = id
@@ -37,7 +37,7 @@ class ClassifyViewModel @Inject constructor(
 
     suspend fun save(
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         note: String,
         receiptLocalUri: Uri? = null,
     ) {
@@ -47,7 +47,7 @@ class ClassifyViewModel @Inject constructor(
             id,
             categoryId,
             note.ifBlank { null },
-            fundId,
+            tabId,
             receiptUri = receiptPath,
         )
         clear()

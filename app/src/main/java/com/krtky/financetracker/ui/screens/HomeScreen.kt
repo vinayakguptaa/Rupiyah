@@ -56,7 +56,7 @@ fun HomeScreen(
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit = {},
     onOpenHistory: () -> Unit = {},
-    onOpenFunds: () -> Unit = {},
+    onOpenTabs: () -> Unit = {},
     onOpenAccounts: () -> Unit = {},
     /** Open Activity with Expense type filter. */
     onOpenExpenseActivity: () -> Unit = onOpenHistory,
@@ -70,7 +70,7 @@ fun HomeScreen(
     vm: HomeViewModel = hiltViewModel(),
 ) {
     val homeCashflow by vm.homeCashflow.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val openTabs by vm.openTabs.collectAsStateWithLifecycle()
     val paymentBalances by vm.paymentBalances.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()
@@ -273,7 +273,7 @@ fun HomeScreen(
                         spent = spent,
                         monthLabel = monthLabel,
                         isNetHidden = isNetHidden,
-                        funds = openTabs.ifEmpty { funds },
+                        tabs = openTabs.ifEmpty { tabs },
                         fundBalance = fundBalance,
                         cashBal = cashBal,
                         digitalBal = digitalBal,
@@ -292,7 +292,7 @@ fun HomeScreen(
                         vm.toggleHomeSectionSpan(section)
                     },
                     onToggleHidden = { vm.setHideBalances(!isNetHidden) },
-                    onOpenFunds = onOpenFunds,
+                    onOpenTabs = onOpenTabs,
                     onOpenAccounts = onOpenAccounts,
                     onOpenExpenseActivity = onOpenExpenseActivity,
                     onOpenCreditActivity = onOpenCreditActivity,

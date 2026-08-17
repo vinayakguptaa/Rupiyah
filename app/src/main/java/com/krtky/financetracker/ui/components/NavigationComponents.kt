@@ -71,7 +71,7 @@ data class FabSpeedDialItem(
 )
 
 /**
- * Floating bottom navigation dock for the main tabs (Home, Activity, Funds, Settings).
+ * Floating bottom navigation dock for the main tabs (Home, Activity, Tabs, Settings).
  * Opaque capsule over content with a sliding selection pill; optional side FAB.
  * FAB menu is an overlay above this row, so the dock never grows.
  */
@@ -90,7 +90,7 @@ fun FloatingBottomNav(
     val items = listOf(
         Triple("home", "Home", Icons.Default.Home),
         Triple("transactions", "Activity", Icons.AutoMirrored.Filled.List),
-        Triple("funds", "Tabs", Icons.Default.AccountBalanceWallet),
+        Triple("tabs", "Tabs", Icons.Default.AccountBalanceWallet),
         Triple("settings", "Settings", Icons.Default.Settings),
     )
     val scheme = MaterialTheme.colorScheme

@@ -30,20 +30,20 @@ class CategoryDetailViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
     val typeFilter: StateFlow<TransactionType?> = filters.type
     val paymentFilter: StateFlow<String?> = filters.payment
-    val fundFilter: StateFlow<Long?> = filters.fundId
+    val tabFilter: StateFlow<Long?> = filters.tabId
     val sortOrder: StateFlow<TransactionSortOrder> = filters.sort
     val timeRange: StateFlow<TimeRange> = filters.range
     val customFrom: StateFlow<Long> = filters.customFrom
     val customTo: StateFlow<Long> = filters.customTo
 
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
     val bankAccounts = filterAccountNamesState(accountRepository, transactionRepository)
 
     private data class Head(
         val key: Pair<Long?, String>,
         val t: TransactionType?,
         val pay: String?,
-        val fund: Long?,
+        val tab: Long?,
         val range: TimeRange,
     )
     private data class Tail(val from: Long, val to: Long, val sort: TransactionSortOrder)
@@ -55,9 +55,9 @@ class CategoryDetailViewModel @Inject constructor(
                 scopeKey,
                 filters.typeFlow,
                 filters.paymentFlow,
-                filters.fundIdFlow,
+                filters.tabIdFlow,
                 filters.rangeFlow,
-            ) { key, t, pay, fund, r -> Head(key, t, pay, fund, r) },
+            ) { key, t, pay, tab, r -> Head(key, t, pay, tab, r) },
             combine(
                 filters.customFromFlow,
                 filters.customToFlow,
@@ -69,9 +69,9 @@ class CategoryDetailViewModel @Inject constructor(
                 val (from, to) = head.range.toMillisRange(tail.from, tail.to)
                 // observeForTab: null categoryId = any category. Uncategorized uses observeForCategory.
                 val base = when {
-                    categoryId != null && head.fund != null ->
+                    categoryId != null && head.tab != null ->
                         transactionRepository.observeForTab(
-                            fundId = head.fund,
+                            tabId = head.tab,
                             type = head.t,
                             categoryId = categoryId,
                             fromTs = from,
@@ -84,14 +84,14 @@ class CategoryDetailViewModel @Inject constructor(
                             fromTs = from,
                             toTs = to,
                         )
-                    head.fund != null ->
-                        // Uncategorized on a tab: allocation amounts with null category on that fund.
+                    head.tab != null ->
+                        // Uncategorized on a tab: allocation amounts with null category on that tab.
                         transactionRepository.observeForCategory(
                             categoryId = null,
                             type = head.t,
                             fromTs = from,
                             toTs = to,
-                        ).map { list -> list.filter { it.fundId == head.fund } }
+                        ).map { list -> list.filter { it.tabId == head.tab } }
                     else ->
                         transactionRepository.observeForCategory(
                             categoryId = null,
@@ -119,7 +119,7 @@ class CategoryDetailViewModel @Inject constructor(
 
     fun setType(t: TransactionType?) = filters.setType(t)
     fun setPayment(p: String?) = filters.setPayment(p)
-    fun setFund(id: Long?) = filters.setFund(id)
+    fun setTab(id: Long?) = filters.setTab(id)
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)

@@ -17,7 +17,7 @@ class TransactionFilterState(
     private val _type = MutableStateFlow(initialType)
     private val _payment = MutableStateFlow<String?>(null)
     private val _categoryId = MutableStateFlow<Long?>(null)
-    private val _fundId = MutableStateFlow<Long?>(null)
+    private val _tabId = MutableStateFlow<Long?>(null)
     private val _sort = MutableStateFlow(initialSort)
     private val _range = MutableStateFlow(initialRange)
     private val _customFrom = MutableStateFlow(startOfCurrentMonthMillis())
@@ -26,7 +26,7 @@ class TransactionFilterState(
     val type: StateFlow<TransactionType?> = _type
     val payment: StateFlow<String?> = _payment
     val categoryId: StateFlow<Long?> = _categoryId
-    val fundId: StateFlow<Long?> = _fundId
+    val tabId: StateFlow<Long?> = _tabId
     val sort: StateFlow<TransactionSortOrder> = _sort
     val range: StateFlow<TimeRange> = _range
     val customFrom: StateFlow<Long> = _customFrom
@@ -36,7 +36,7 @@ class TransactionFilterState(
     val typeFlow get() = _type
     val paymentFlow get() = _payment
     val categoryIdFlow get() = _categoryId
-    val fundIdFlow get() = _fundId
+    val tabIdFlow get() = _tabId
     val sortFlow get() = _sort
     val rangeFlow get() = _range
     val customFromFlow get() = _customFrom
@@ -45,7 +45,7 @@ class TransactionFilterState(
     fun setType(t: TransactionType?) { _type.value = t }
     fun setPayment(p: String?) { _payment.value = p }
     fun setCategory(id: Long?) { _categoryId.value = id }
-    fun setFund(id: Long?) { _fundId.value = id }
+    fun setTab(id: Long?) { _tabId.value = id }
     fun setSortOrder(order: TransactionSortOrder) { _sort.value = order }
     fun setTimeRange(r: TimeRange) { _range.value = r }
     fun setCustomRange(fromMillis: Long, toMillis: Long) {
@@ -57,13 +57,13 @@ class TransactionFilterState(
     fun clear(
         type: TransactionType? = null,
         clearCategory: Boolean = true,
-        clearFund: Boolean = true,
+        clearTab: Boolean = true,
         clearQuery: (() -> Unit)? = null,
     ) {
         _type.value = type
         _payment.value = null
         if (clearCategory) _categoryId.value = null
-        if (clearFund) _fundId.value = null
+        if (clearTab) _tabId.value = null
         _range.value = TimeRange.MONTH
         clearQuery?.invoke()
     }

@@ -31,20 +31,20 @@ class AccountDetailViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
     val typeFilter: StateFlow<TransactionType?> = filters.type
     val categoryFilter: StateFlow<Long?> = filters.categoryId
-    val fundFilter: StateFlow<Long?> = filters.fundId
+    val tabFilter: StateFlow<Long?> = filters.tabId
     val sortOrder: StateFlow<TransactionSortOrder> = filters.sort
     val timeRange: StateFlow<TimeRange> = filters.range
     val customFrom: StateFlow<Long> = filters.customFrom
     val customTo: StateFlow<Long> = filters.customTo
 
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
     val categories = categoriesState(categoryRepository, transactionRepository)
 
     private data class Head(
         val key: Pair<Long, String>,
         val t: TransactionType?,
         val cat: Long?,
-        val fund: Long?,
+        val tab: Long?,
         val range: TimeRange,
     )
     private data class Tail(val from: Long, val to: Long, val sort: TransactionSortOrder)
@@ -56,9 +56,9 @@ class AccountDetailViewModel @Inject constructor(
                 scopeKey,
                 filters.typeFlow,
                 filters.categoryIdFlow,
-                filters.fundIdFlow,
+                filters.tabIdFlow,
                 filters.rangeFlow,
-            ) { key, t, cat, fund, r -> Head(key, t, cat, fund, r) },
+            ) { key, t, cat, tab, r -> Head(key, t, cat, tab, r) },
             combine(
                 filters.customFromFlow,
                 filters.customToFlow,
@@ -73,7 +73,7 @@ class AccountDetailViewModel @Inject constructor(
                     query = "",
                     type = head.t,
                     categoryId = head.cat,
-                    fundId = head.fund,
+                    tabId = head.tab,
                     fromTs = from,
                     toTs = to,
                     accountId = sqlAccount,
@@ -102,7 +102,7 @@ class AccountDetailViewModel @Inject constructor(
 
     fun setType(t: TransactionType?) = filters.setType(t)
     fun setCategory(id: Long?) = filters.setCategory(id)
-    fun setFund(id: Long?) = filters.setFund(id)
+    fun setTab(id: Long?) = filters.setTab(id)
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)

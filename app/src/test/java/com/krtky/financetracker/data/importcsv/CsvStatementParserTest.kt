@@ -27,7 +27,7 @@ class CsvStatementParserTest {
     @Test
     fun `parses rupiyah export shape`() {
         val csv = """
-            Date,Time,Type,Amount (INR),Name,Counterparty,Category,Fund,Account,Cash vs Digital,Note,Place,Source,Transaction ID
+            Date,Time,Type,Amount (INR),Name,Counterparty,Category,Tab,Account,Cash vs Digital,Note,Place,Source,Transaction ID
             2025-03-01,10:00:00,DEBIT,120.00,Cafe,Cafe,Food,,Kotak,Digital,lunch,,MANUAL,abc-1
         """.trimIndent()
 

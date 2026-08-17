@@ -134,12 +134,12 @@ class ClassificationNotifier @Inject constructor(
                 .build()
         )
 
-        val fund = db.fundDao().getAll().firstOrNull { !it.archived }
-        if (fund != null) {
+        val tab = db.tabDao().getAll().firstOrNull { !it.archived }
+        if (tab != null) {
             val intent = Intent(context, ClassificationActionReceiver::class.java).apply {
                 action = ClassificationActionReceiver.ACTION_FUND
                 putExtra(ClassificationActionReceiver.EXTRA_TXN_ID, transactionId)
-                putExtra(ClassificationActionReceiver.EXTRA_FUND_ID, fund.id)
+                putExtra(ClassificationActionReceiver.EXTRA_TAB_ID, tab.id)
             }
             val pi = PendingIntent.getBroadcast(
                 context,
@@ -147,7 +147,7 @@ class ClassificationNotifier @Inject constructor(
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            builder.addAction(0, fund.name, pi)
+            builder.addAction(0, tab.name, pi)
         }
 
         val quick = categoryRepository.getQuickActions().firstOrNull()

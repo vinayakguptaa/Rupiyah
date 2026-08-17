@@ -37,7 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.FundFilterOption
+import com.krtky.financetracker.ui.components.TabFilterOption
 import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.TransactionSortButton
@@ -70,8 +70,8 @@ fun AccountDetailScreen(
     val type by vm.typeFilter.collectAsStateWithLifecycle()
     val categoryId by vm.categoryFilter.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
-    val fundId by vm.fundFilter.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabId by vm.tabFilter.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val sortOrder by vm.sortOrder.collectAsStateWithLifecycle()
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
@@ -177,8 +177,8 @@ fun AccountDetailScreen(
             categoryId = categoryId,
             categories = categories.map { CategoryFilterOption(it.id, it.name) },
             bankAccounts = emptyList(),
-            fundId = fundId,
-            funds = funds.map { FundFilterOption(it.fund.id, it.fund.name) },
+            tabId = tabId,
+            tabs = tabs.map { TabFilterOption(it.tab.id, it.tab.name) },
             timeRange = timeRange,
             customFromMillis = customFrom,
             customToMillis = customTo,
@@ -191,9 +191,9 @@ fun AccountDetailScreen(
                 haptics.select()
                 vm.setCategory(it)
             },
-            onFundChange = {
+            onTabChange = {
                 haptics.select()
-                vm.setFund(it)
+                vm.setTab(it)
             },
             onTimeRangeChange = {
                 haptics.select()
@@ -203,7 +203,7 @@ fun AccountDetailScreen(
             onClearAll = vm::clearFilters,
             showCategoryFilter = true,
             showBankFilter = false,
-            showFundFilter = true,
+            showTabFilter = true,
         )
         Spacer(Modifier.height(12.dp))
         Text(

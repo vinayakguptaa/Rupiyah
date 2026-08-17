@@ -4,7 +4,7 @@ import android.content.Context
 import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.CategorySpend
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
 import com.krtky.financetracker.domain.model.MonthlyTrend
 import com.krtky.financetracker.domain.model.Transaction
@@ -109,7 +109,7 @@ data class TxnRow(
     val date: String,
 )
 
-data class FundRow(
+data class TabRow(
     val name: String,
     /** Open balance: + they owe you, − you owe them. */
     val balance: String,
@@ -126,7 +126,7 @@ data class SpendRow(
 data class WidgetSnapshots(
     val overview: OverviewSnapshot,
     val transactions: List<TxnRow>,
-    val funds: List<FundRow>,
+    val tabs: List<TabRow>,
     val spending: List<SpendRow>,
 )
 
@@ -142,12 +142,12 @@ internal object WidgetDataLoader {
             val summary = snapshot.summary
             val trend = snapshot.monthlyTrend
             val txns = repo.observeTransactions().first().take(5)
-            val funds = repo.observeFunds().first().take(4)
+            val tabs = repo.observeTabs().first().take(4)
             val categories = snapshot.categorySpend.take(4)
             WidgetSnapshots(
                 overview = buildOverview(summary, trend),
                 transactions = txns.map { toTxnRow(it) },
-                funds = funds.map { toFundRow(it) },
+                tabs = tabs.map { toTabRow(it) },
                 spending = buildSpending(categories),
             )
         } catch (_: Exception) {
@@ -161,8 +161,8 @@ internal object WidgetDataLoader {
     suspend fun loadTransactions(context: Context): List<TxnRow> =
         load(context).transactions
 
-    suspend fun loadFunds(context: Context): List<FundRow> =
-        load(context).funds
+    suspend fun loadTabs(context: Context): List<TabRow> =
+        load(context).tabs
 
     suspend fun loadSpending(context: Context): List<SpendRow> =
         load(context).spending
@@ -182,7 +182,7 @@ internal object WidgetDataLoader {
             expenseCompared = "",
         ),
         transactions = emptyList(),
-        funds = emptyList(),
+        tabs = emptyList(),
         spending = emptyList(),
     )
 
@@ -224,8 +224,8 @@ internal object WidgetDataLoader {
         )
     }
 
-    private fun toFundRow(fb: FundBalance): FundRow = FundRow(
-        name = fb.fund.name.take(22),
+    private fun toTabRow(fb: TabBalance): TabRow = TabRow(
+        name = fb.tab.name.take(22),
         balance = formatWidgetMoney(fb.balancePaise),
         owedToMe = fb.theyOweYou(),
         settled = fb.isSettled(),

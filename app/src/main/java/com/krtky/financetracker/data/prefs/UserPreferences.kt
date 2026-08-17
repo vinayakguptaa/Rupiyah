@@ -50,7 +50,7 @@ class UserPreferences @Inject constructor(
         val hideBalances = booleanPreferencesKey("hide_balances")
         val setupChecklistDismissed = booleanPreferencesKey("setup_checklist_dismissed")
         val lastUsedCategoryId = longPreferencesKey("last_used_category_id")
-        val lastUsedFundId = longPreferencesKey("last_used_fund_id")
+        val lastUsedTabId = longPreferencesKey("last_used_fund_id")
         val lastUsedPaymentMethod = stringPreferencesKey("last_used_payment_method")
         val darkModePref = stringPreferencesKey("dark_mode_pref")
         val contrastLevel = stringPreferencesKey("contrast_level")
@@ -103,8 +103,8 @@ class UserPreferences @Inject constructor(
         context.dataStore.data.map { it[Keys.setupChecklistDismissed] ?: false }
     val lastUsedCategoryId: Flow<Long?> =
         context.dataStore.data.map { it[Keys.lastUsedCategoryId] }
-    val lastUsedFundId: Flow<Long?> =
-        context.dataStore.data.map { it[Keys.lastUsedFundId] }
+    val lastUsedTabId: Flow<Long?> =
+        context.dataStore.data.map { it[Keys.lastUsedTabId] }
     val lastUsedPaymentMethod: Flow<String?> =
         context.dataStore.data.map { it[Keys.lastUsedPaymentMethod] }
     val darkModePref: Flow<DarkModePref> = context.dataStore.data.map {
@@ -225,14 +225,14 @@ class UserPreferences @Inject constructor(
 
     suspend fun setLastUsedDefaults(
         categoryId: Long?,
-        fundId: Long?,
+        tabId: Long?,
         paymentMethod: String,
     ) {
         context.dataStore.edit {
             if (categoryId != null) it[Keys.lastUsedCategoryId] = categoryId
             else it.remove(Keys.lastUsedCategoryId)
-            if (fundId != null) it[Keys.lastUsedFundId] = fundId
-            else it.remove(Keys.lastUsedFundId)
+            if (tabId != null) it[Keys.lastUsedTabId] = tabId
+            else it.remove(Keys.lastUsedTabId)
             it[Keys.lastUsedPaymentMethod] = paymentMethod.trim()
         }
     }

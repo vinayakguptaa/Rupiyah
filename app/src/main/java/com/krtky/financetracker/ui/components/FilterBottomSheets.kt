@@ -54,11 +54,11 @@ import java.util.Locale
 
 data class CategoryFilterOption(val id: Long, val name: String)
 
-data class FundFilterOption(val id: Long, val name: String)
+data class TabFilterOption(val id: Long, val name: String)
 
 /**
  * Filters button + removable active-filter pills.
- * Dropdowns for type, bank, fund, category, date.
+ * Dropdowns for type, bank, tab, category, date.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,21 +68,21 @@ fun TransactionFilterBar(
     categoryId: Long?,
     categories: List<CategoryFilterOption>,
     bankAccounts: List<String> = emptyList(),
-    fundId: Long? = null,
-    funds: List<FundFilterOption> = emptyList(),
+    tabId: Long? = null,
+    tabs: List<TabFilterOption> = emptyList(),
     timeRange: TimeRange,
     customFromMillis: Long?,
     customToMillis: Long?,
     onTypeChange: (TransactionType?) -> Unit,
     onPaymentChange: (String?) -> Unit,
     onCategoryChange: (Long?) -> Unit,
-    onFundChange: (Long?) -> Unit = {},
+    onTabChange: (Long?) -> Unit = {},
     onTimeRangeChange: (TimeRange) -> Unit,
     onCustomRange: (Long, Long) -> Unit,
     onClearAll: () -> Unit,
     modifier: Modifier = Modifier,
     showCategoryFilter: Boolean = true,
-    showFundFilter: Boolean = true,
+    showTabFilter: Boolean = true,
     /** When false, hides bank/cash/digital dropdown (rarely used). */
     showBankFilter: Boolean = true,
 ) {
@@ -91,7 +91,7 @@ fun TransactionFilterBar(
     var draftType by remember { mutableStateOf<TransactionType?>(null) }
     var draftPayment by remember { mutableStateOf<String?>(null) }
     var draftCategory by remember { mutableStateOf<Long?>(null) }
-    var draftFund by remember { mutableStateOf<Long?>(null) }
+    var draftTab by remember { mutableStateOf<Long?>(null) }
     var draftRange by remember { mutableStateOf(TimeRange.MONTH) }
     val dateFmt = remember { SimpleDateFormat("dd MMM", Locale.getDefault()) }
     val scheme = MaterialTheme.colorScheme
@@ -108,8 +108,8 @@ fun TransactionFilterBar(
         paymentMethod == "Digital-unassigned" -> "Digital (no bank)"
         else -> paymentMethod
     }
-    val fundPill = if (showFundFilter) {
-        funds.firstOrNull { it.id == fundId }?.name
+    val fundPill = if (showTabFilter) {
+        tabs.firstOrNull { it.id == tabId }?.name
     } else {
         null
     }
@@ -144,7 +144,7 @@ fun TransactionFilterBar(
                 draftType = type
                 draftPayment = paymentMethod
                 draftCategory = categoryId
-                draftFund = fundId
+                draftTab = tabId
                 draftRange = timeRange
                 sheetOpen = true
             },
@@ -177,7 +177,7 @@ fun TransactionFilterBar(
 
         typePill?.let { ActiveFilterPill(it) { onTypeChange(null) } }
         bankPill?.let { ActiveFilterPill(it) { onPaymentChange(null) } }
-        fundPill?.let { ActiveFilterPill(it) { onFundChange(null) } }
+        fundPill?.let { ActiveFilterPill(it) { onTabChange(null) } }
         categoryPill?.let { ActiveFilterPill(it) { onCategoryChange(null) } }
         datePill?.let { ActiveFilterPill(it) { onTimeRangeChange(TimeRange.MONTH) } }
     }
@@ -261,19 +261,19 @@ fun TransactionFilterBar(
                     )
                 }
 
-                if (showFundFilter) {
+                if (showTabFilter) {
                     Spacer(Modifier.height(12.dp))
-                    val fundOptions = listOf("All funds") + funds.map { it.name }
-                    val fundValue = funds.firstOrNull { it.id == draftFund }?.name ?: "All funds"
+                    val tabOptions = listOf("All tabs") + tabs.map { it.name }
+                    val tabValue = tabs.firstOrNull { it.id == draftTab }?.name ?: "All tabs"
                     FilterDropdownField(
                         label = "Tab",
-                        value = fundValue,
-                        options = fundOptions,
+                        value = tabValue,
+                        options = tabOptions,
                         onSelect = { pick ->
-                            draftFund = if (pick == "All funds") {
+                            draftTab = if (pick == "All tabs") {
                                 null
                             } else {
-                                funds.firstOrNull { it.name == pick }?.id
+                                tabs.firstOrNull { it.name == pick }?.id
                             }
                         },
                     )
@@ -337,7 +337,7 @@ fun TransactionFilterBar(
                         onTypeChange(draftType)
                         if (showBankFilter) onPaymentChange(draftPayment)
                         if (showCategoryFilter) onCategoryChange(draftCategory)
-                        if (showFundFilter) onFundChange(draftFund)
+                        if (showTabFilter) onTabChange(draftTab)
                         if (draftRange == TimeRange.CUSTOM) {
                             showCustomPicker = true
                         } else {
@@ -360,7 +360,7 @@ fun TransactionFilterBar(
                         draftType = null
                         draftPayment = null
                         draftCategory = null
-                        draftFund = null
+                        draftTab = null
                         draftRange = TimeRange.MONTH
                         onClearAll()
                         sheetOpen = false
@@ -390,7 +390,7 @@ fun TransactionFilterBar(
                             onTypeChange(draftType)
                             if (showBankFilter) onPaymentChange(draftPayment)
                             if (showCategoryFilter) onCategoryChange(draftCategory)
-                            if (showFundFilter) onFundChange(draftFund)
+                            if (showTabFilter) onTabChange(draftTab)
                             onCustomRange(start, end)
                             showCustomPicker = false
                             sheetOpen = false

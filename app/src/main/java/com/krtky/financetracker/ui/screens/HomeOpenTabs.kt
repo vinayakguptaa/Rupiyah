@@ -6,20 +6,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.krtky.financetracker.ui.components.FundsWaveSummary
+import com.krtky.financetracker.ui.components.TabsWaveSummary
 
 @Composable
 internal fun HomeOpenTabsSection(
     data: HomeDashboardData,
     compact: Boolean,
     modifier: Modifier = Modifier,
-    onOpenFunds: () -> Unit,
+    onOpenTabs: () -> Unit,
 ) {
     Column(modifier) {
-        FundsWaveSummary(
-            funds = data.funds,
+        TabsWaveSummary(
+            tabs = data.tabs,
             hidden = data.isNetHidden,
-            onOpenFunds = onOpenFunds,
+            onOpenTabs = onOpenTabs,
         )
         if (!compact) Spacer(Modifier.height(16.dp))
     }

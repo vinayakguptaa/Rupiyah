@@ -10,12 +10,12 @@ enum class HomeSection(val id: String, val title: String) {
     CATEGORY_RING("category_ring", "Expenses"),
     INCOME("income", "Income"),
     RECENT("recent", "Recent activity"),
-    FUNDS_SUMMARY("funds_summary", "Open Tabs"),
+    TABS_SUMMARY("funds_summary", "Open Tabs"),
     ;
 
     /** Half-width is useful for compact tiles; hero + recent stay full for readability. */
     val allowsHalfWidth: Boolean
-        get() = this == CATEGORY_RING || this == INCOME || this == FUNDS_SUMMARY
+        get() = this == CATEGORY_RING || this == INCOME || this == TABS_SUMMARY
 
     companion object {
         val DEFAULT_ORDER: List<HomeSection> = entries.toList()

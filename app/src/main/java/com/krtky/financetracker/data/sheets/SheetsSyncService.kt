@@ -137,7 +137,7 @@ class SheetsSyncService @Inject constructor(
                 continue
             }
             val cats = db.categoryDao().getById(txn.categoryId ?: -1)
-            val fund = db.fundDao().getById(txn.fundId ?: -1)
+            val tab = db.tabDao().getById(txn.tabId ?: -1)
             val row = listOf(
                 txn.id,
                 df.format(Date(txn.occurredAt)),
@@ -147,7 +147,7 @@ class SheetsSyncService @Inject constructor(
                 txn.counterparty.orEmpty(),
                 cats?.name.orEmpty(),
                 "",
-                fund?.name.orEmpty(),
+                tab?.name.orEmpty(),
                 txn.accountId?.let { accountNames[it] }.orEmpty(),
                 if (txn.isCash) "Cash" else "Digital",
                 txn.note.orEmpty(),
@@ -319,7 +319,7 @@ class SheetsSyncService @Inject constructor(
                     4 to 100, // Amount
                     5 to 160, // Merchant
                     6 to 120, // Category
-                    8 to 120, // Fund
+                    8 to 120, // Tab
                     9 to 120, // Payment
                     10 to 110, // Cash/Digital
                     11 to 180, // Note
@@ -469,7 +469,7 @@ class SheetsSyncService @Inject constructor(
         putValues(
             spreadsheetId, token, "Funds!A1:B2",
             listOf(
-                listOf("Fund", "Net (income − expense)"),
+                listOf("Tab", "Net (income − expense)"),
                 listOf(
                     "=IFERROR(QUERY(Transactions!A:T,\"select I, sum(E) where I is not null and I<>'' group by I pivot D order by I\",1),\"No data\")",
                     "",

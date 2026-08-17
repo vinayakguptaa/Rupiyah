@@ -29,26 +29,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FundTransferSheet(
-    sourceFundId: Long,
-    sourceFundName: String,
-    allFunds: List<FundBalance>,
+fun TabTransferSheet(
+    sourceTabId: Long,
+    sourceTabName: String,
+    allTabs: List<TabBalance>,
     onDismiss: () -> Unit,
     onTransfer: suspend (fromId: Long, toId: Long, amountPaise: Long, note: String) -> Boolean,
 ) {
     val scheme = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
-    var targetFundId by remember { mutableStateOf<Long?>(null) }
+    var targetTabId by remember { mutableStateOf<Long?>(null) }
     var amountText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
 
-    val targetFunds = allFunds.filter { it.fund.id != sourceFundId && !it.fund.archived }
+    val targetTabs = allTabs.filter { it.tab.id != sourceTabId && !it.tab.archived }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -66,24 +66,24 @@ fun FundTransferSheet(
             Text("Move money", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
             Text(
-                "Transfer from \"$sourceFundName\" to another fund.",
+                "Transfer from \"$sourceTabName\" to another tab.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
             )
 
-            Text("From: $sourceFundName", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text("From: $sourceTabName", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
 
             Text("To", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                targetFunds.forEach { f ->
+                targetTabs.forEach { f ->
                     FormCategoryChip(
-                        label = f.fund.name,
+                        label = f.tab.name,
                         icon = Icons.Default.Payments,
-                        selected = targetFundId == f.fund.id,
-                        onClick = { targetFundId = f.fund.id },
+                        selected = targetTabId == f.tab.id,
+                        onClick = { targetTabId = f.tab.id },
                     )
                 }
             }
@@ -110,13 +110,13 @@ fun FundTransferSheet(
             )
 
             val amountPaise = (amountText.toDoubleOrNull()?.let { (it * 100).toLong() } ?: 0L)
-            val valid = targetFundId != null && amountPaise > 0L
+            val valid = targetTabId != null && amountPaise > 0L
 
             Button(
                 onClick = {
                     scope.launch {
                         saving = true
-                        val ok = onTransfer(sourceFundId, targetFundId!!, amountPaise, note)
+                        val ok = onTransfer(sourceTabId, targetTabId!!, amountPaise, note)
                         saving = false
                         if (ok) onDismiss()
                     }

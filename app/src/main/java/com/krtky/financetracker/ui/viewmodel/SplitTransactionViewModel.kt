@@ -28,14 +28,14 @@ class SplitTransactionViewModel @Inject constructor(
     val transaction: StateFlow<Transaction?> = _txn
 
     val categories = categoriesState(categoryRepository, transactionRepository)
-    val funds = fundsState(transactionRepository)
+    val tabs = tabsState(transactionRepository)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val splits: StateFlow<List<SplitPart>> = txnIdFlow
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
             else transactionRepository.observeSplitGroup(id).map { parts ->
-                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.fundId, it.note) }
+                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.tabId, it.note) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

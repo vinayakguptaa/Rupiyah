@@ -1,7 +1,7 @@
 package com.krtky.financetracker.ui.screens
 
 import com.krtky.financetracker.domain.model.CategorySpend
-import com.krtky.financetracker.domain.model.FundBalance
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.SourceSpend
 import com.krtky.financetracker.domain.model.Transaction
 
@@ -15,7 +15,7 @@ internal data class HomeDashboardData(
     val spent: Long,
     val monthLabel: String,
     val isNetHidden: Boolean,
-    val funds: List<FundBalance>,
+    val tabs: List<TabBalance>,
     val fundBalance: Long,
     val cashBal: Long,
     val digitalBal: Long,

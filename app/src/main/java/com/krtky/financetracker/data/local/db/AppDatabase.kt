@@ -9,9 +9,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         CategoryEntity::class,
         AccountEntity::class,
-        FundEntity::class,
+        TabEntity::class,
         TransactionEntity::class,
-        FundLedgerEntity::class,
+        TabLedgerEntity::class,
         LocationSampleEntity::class,
         PendingClassificationEntity::class,
         SyncOutboxEntity::class,
@@ -25,9 +25,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun accountDao(): AccountDao
-    abstract fun fundDao(): FundDao
+    abstract fun tabDao(): TabDao
     abstract fun transactionDao(): TransactionDao
-    abstract fun fundLedgerDao(): FundLedgerDao
+    abstract fun tabLedgerDao(): TabLedgerDao
     abstract fun locationSampleDao(): LocationSampleDao
     abstract fun pendingClassificationDao(): PendingClassificationDao
     abstract fun syncOutboxDao(): SyncOutboxDao
@@ -35,7 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /**
-         * Adds fixed [FundEntity.budgetPaise] and freezes current net credits as the
+         * Adds fixed [TabEntity.budgetPaise] and freezes current net credits as the
          * initial limit so later income credits don't inflate progress %.
          */
         val MIGRATION_2_3 = object : Migration(2, 3) {

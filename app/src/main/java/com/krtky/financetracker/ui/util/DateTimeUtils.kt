@@ -34,7 +34,7 @@ fun startOfMonthMillis(millis: Long = System.currentTimeMillis()): Long =
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
-/** Subtitle for filtered lists (category/fund detail headers). */
+/** Subtitle for filtered lists (category/tab detail headers). */
 fun timeRangeSubtitle(
     range: TimeRange,
     customFrom: Long,

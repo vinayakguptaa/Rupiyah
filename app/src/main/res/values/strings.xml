@@ -122,6 +122,6 @@
     <string name="widget_overview_label">Rupiyah · Overview</string>
     <string name="widget_transactions_label">Rupiyah · Recent</string>
     <string name="widget_add_button_label">Rupiyah · Add</string>
-    <string name="widget_funds_label">Rupiyah · Funds</string>
+    <string name="widget_funds_label">Rupiyah · Tabs</string>
     <string name="widget_spending_label">Rupiyah · Spending</string>
 </resources>

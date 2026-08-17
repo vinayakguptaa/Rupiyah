@@ -37,7 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.FundFilterOption
+import com.krtky.financetracker.ui.components.TabFilterOption
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.TransactionSortButton
 import com.krtky.financetracker.ui.util.CategoryIcons
@@ -75,8 +75,8 @@ fun CategoryDetailScreen(
     val title by vm.title.collectAsStateWithLifecycle()
     val type by vm.typeFilter.collectAsStateWithLifecycle()
     val payment by vm.paymentFilter.collectAsStateWithLifecycle()
-    val fundId by vm.fundFilter.collectAsStateWithLifecycle()
-    val funds by vm.funds.collectAsStateWithLifecycle()
+    val tabId by vm.tabFilter.collectAsStateWithLifecycle()
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
     val bankAccounts by vm.bankAccounts.collectAsStateWithLifecycle()
     val sortOrder by vm.sortOrder.collectAsStateWithLifecycle()
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
@@ -176,8 +176,8 @@ fun CategoryDetailScreen(
             categoryId = null,
             categories = emptyList(),
             bankAccounts = bankAccounts,
-            fundId = fundId,
-            funds = funds.map { FundFilterOption(it.fund.id, it.fund.name) },
+            tabId = tabId,
+            tabs = tabs.map { TabFilterOption(it.tab.id, it.tab.name) },
             timeRange = timeRange,
             customFromMillis = customFrom,
             customToMillis = customTo,
@@ -190,9 +190,9 @@ fun CategoryDetailScreen(
                 vm.setPayment(it)
             },
             onCategoryChange = {},
-            onFundChange = {
+            onTabChange = {
                 haptics.select()
-                vm.setFund(it)
+                vm.setTab(it)
             },
             onTimeRangeChange = {
                 haptics.select()
@@ -201,7 +201,7 @@ fun CategoryDetailScreen(
             onCustomRange = vm::setCustomRange,
             onClearAll = vm::clearFilters,
             showCategoryFilter = false,
-            showFundFilter = true,
+            showTabFilter = true,
         )
         Spacer(Modifier.height(12.dp))
         Text(

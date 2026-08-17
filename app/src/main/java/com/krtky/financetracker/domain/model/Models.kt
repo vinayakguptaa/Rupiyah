@@ -16,7 +16,7 @@ enum class TransactionKind { NORMAL, SELF_TRANSFER, TAB_TRANSFER }
 
 enum class AccountKind { BANK, CARD, CASH, WALLET }
 
-enum class FundEntryType { CREDIT, DEBIT, ADJUSTMENT }
+enum class TabEntryType { CREDIT, DEBIT, ADJUSTMENT }
 
 data class Money(val paise: Long) {
     fun toRupees(): Double = paise / 100.0
@@ -67,7 +67,7 @@ data class AccountBalance(
     val txnCount: Long = 0,
 )
 
-data class Fund(
+data class Tab(
     val id: Long = 0,
     val name: String,
     val archived: Boolean = false,
@@ -77,16 +77,16 @@ data class Fund(
 )
 
 /**
- * Open Tab balance (was Fund envelope).
+ * Open Tab balance (was Tab envelope).
  *
  * Spec: positive → they owe you; negative → you owe them.
  *   balance = opening + debits − credits
  * (money you advanced / spent on their behalf vs settlements).
  *
- * [fund.budgetPaise] is optional opening / starting open balance.
+ * [tab.budgetPaise] is optional opening / starting open balance.
  */
-data class FundBalance(
-    val fund: Fund,
+data class TabBalance(
+    val tab: Tab,
     /** Open balance: + they owe you, − you owe them. */
     val balancePaise: Long,
     /** Credits (settlements / repayments) on this tab. */
@@ -98,7 +98,7 @@ data class FundBalance(
 ) {
     /** Magnitude for display bars / default adjust amount (never zero for ratio math). */
     fun limitPaise(): Long = when {
-        fund.budgetPaise > 0L -> fund.budgetPaise
+        tab.budgetPaise > 0L -> tab.budgetPaise
         openingPaise > 0L -> openingPaise
         else -> maxOf(kotlin.math.abs(balancePaise), debitedPaise + creditedPaise, 1L)
     }
@@ -147,7 +147,7 @@ data class SplitPart(
     val amountPaise: Long,
     val categoryId: Long? = null,
     val counterparty: String? = null,
-    val fundId: Long? = null,
+    val tabId: Long? = null,
     val note: String? = null,
 )
 
@@ -161,7 +161,7 @@ data class Transaction(
     /** UI label: party / merchant / person / venue. */
     val counterparty: String? = null,
     val categoryId: Long? = null,
-    val fundId: Long? = null,
+    val tabId: Long? = null,
     val accountId: Long? = null,
     val source: TransactionSource = TransactionSource.MANUAL,
     val note: String? = null,
@@ -189,7 +189,7 @@ data class Transaction(
     val categoryIcon: String? = null,
     /** ARGB category color; null if uncategorized. */
     val categoryColor: Long? = null,
-    val fundName: String? = null,
+    val tabName: String? = null,
     val accountName: String? = null,
     /** Relative path under app files (`receipts/…`) or content URI string. */
     val receiptUri: String? = null,
