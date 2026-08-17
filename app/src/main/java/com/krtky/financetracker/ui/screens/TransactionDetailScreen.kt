@@ -1,25 +1,13 @@
 package com.krtky.financetracker.ui.screens
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,39 +17,23 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Schedule
-import com.krtky.financetracker.R
-import com.krtky.financetracker.ui.components.ReceiptAttachmentField
-import java.io.File
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -73,44 +45,31 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.AmountNumpadSheet
-import com.krtky.financetracker.ui.components.AmountRupeeField
 import com.krtky.financetracker.ui.components.AppFabSize
 import com.krtky.financetracker.ui.components.ConfirmActionSheet
+import com.krtky.financetracker.ui.components.DatePickerSheet
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
-import com.krtky.financetracker.ui.components.DatePickerSheet
-import com.krtky.financetracker.ui.components.FormAccountChip
-import com.krtky.financetracker.ui.components.FormCategoryChip
-import com.krtky.financetracker.ui.components.FormExpandableHeader
-import com.krtky.financetracker.ui.components.FormTypeSegment
 import com.krtky.financetracker.ui.components.TimePickerSheet
+import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.util.formDateFormatter
 import com.krtky.financetracker.ui.util.formTimeFormatter
-import com.krtky.financetracker.ui.theme.M3EMotion
-import com.krtky.financetracker.ui.util.CategoryIcons
-import com.krtky.financetracker.ui.util.formatDateTime
-import com.krtky.financetracker.ui.util.inr
-import com.krtky.financetracker.ui.util.mapsUri
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.viewmodel.TransactionDetailViewModel
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+import java.io.File
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToLong
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionDetailScreen(
     id: String,
@@ -183,7 +142,6 @@ fun TransactionDetailScreen(
         }.timeInMillis
     }
 
-    /** Active accounts + current archived (if any) so old bank still shows on this txn. */
     val pickerAccounts = remember(accounts, archivedCurrent, selectedAccountId) {
         buildList {
             addAll(accounts)
@@ -191,26 +149,6 @@ fun TransactionDetailScreen(
             if (extra != null && none { it.id == extra.id }) add(extra)
         }
     }
-
-    val fieldShape = RoundedCornerShape(18.dp)
-    val fieldBg = scheme.surfaceContainerHigh
-    val fieldColors = TextFieldDefaults.colors(
-        focusedContainerColor = fieldBg,
-        unfocusedContainerColor = fieldBg,
-        disabledContainerColor = fieldBg,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-        disabledIndicatorColor = Color.Transparent,
-        cursorColor = scheme.primary,
-        focusedTextColor = scheme.onSurface,
-        unfocusedTextColor = scheme.onSurface,
-        focusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-        unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-    )
-
-    val paymentLabel = pickerAccounts.firstOrNull { it.id == selectedAccountId }?.let { acc ->
-        if (acc.archived) "${acc.name} (archived)" else acc.name
-    } ?: "Select account"
 
     LaunchedEffect(Unit) { contentVisible = true }
 
@@ -351,7 +289,6 @@ fun TransactionDetailScreen(
         return
     }
 
-    // Only intercept when editing so info mode keeps system predictive-back animation.
     BackHandler(enabled = editing) { exitEditOrScreen() }
 
     Scaffold(
@@ -480,95 +417,32 @@ fun TransactionDetailScreen(
                     haptics = haptics,
                 )
             } else {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                // Debit | Credit
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(scheme.surfaceContainerHighest, RoundedCornerShape(28.dp))
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    FormTypeSegment(
-                        label = "Debit",
-                        selected = type == TransactionType.DEBIT,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            type = TransactionType.DEBIT
-                            haptics.select()
-                        },
-                    )
-                    FormTypeSegment(
-                        label = "Credit",
-                        selected = type == TransactionType.CREDIT,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            type = TransactionType.CREDIT
-                            haptics.select()
-                        },
-                    )
-                }
-
-                AnimatedContent(
-                    targetState = type,
-                    transitionSpec = {
-                        (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
-                            .togetherWith(fadeOut(M3EMotion.effectsFast()))
-                    },
-                    label = "editTypeFields",
-                ) { currentType ->
-                    TextField(
-                        value = counterparty,
-                        onValueChange = { counterparty = it },
-                        placeholder = {
-                            Text(
-                                if (currentType == TransactionType.DEBIT) "Name (merchant or person)"
-                                else "Name (source)",
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = fieldShape,
-                        colors = fieldColors,
-                    )
-                }
-
-                // Amount — app numpad only
-                AmountRupeeField(
+                TransactionDetailEdit(
+                    t = t,
+                    categories = categories,
+                    funds = funds,
+                    pickerAccounts = pickerAccounts,
+                    defaultDigital = defaultDigital,
+                    defaultPay = defaultPay,
+                    note = note,
+                    onNote = { note = it },
+                    counterparty = counterparty,
+                    onCounterparty = { counterparty = it },
+                    categoryId = categoryId,
+                    onCategoryId = { categoryId = it },
+                    fundId = fundId,
+                    onFundId = { fundId = it },
+                    addToFund = addToFund,
+                    onAddToFund = { addToFund = it },
                     amount = amount,
-                    onClick = {
-                        haptics.select()
-                        showAmountPad = true
-                    },
-                    shape = fieldShape,
-                    containerColor = fieldBg,
-                    amountStyle = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    symbolStyle = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                    ),
-                )
-
-                TextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    placeholder = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = fieldShape,
-                    colors = fieldColors,
-                    minLines = 2,
-                )
-
-                ReceiptAttachmentField(
-                    localUri = displayReceiptUri,
-                    onUriChange = { uri ->
+                    type = type,
+                    onType = { type = it },
+                    selectedAccountId = selectedAccountId,
+                    onAccountId = { selectedAccountId = it },
+                    useCurrentLocation = useCurrentLocation,
+                    onUseCurrentLocation = { useCurrentLocation = it },
+                    displayReceiptUri = displayReceiptUri,
+                    onReceiptChange = { uri ->
                         if (uri == null) {
                             receiptLocalUri = null
                             receiptCleared = true
@@ -577,295 +451,21 @@ fun TransactionDetailScreen(
                             receiptCleared = false
                         }
                     },
-                    enabled = true,
+                    recommendedFundId = recommendedFundId,
+                    displayWhen = displayWhen,
+                    paymentExpanded = paymentExpanded,
+                    onPaymentExpanded = { paymentExpanded = it },
+                    categoryExpanded = categoryExpanded,
+                    onCategoryExpanded = { categoryExpanded = it },
+                    dateFmt = dateFmt,
+                    timeFmt = timeFmt,
+                    context = context,
+                    onShowAmountPad = { showAmountPad = true },
+                    onShowDatePicker = { showDatePicker = true },
+                    onShowTimePicker = { showTimePicker = true },
+                    onHapticSelect = { haptics.select() },
                 )
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Surface(
-                        onClick = {
-                            haptics.select()
-                            showDatePicker = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = fieldShape,
-                        color = fieldBg,
-                    ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.CalendarMonth,
-                                    null,
-                                    tint = scheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Text("Date", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                dateFmt.format(Date(displayWhen)),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                    Surface(
-                        onClick = {
-                            haptics.select()
-                            showTimePicker = true
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = fieldShape,
-                        color = fieldBg,
-                    ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Icon(
-                                    Icons.Default.Schedule,
-                                    null,
-                                    tint = scheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Text("Time", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                timeFmt.format(Date(displayWhen)),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-                }
-
-                FormExpandableHeader(
-                    title = "Payment",
-                    subtitle = paymentLabel,
-                    icon = Icons.Default.Payments,
-                    expanded = paymentExpanded,
-                    onToggle = {
-                        haptics.select()
-                        paymentExpanded = !paymentExpanded
-                    },
-                )
-                AnimatedVisibility(
-                    visible = paymentExpanded,
-                    enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                    exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            "Same list as Settings → Bank accounts (+ Cash). Archived only if this txn already uses one.",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = scheme.onSurfaceVariant,
-                        )
-                        if (pickerAccounts.isEmpty()) {
-                            Text(
-                                "No accounts yet. Add banks in Settings → Bank accounts.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant,
-                            )
-                        }
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            pickerAccounts.forEach { acc ->
-                                FormAccountChip(
-                                    label = if (acc.archived) "${acc.name} (archived)" else acc.name,
-                                    icon = if (acc.kind.name == "CASH") {
-                                        Icons.Default.Payments
-                                    } else {
-                                        Icons.Default.AccountBalance
-                                    },
-                                    selected = selectedAccountId == acc.id,
-                                    isDefault = defaultDigital.equals(acc.name, true) ||
-                                        defaultPay.equals(acc.name, true),
-                                    onClick = {
-                                        selectedAccountId = acc.id
-                                        haptics.select()
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                FormExpandableHeader(
-                    title = "Category",
-                    subtitle = categories.firstOrNull { it.id == categoryId }?.name ?: "Select category",
-                    icon = Icons.Default.Payments,
-                    expanded = categoryExpanded,
-                    onToggle = {
-                        haptics.select()
-                        categoryExpanded = !categoryExpanded
-                    },
-                )
-                AnimatedVisibility(
-                    visible = categoryExpanded,
-                    enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                    exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                ) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        FormCategoryChip(
-                            label = "None",
-                            icon = Icons.Default.Delete,
-                            selected = categoryId == null,
-                            onClick = {
-                                categoryId = null
-                                haptics.select()
-                            },
-                        )
-                        categories.forEach { c ->
-                            FormCategoryChip(
-                                label = c.name,
-                                icon = CategoryIcons.iconFor(c.icon, c.name),
-                                selected = categoryId == c.id,
-                                onClick = {
-                                    categoryId = c.id
-                                    haptics.select()
-                                },
-                            )
-                        }
-                    }
-                }
-
-                if (funds.isNotEmpty()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            "Tab",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        val recFundName = recommendedFundId?.let { id ->
-                            funds.firstOrNull { it.fund.id == id }?.fund?.name
-                        }
-                        if (recFundName != null && fundId == null) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = scheme.tertiaryContainer,
-                            ) {
-                                Text(
-                                    "Spend from $recFundName",
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = scheme.onTertiaryContainer,
-                                )
-                            }
-                        }
-                    }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FormCategoryChip(
-                            label = "None",
-                            icon = Icons.Default.Delete,
-                            selected = fundId == null,
-                            onClick = { fundId = null },
-                        )
-                        funds.forEach { f ->
-                            FormCategoryChip(
-                                label = f.fund.name,
-                                icon = Icons.Default.Payments,
-                                selected = fundId == f.fund.id,
-                                onClick = {
-                                    fundId = f.fund.id
-                                    addToFund = true
-                                },
-                            )
-                        }
-                    }
-                    AnimatedVisibility(visible = type == TransactionType.CREDIT && fundId != null) {
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = fieldBg,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "Add to fund balance",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                )
-                                Switch(
-                                    checked = addToFund,
-                                    onCheckedChange = { addToFund = it },
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if (!t.externalRefId.isNullOrBlank()) {
-                    Text(
-                        "Ref: ${t.externalRefId}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-                if (t.placeName != null || t.latitude != null) {
-                    Text(
-                        "Location: ${t.placeName ?: "${t.latitude}, ${t.longitude}"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                    if (t.latitude != null && t.longitude != null) {
-                        OutlinedButton(
-                            onClick = {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, mapsUri(t.latitude, t.longitude, t.placeName)),
-                                )
-                            },
-                            shape = RoundedCornerShape(18.dp),
-                        ) { Text("Open in Maps") }
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = fieldBg,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Update with current location", style = MaterialTheme.typography.bodyLarge)
-                        Switch(checked = useCurrentLocation, onCheckedChange = { useCurrentLocation = it })
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
             }
-            } // end editing column
         }
     }
 
@@ -928,7 +528,6 @@ fun TransactionDetailScreen(
             secondaryLabel = "Discard",
             onSecondary = {
                 showLeaveConfirm = false
-                // Reset fields from loaded txn and return to info view
                 txn?.let {
                     note = it.note.orEmpty()
                     counterparty = it.counterparty.orEmpty()
@@ -975,6 +574,4 @@ fun TransactionDetailScreen(
             },
         )
     }
-
 }
-

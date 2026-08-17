@@ -21,6 +21,7 @@ import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 import javax.inject.Inject
@@ -57,7 +58,7 @@ class AddCashViewModel @Inject constructor(
 
     fun isLlmReady(): Boolean = llmClient.isConfigured()
 
-    suspend fun parsePastedText(text: String): Result<Transaction> {
+    suspend fun parsePastedText(text: String): Result<PasteParseResult> {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return Result.failure(IllegalArgumentException("Paste some text first"))
         val parsed = transactionParser.parsePastedText(trimmed)
@@ -70,7 +71,15 @@ class AddCashViewModel @Inject constructor(
                     },
                 ),
             )
-        return Result.success(parsed)
+        val liveAccounts = accountRepository.observeActive().first()
+        val pair = transactionParser.inferSelfTransfer(trimmed, liveAccounts)
+        return Result.success(
+            PasteParseResult(
+                transaction = parsed,
+                transferFromAccountId = pair?.first,
+                transferToAccountId = pair?.second,
+            ),
+        )
     }
 
     suspend fun recommendFundForCategory(categoryId: Long?): Long? {
@@ -178,4 +187,15 @@ class AddCashViewModel @Inject constructor(
             occurredAt = occurredAt,
         ) != null
     }
+}
+
+data class PasteParseResult(
+    val transaction: Transaction,
+    val transferFromAccountId: Long? = null,
+    val transferToAccountId: Long? = null,
+) {
+    val isSelfTransfer: Boolean
+        get() = transferFromAccountId != null &&
+            transferToAccountId != null &&
+            transferFromAccountId != transferToAccountId
 }

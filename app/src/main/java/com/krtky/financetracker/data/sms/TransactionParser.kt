@@ -6,6 +6,7 @@ import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.Transaction
@@ -101,6 +102,42 @@ class TransactionParser @Inject constructor(
             RawSms("paste-$receivedAt-${trimmed.hashCode()}", "paste", trimmed, receivedAt),
             TransactionSource.PASTE,
         )
+    }
+
+    /**
+     * Self-transfer when the note names two of the user's accounts
+     * (or says transferred / NEFT / IMPS / RTGS between them).
+     * Bank SMS about paying a merchant only names one account — that stays a debit.
+     */
+    fun inferSelfTransfer(text: String, accounts: List<Account>): Pair<Long, Long>? {
+        if (accounts.size < 2) return null
+        val lower = text.lowercase(Locale.US)
+        val hits = accounts
+            .filter { it.name.isNotBlank() && it.name.length >= 3 }
+            .filter { lower.contains(it.name.lowercase(Locale.US)) }
+            .sortedByDescending { it.name.length }
+            .distinctBy { it.id }
+        if (hits.size < 2) return null
+        val transferish = Regex(
+            """\b(transfer(?:red)?|neft|imps|rtgs|self[\s-]?transfer|own\s+account|to\s+self)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        val fromTo = Regex(
+            """from\s+(.{2,48}?)\s+to\s+(.{2,48}?)(?:[.\n]|$)""",
+            RegexOption.IGNORE_CASE,
+        ).find(text)
+        if (fromTo != null) {
+            val fromHit = hits.firstOrNull { fromTo.groupValues[1].contains(it.name, true) }
+            val toHit = hits.firstOrNull { fromTo.groupValues[2].contains(it.name, true) }
+            if (fromHit != null && toHit != null && fromHit.id != toHit.id) {
+                return fromHit.id to toHit.id
+            }
+        }
+        if (!transferish.containsMatchIn(text) && hits.size < 2) return null
+        val ordered = accounts.filter { acc -> hits.any { it.id == acc.id } }
+            .sortedBy { acc -> lower.indexOf(acc.name.lowercase(Locale.US)).takeIf { it >= 0 } ?: Int.MAX_VALUE }
+        if (ordered.size < 2) return null
+        return ordered[0].id to ordered[1].id
     }
 
     private suspend fun parseSource(sms: RawSms, source: TransactionSource): Transaction? {

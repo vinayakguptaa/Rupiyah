@@ -22,6 +22,8 @@ data class ExtractedTransaction(
     val counterparty: String? = null,
     val category: String? = null,
     val bank: String? = null,
+    val toBank: String? = null,
+    val isSelfTransfer: Boolean? = null,
     val referenceId: String? = null,
     val paymentMethod: String? = null,
     val note: String? = null,
@@ -69,6 +71,7 @@ class LlmClient @Inject constructor(
                 appendLine("ALLOWED DIGITAL ACCOUNTS (pick exactly one of these strings for \"bank\" / paymentMethod when digital, or null):")
                 appendLine(banks.joinToString(" | "))
                 appendLine("Match the closest account from this list only. Prefer the list label over synonyms.")
+                appendLine("If this is money moved between two of those accounts (self transfer), set isSelfTransfer=true, bank=source account, toBank=destination account.")
             } else {
                 appendLine("ALLOWED DIGITAL ACCOUNTS: (none configured — use paymentMethod Digital if not cash)")
             }

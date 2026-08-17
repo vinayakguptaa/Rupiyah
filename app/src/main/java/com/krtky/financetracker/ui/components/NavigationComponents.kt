@@ -2,12 +2,18 @@ package com.krtky.financetracker.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,9 +32,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.List
@@ -44,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -55,9 +64,16 @@ import com.krtky.financetracker.ui.theme.RupiyahTheme
 /** Shared FAB size so dock FAB and screen FABs match (56.dp). */
 val AppFabSize = 56.dp
 
+data class FabSpeedDialItem(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
 /**
  * Floating bottom navigation dock for the main tabs (Home, Activity, Funds, Settings).
  * Opaque capsule over content with a sliding selection pill; optional side FAB.
+ * FAB menu is an overlay above this row, so the dock never grows.
  */
 @Composable
 fun FloatingBottomNav(
@@ -68,6 +84,8 @@ fun FloatingBottomNav(
     fabIcon: ImageVector = Icons.Default.Add,
     fabContentDescription: String = "Add",
     onFabClick: (() -> Unit)? = null,
+    fabMenuExpanded: Boolean = false,
+    fabMenuItems: List<FabSpeedDialItem> = emptyList(),
 ) {
     val items = listOf(
         Triple("home", "Home", Icons.Default.Home),
@@ -85,12 +103,17 @@ fun FloatingBottomNav(
     val unselectedWeightTarget = 0.85f
     val totalWeight = selectedWeightTarget + unselectedWeightTarget * (items.size - 1)
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth(0.85f)
             .navigationBarsPadding()
             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    ) {
+    Row(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Surface(
@@ -206,11 +229,80 @@ fun FloatingBottomNav(
             }
         }
 
+        if (showFab) {
+            Spacer(Modifier.size(fabSize))
+        }
+    }
+
         if (showFab && onFabClick != null) {
+            // Menu is drawn in this overlay Box, not in the dock row, so the
+            // capsule + 56.dp circle stay put. Items sit above that line.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = fabSize + 10.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val fromRight = TransformOrigin(1f, 0.5f)
+                fabMenuItems.forEachIndexed { index, item ->
+                    val fromFab = fabMenuItems.lastIndex - index
+                    val enterDelay = fromFab * 40
+                    AnimatedVisibility(
+                        visible = fabMenuExpanded,
+                        enter = fadeIn(
+                            animationSpec = tween(160, enterDelay, FastOutSlowInEasing),
+                        ) + scaleIn(
+                            initialScale = 0.35f,
+                            transformOrigin = fromRight,
+                            animationSpec = tween(240, enterDelay, FastOutSlowInEasing),
+                        ) + slideInHorizontally(
+                            animationSpec = tween(240, enterDelay, FastOutSlowInEasing),
+                        ) { width -> width / 3 },
+                        exit = fadeOut(
+                            animationSpec = tween(120, easing = FastOutSlowInEasing),
+                        ) + scaleOut(
+                            targetScale = 0.35f,
+                            transformOrigin = fromRight,
+                            animationSpec = tween(160, easing = FastOutSlowInEasing),
+                        ) + slideOutHorizontally(
+                            animationSpec = tween(160, easing = FastOutSlowInEasing),
+                        ) { width -> width / 3 },
+                    ) {
+                        Surface(
+                            onClick = item.onClick,
+                            modifier = Modifier.height(fabSize),
+                            shape = CircleShape,
+                            color = scheme.secondaryContainer,
+                            contentColor = scheme.onSecondaryContainer,
+                            tonalElevation = 3.dp,
+                            shadowElevation = 8.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Icon(
+                                    item.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(26.dp),
+                                )
+                                Text(
+                                    item.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             Surface(
                 onClick = onFabClick,
                 modifier = Modifier
                     .size(fabSize)
+                    .align(Alignment.BottomEnd)
                     .shadow(
                         elevation = 18.dp,
                         shape = CircleShape,
@@ -226,7 +318,11 @@ fun FloatingBottomNav(
             ) {
                 Box(Modifier.size(fabSize), contentAlignment = Alignment.Center) {
                     Icon(
-                        fabIcon,
+                        if (fabMenuExpanded && fabMenuItems.isNotEmpty()) {
+                            Icons.Default.Close
+                        } else {
+                            fabIcon
+                        },
                         contentDescription = fabContentDescription,
                         modifier = Modifier.size(26.dp),
                     )
