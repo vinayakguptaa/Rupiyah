@@ -45,6 +45,7 @@ import com.krtky.financetracker.domain.model.AccountBalance
 import com.krtky.financetracker.domain.model.AccountKind
 import com.krtky.financetracker.ui.components.chrome.StackTopBar
 import com.krtky.financetracker.ui.theme.Dimens
+import com.krtky.financetracker.ui.navigation.UNASSIGNED_DIGITAL_ACCOUNT_ID
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.viewmodel.AccountsViewModel
 
@@ -57,10 +58,12 @@ fun AccountsScreen(
     onBack: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onImportStatement: (accountId: Long?) -> Unit = {},
+    onOpenAccount: (accountId: Long, accountName: String) -> Unit = { _, _ -> },
     vm: AccountsViewModel = hiltViewModel(),
 ) {
     val balances by vm.allBalancesDetail.collectAsStateWithLifecycle()
     val defaultDigital by vm.defaultDigitalAccount.collectAsStateWithLifecycle()
+    val unassigned by vm.unassignedDigital.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
 
     val active = remember(balances) { balances.filter { !it.account.archived } }
@@ -167,7 +170,19 @@ fun AccountsScreen(
             AccountLedgerRow(
                 row = row,
                 isDefault = defaultDigital.equals(row.account.name, true),
+                onClick = { onOpenAccount(row.account.id, row.account.name) },
             )
+        }
+        if (unassigned.count > 0) {
+            item(key = "unassigned-digital") {
+                UnassignedDigitalRow(
+                    count = unassigned.count,
+                    netPaise = unassigned.netPaise,
+                    onClick = {
+                        onOpenAccount(UNASSIGNED_DIGITAL_ACCOUNT_ID, "Digital (no bank)")
+                    },
+                )
+            }
         }
 
         if (archived.isNotEmpty()) {
@@ -190,6 +205,7 @@ fun AccountsScreen(
                     row = row,
                     isDefault = false,
                     archived = true,
+                    onClick = { onOpenAccount(row.account.id, row.account.name) },
                 )
             }
         }
@@ -230,12 +246,14 @@ private fun AccountLedgerRow(
     row: AccountBalance,
     isDefault: Boolean,
     archived: Boolean = false,
+    onClick: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     val acc = row.account
     val icon: ImageVector =
         if (acc.kind == AccountKind.CASH) Icons.Default.Payments else Icons.Default.AccountBalance
     Surface(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = if (archived) scheme.surfaceContainerLow else scheme.surfaceContainerHigh,
@@ -291,6 +309,54 @@ private fun AccountLedgerRow(
                     archived -> scheme.onSurfaceVariant
                     else -> scheme.onSurface
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun UnassignedDigitalRow(
+    count: Int,
+    netPaise: Long,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = scheme.tertiaryContainer,
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .background(scheme.tertiary, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Payments, null, tint = scheme.onTertiary)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Digital (no bank)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Unassigned · $count txns",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onTertiaryContainer.copy(alpha = 0.8f),
+                )
+            }
+            Text(
+                netPaise.inr(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (netPaise < 0) scheme.error else scheme.onTertiaryContainer,
             )
         }
     }

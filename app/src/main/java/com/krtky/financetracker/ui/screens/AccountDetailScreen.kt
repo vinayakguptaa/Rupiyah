@@ -35,49 +35,43 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.TransactionType
-import com.krtky.financetracker.ui.components.TransactionCard
+import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.FundFilterOption
+import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.TransactionSortButton
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.categoryColor
 import com.krtky.financetracker.ui.util.downloadTransactionsCsv
-import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.formatDateTime
 import com.krtky.financetracker.ui.util.inr
+import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.util.timeRangeSubtitle
-import com.krtky.financetracker.ui.viewmodel.CategoryDetailViewModel
+import com.krtky.financetracker.ui.viewmodel.AccountDetailViewModel
 
-/**
- * Transactions for one category — same filter set as Activity (minus category picker).
- */
 @Composable
-fun CategoryDetailScreen(
-    categoryId: Long?,
-    categoryName: String,
+fun AccountDetailScreen(
+    accountId: Long,
+    accountName: String,
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit,
-    initialFromMillis: Long = 0L,
-    initialToMillis: Long = 0L,
-    initialType: TransactionType = TransactionType.DEBIT,
-    vm: CategoryDetailViewModel = hiltViewModel(),
+    initialType: TransactionType? = null,
+    vm: AccountDetailViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(categoryId, categoryName, initialFromMillis, initialToMillis, initialType) {
-        vm.load(categoryId, categoryName, initialType)
-        if (initialFromMillis > 0L && initialToMillis > 0L) {
-            vm.setCustomRange(initialFromMillis, initialToMillis)
-        }
+    LaunchedEffect(accountId, accountName, initialType) {
+        vm.load(accountId, accountName)
+        vm.setType(initialType)
     }
     val txns by vm.transactions.collectAsStateWithLifecycle()
-    val total by vm.totalPaise.collectAsStateWithLifecycle()
+    val net by vm.netPaise.collectAsStateWithLifecycle()
     val title by vm.title.collectAsStateWithLifecycle()
     val type by vm.typeFilter.collectAsStateWithLifecycle()
-    val payment by vm.paymentFilter.collectAsStateWithLifecycle()
+    val categoryId by vm.categoryFilter.collectAsStateWithLifecycle()
+    val categories by vm.categories.collectAsStateWithLifecycle()
     val fundId by vm.fundFilter.collectAsStateWithLifecycle()
     val funds by vm.funds.collectAsStateWithLifecycle()
-    val bankAccounts by vm.bankAccounts.collectAsStateWithLifecycle()
     val sortOrder by vm.sortOrder.collectAsStateWithLifecycle()
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
@@ -112,7 +106,7 @@ fun CategoryDetailScreen(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    title.ifBlank { categoryName },
+                    title.ifBlank { accountName },
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -133,8 +127,8 @@ fun CategoryDetailScreen(
             IconButton(
                 onClick = {
                     haptics.select()
-                    val name = title.ifBlank { categoryName }.ifBlank { "category" }
-                    downloadTransactionsCsv(context, txns, "category_$name")
+                    val name = title.ifBlank { accountName }.ifBlank { "account" }
+                    downloadTransactionsCsv(context, txns, "account_$name")
                 },
                 enabled = txns.isNotEmpty(),
             ) {
@@ -150,14 +144,21 @@ fun CategoryDetailScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     when (type) {
-                        TransactionType.CREDIT -> "Total received"
-                        else -> "Total spent"
+                        TransactionType.DEBIT -> "Spent this period"
+                        TransactionType.CREDIT -> "Received this period"
+                        else -> "Net this period"
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
                 )
                 Text(
-                    total.inr(),
+                    when (type) {
+                        TransactionType.DEBIT ->
+                            txns.filter { it.type == TransactionType.DEBIT }.sumOf { it.amountPaise }.inr()
+                        TransactionType.CREDIT ->
+                            txns.filter { it.type == TransactionType.CREDIT }.sumOf { it.amountPaise }.inr()
+                        else -> net.inr()
+                    },
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = scheme.onPrimaryContainer,
@@ -172,10 +173,10 @@ fun CategoryDetailScreen(
         Spacer(Modifier.height(12.dp))
         TransactionFilterBar(
             type = type,
-            paymentMethod = payment,
-            categoryId = null,
-            categories = emptyList(),
-            bankAccounts = bankAccounts,
+            paymentMethod = null,
+            categoryId = categoryId,
+            categories = categories.map { CategoryFilterOption(it.id, it.name) },
+            bankAccounts = emptyList(),
             fundId = fundId,
             funds = funds.map { FundFilterOption(it.fund.id, it.fund.name) },
             timeRange = timeRange,
@@ -185,11 +186,11 @@ fun CategoryDetailScreen(
                 haptics.select()
                 vm.setType(it)
             },
-            onPaymentChange = {
+            onPaymentChange = {},
+            onCategoryChange = {
                 haptics.select()
-                vm.setPayment(it)
+                vm.setCategory(it)
             },
-            onCategoryChange = {},
             onFundChange = {
                 haptics.select()
                 vm.setFund(it)
@@ -200,7 +201,8 @@ fun CategoryDetailScreen(
             },
             onCustomRange = vm::setCustomRange,
             onClearAll = vm::clearFilters,
-            showCategoryFilter = false,
+            showCategoryFilter = true,
+            showBankFilter = false,
             showFundFilter = true,
         )
         Spacer(Modifier.height(12.dp))
@@ -214,7 +216,7 @@ fun CategoryDetailScreen(
             EmptyState(
                 icon = Icons.AutoMirrored.Filled.ReceiptLong,
                 title = "No transactions",
-                body = "Nothing matches the current filters for this category.",
+                body = "Nothing matches the current filters for this account.",
             )
         } else {
             LazyColumn(
@@ -229,7 +231,7 @@ fun CategoryDetailScreen(
                         title = party,
                         subtitle = listOfNotNull(
                             t.occurredAt.formatDateTime(),
-                            t.accountName,
+                            t.categoryName,
                         ).joinToString(" · "),
                         amount = "$sign${t.amountPaise.inr()}",
                         amountColor = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,
@@ -243,4 +245,3 @@ fun CategoryDetailScreen(
         }
     }
 }
-

@@ -23,6 +23,9 @@ object ActivityFilterKeys {
     const val CLEAR = "activity_filter_clear"
     /** True while a Home deep-link filter is still in effect for this tab session. */
     const val DEEP_LINK_ACTIVE = "activity_filter_deep_link_active"
+    const val CUSTOM_FROM = "activity_filter_custom_from"
+    const val CUSTOM_TO = "activity_filter_custom_to"
+    const val APPLY_RANGE = "activity_filter_apply_range"
 }
 
 data class ActivityFilterArgs(
@@ -30,6 +33,9 @@ data class ActivityFilterArgs(
     val type: TransactionType? = null,
     val categoryId: Long? = null,
     val applyCategory: Boolean = false,
+    val customFromMillis: Long? = null,
+    val customToMillis: Long? = null,
+    val applyRange: Boolean = false,
 )
 
 fun SavedStateHandle.setActivityFilters(args: ActivityFilterArgs) {
@@ -39,6 +45,14 @@ fun SavedStateHandle.setActivityFilters(args: ActivityFilterArgs) {
     set(ActivityFilterKeys.TYPE, args.type?.name)
     set(ActivityFilterKeys.CATEGORY_ID, args.categoryId)
     set(ActivityFilterKeys.APPLY_CATEGORY, args.applyCategory)
+    set(ActivityFilterKeys.APPLY_RANGE, args.applyRange)
+    if (args.applyRange) {
+        set(ActivityFilterKeys.CUSTOM_FROM, args.customFromMillis)
+        set(ActivityFilterKeys.CUSTOM_TO, args.customToMillis)
+    } else {
+        remove<Long>(ActivityFilterKeys.CUSTOM_FROM)
+        remove<Long>(ActivityFilterKeys.CUSTOM_TO)
+    }
 }
 
 fun SavedStateHandle.requestClearActivityFiltersIfDeepLinked() {
@@ -55,24 +69,33 @@ fun SavedStateHandle.consumeActivityFilters(): ActivityFilterArgs? {
     if (get<Boolean>(ActivityFilterKeys.CLEAR) == true) return null
 
     val applyCategory = get<Boolean>(ActivityFilterKeys.APPLY_CATEGORY) == true
+    val applyRange = get<Boolean>(ActivityFilterKeys.APPLY_RANGE) == true
     val payment = get<String>(ActivityFilterKeys.PAYMENT)
     val typeName = get<String>(ActivityFilterKeys.TYPE)
     val categoryId = get<Long>(ActivityFilterKeys.CATEGORY_ID)
+    val customFrom = get<Long>(ActivityFilterKeys.CUSTOM_FROM)
+    val customTo = get<Long>(ActivityFilterKeys.CUSTOM_TO)
     val type = typeName?.let { runCatching { TransactionType.valueOf(it) }.getOrNull() }
 
-    val hasShot = payment != null || type != null || applyCategory
+    val hasShot = payment != null || type != null || applyCategory || applyRange
     if (!hasShot) return null
 
     remove<String>(ActivityFilterKeys.PAYMENT)
     remove<String>(ActivityFilterKeys.TYPE)
     remove<Long>(ActivityFilterKeys.CATEGORY_ID)
     remove<Boolean>(ActivityFilterKeys.APPLY_CATEGORY)
+    remove<Boolean>(ActivityFilterKeys.APPLY_RANGE)
+    remove<Long>(ActivityFilterKeys.CUSTOM_FROM)
+    remove<Long>(ActivityFilterKeys.CUSTOM_TO)
 
     return ActivityFilterArgs(
         payment = payment,
         type = type,
         categoryId = categoryId,
         applyCategory = applyCategory,
+        customFromMillis = customFrom,
+        customToMillis = customTo,
+        applyRange = applyRange,
     )
 }
 
@@ -85,6 +108,9 @@ fun SavedStateHandle.consumeClearActivityFilters(): Boolean {
     remove<String>(ActivityFilterKeys.TYPE)
     remove<Long>(ActivityFilterKeys.CATEGORY_ID)
     remove<Boolean>(ActivityFilterKeys.APPLY_CATEGORY)
+    remove<Boolean>(ActivityFilterKeys.APPLY_RANGE)
+    remove<Long>(ActivityFilterKeys.CUSTOM_FROM)
+    remove<Long>(ActivityFilterKeys.CUSTOM_TO)
     return true
 }
 

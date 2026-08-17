@@ -42,6 +42,20 @@ class AccountRepository @Inject constructor(
     fun observeAllBalances(): Flow<List<AccountBalance>> =
         balancesFlow(activeOnly = false)
 
+    /** Digital rows with no owning account (display-only bucket). */
+    fun observeUnassignedDigital(): Flow<UnassignedDigital> =
+        txnDao.observeAll().map { txns ->
+            val mine = txns.filter {
+                it.deletedAt == null &&
+                    it.accountId == null &&
+                    !it.isCash
+            }
+            val net = mine.sumOf { t ->
+                if (t.type.equals("CREDIT", true)) t.amountPaise else -t.amountPaise
+            }
+            UnassignedDigital(count = mine.size, netPaise = net)
+        }
+
     private fun balancesFlow(activeOnly: Boolean): Flow<List<AccountBalance>> {
         val accountsFlow = if (activeOnly) accountDao.observeActive() else accountDao.observeAll()
         return combine(accountsFlow, txnDao.observeAll()) { accounts, txns ->
@@ -231,3 +245,8 @@ class AccountRepository @Inject constructor(
             kind?.uppercase() == TransactionKind.SELF_TRANSFER.name
     }
 }
+
+data class UnassignedDigital(
+    val count: Int,
+    val netPaise: Long,
+)

@@ -75,6 +75,7 @@ import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.util.downloadTransactionsCsv
+import com.krtky.financetracker.ui.viewmodel.TimeRange
 import com.krtky.financetracker.ui.viewmodel.TransactionsViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -124,18 +125,25 @@ fun TransactionsScreen(
         savedStateHandle?.getStateFlow(ActivityFilterKeys.PAYMENT, null as String?)
             ?: kotlinx.coroutines.flow.MutableStateFlow(null as String?)
     }.collectAsStateWithLifecycle()
+    val applyRangeFlag by remember(savedStateHandle) {
+        savedStateHandle?.getStateFlow(ActivityFilterKeys.APPLY_RANGE, false)
+            ?: kotlinx.coroutines.flow.MutableStateFlow(false)
+    }.collectAsStateWithLifecycle()
     val clearFlag by remember(savedStateHandle) {
         savedStateHandle?.getStateFlow(ActivityFilterKeys.CLEAR, false)
             ?: kotlinx.coroutines.flow.MutableStateFlow(false)
     }.collectAsStateWithLifecycle()
 
-    LaunchedEffect(applyCategoryFlag, filterTypeName, filterPayment) {
+    LaunchedEffect(applyCategoryFlag, filterTypeName, filterPayment, applyRangeFlag) {
         val handle = savedStateHandle ?: return@LaunchedEffect
         val shot = handle.consumeActivityFilters() ?: return@LaunchedEffect
         vm.setPayment(shot.payment)
         vm.setType(shot.type)
         if (shot.applyCategory) {
             vm.setCategory(shot.categoryId)
+        }
+        if (shot.applyRange && shot.customFromMillis != null && shot.customToMillis != null) {
+            vm.setCustomRange(shot.customFromMillis, shot.customToMillis)
         }
     }
 
@@ -145,6 +153,7 @@ fun TransactionsScreen(
         vm.setType(null)
         vm.setPayment(null)
         vm.setCategory(null)
+        vm.setTimeRange(TimeRange.MONTH)
     }
 
     LaunchedEffect(searchOpen) {

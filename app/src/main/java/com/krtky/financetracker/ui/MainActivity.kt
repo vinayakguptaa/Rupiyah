@@ -25,9 +25,16 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,13 +61,19 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.krtky.financetracker.R
 import com.krtky.financetracker.ui.components.ClassifyTransactionSheet
+import com.krtky.financetracker.ui.components.FabSpeedDialItem
 import com.krtky.financetracker.ui.components.FloatingBottomNav
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.screens.AccountsScreen
 import com.krtky.financetracker.ui.screens.AddCashScreen
+import com.krtky.financetracker.ui.screens.AddEntryOverlays
+import com.krtky.financetracker.ui.screens.amountTextFromPaise
+import com.krtky.financetracker.ui.screens.AccountDetailScreen
 import com.krtky.financetracker.ui.screens.CategoriesScreen
 import com.krtky.financetracker.ui.screens.CategoryDetailScreen
+import com.krtky.financetracker.ui.screens.MonthFlowGroup
+import com.krtky.financetracker.ui.screens.MonthFlowScreen
 import com.krtky.financetracker.ui.screens.CsvImportScreen
 import com.krtky.financetracker.ui.screens.FundDetailScreen
 import com.krtky.financetracker.ui.screens.FundsScreen
@@ -71,6 +84,7 @@ import com.krtky.financetracker.ui.screens.SettingsScreen
 import com.krtky.financetracker.ui.screens.SplitTransactionScreen
 import com.krtky.financetracker.ui.screens.TransactionDetailScreen
 import com.krtky.financetracker.ui.screens.TransactionsScreen
+import com.krtky.financetracker.ui.navigation.AccountRoute
 import com.krtky.financetracker.ui.navigation.AccountsRoute
 import com.krtky.financetracker.ui.navigation.CsvImportRoute
 import com.krtky.financetracker.ui.navigation.ActivityFilterArgs
@@ -78,6 +92,8 @@ import com.krtky.financetracker.ui.navigation.ActivityFilterKeys
 import com.krtky.financetracker.ui.navigation.AddCashRoute
 import com.krtky.financetracker.ui.navigation.CategoriesRoute
 import com.krtky.financetracker.ui.navigation.CategoryRoute
+import com.krtky.financetracker.ui.navigation.MonthFlowRoute
+import com.krtky.financetracker.ui.navigation.UNASSIGNED_DIGITAL_ACCOUNT_ID
 import com.krtky.financetracker.ui.navigation.FundRoute
 import com.krtky.financetracker.ui.navigation.FundsRoute
 import com.krtky.financetracker.ui.navigation.HomeRoute
@@ -100,6 +116,7 @@ import com.krtky.financetracker.ui.theme.ThemeColors
 import com.krtky.financetracker.ui.theme.ThemeMode
 import com.krtky.financetracker.ui.theme.colorOrDefault
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
@@ -118,6 +135,9 @@ class MainActivity : ComponentActivity() {
 
     private val pendingClassifyId = mutableStateOf<String?>(null)
     private val pendingNavigateTo = mutableStateOf<String?>(null)
+    private val pendingShareText = mutableStateOf<String?>(null)
+    private val pendingShowPaste = mutableStateOf(false)
+    private val pendingReviewTxn = mutableStateOf<Transaction?>(null)
     private val intentTick = mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -227,12 +247,23 @@ class MainActivity : ComponentActivity() {
                     val effects = M3EMotion.effectsDefault<Float>()
                     var classifyId by remember { pendingClassifyId }
                     var navigateTo by remember { pendingNavigateTo }
+                    var shareText by remember { pendingShareText }
+                    var showPaste by remember { pendingShowPaste }
+                    var reviewTxn by remember { pendingReviewTxn }
+                    var addMenuOpen by remember { mutableStateOf(false) }
+                    var showTransfer by remember { mutableStateOf(false) }
+                    var transferFromId by remember { mutableStateOf<Long?>(null) }
+                    var transferToId by remember { mutableStateOf<Long?>(null) }
+                    var transferAmount by remember { mutableStateOf("") }
+                    var transferNote by remember { mutableStateOf("") }
                     val tick by remember { intentTick }
 
                     LaunchedEffect(tick) {
                         // Re-read pending after new intents
                         classifyId = pendingClassifyId.value
                         navigateTo = pendingNavigateTo.value
+                        shareText = pendingShareText.value
+                        showPaste = pendingShowPaste.value
                     }
 
                     // Handle navigation from widget quick actions
@@ -344,7 +375,29 @@ class MainActivity : ComponentActivity() {
                                             ),
                                         ) { dest -> tab(dest) }
                                     },
+                                    onOpenCreditActivity = {
+                                        nav.openActivityWithFilters(
+                                            ActivityFilterArgs(
+                                                type = TransactionType.CREDIT,
+                                                payment = null,
+                                                categoryId = null,
+                                                applyCategory = true,
+                                            ),
+                                        ) { dest -> tab(dest) }
+                                    },
                                     onOpenCategories = { nav.navigate(CategoriesRoute) },
+                                    onOpenMonthFlow = { direction, group ->
+                                        nav.navigate(
+                                            MonthFlowRoute(
+                                                direction = direction.name,
+                                                group = if (group == MonthFlowGroup.Source) {
+                                                    "source"
+                                                } else {
+                                                    "category"
+                                                },
+                                            ),
+                                        )
+                                    },
                                     onClassifyPending = { id ->
                                         pendingClassifyId.value = id
                                         classifyId = id
@@ -363,6 +416,22 @@ class MainActivity : ComponentActivity() {
                                             CsvImportRoute(accountId = accountId ?: -1L),
                                         )
                                     },
+                                    onOpenAccount = { id, name ->
+                                        nav.navigate(AccountRoute(id = id, name = name))
+                                    },
+                                )
+                            }
+                            composable<AccountRoute> { entry ->
+                                val args = entry.toRoute<AccountRoute>()
+                                val initialType = args.type.takeIf { it.isNotBlank() }?.let {
+                                    runCatching { TransactionType.valueOf(it) }.getOrNull()
+                                }
+                                AccountDetailScreen(
+                                    accountId = args.id,
+                                    accountName = args.name,
+                                    onBack = { nav.popBackStack() },
+                                    onOpenTxn = { nav.navigate(TxnRoute(it)) },
+                                    initialType = initialType,
                                 )
                             }
                             composable<CsvImportRoute> { entry ->
@@ -374,14 +443,52 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable<CategoriesRoute> {
-                                CategoriesScreen(
+                                MonthFlowScreen(
+                                    direction = TransactionType.DEBIT,
+                                    group = MonthFlowGroup.Category,
                                     onBack = { nav.popBackStack() },
                                     onOpenCategory = { id, name ->
-                                        val key = id?.toString() ?: "none"
                                         nav.navigate(
                                             CategoryRoute(
-                                                id = key,
+                                                id = id?.toString() ?: "none",
                                                 name = name.ifBlank { "Category" },
+                                                type = TransactionType.DEBIT.name,
+                                            ),
+                                        )
+                                    },
+                                    onOpenSource = { _, _ -> },
+                                    onAddTransaction = { nav.navigate(AddCashRoute) },
+                                )
+                            }
+                            composable<MonthFlowRoute> { entry ->
+                                val args = entry.toRoute<MonthFlowRoute>()
+                                val direction = runCatching {
+                                    TransactionType.valueOf(args.direction)
+                                }.getOrDefault(TransactionType.DEBIT)
+                                val group = if (args.group.equals("source", true)) {
+                                    MonthFlowGroup.Source
+                                } else {
+                                    MonthFlowGroup.Category
+                                }
+                                MonthFlowScreen(
+                                    direction = direction,
+                                    group = group,
+                                    onBack = { nav.popBackStack() },
+                                    onOpenCategory = { id, name ->
+                                        nav.navigate(
+                                            CategoryRoute(
+                                                id = id?.toString() ?: "none",
+                                                name = name.ifBlank { "Category" },
+                                                type = direction.name,
+                                            ),
+                                        )
+                                    },
+                                    onOpenSource = { id, name ->
+                                        nav.navigate(
+                                            AccountRoute(
+                                                id = id ?: UNASSIGNED_DIGITAL_ACCOUNT_ID,
+                                                name = name.ifBlank { "Digital" },
+                                                type = direction.name,
                                             ),
                                         )
                                     },
@@ -394,11 +501,17 @@ class MainActivity : ComponentActivity() {
                                 val name = args.name.ifBlank {
                                     if (categoryId == null) "Uncategorized" else "Category"
                                 }
+                                val initialType = args.type.takeIf { it.isNotBlank() }?.let {
+                                    runCatching { TransactionType.valueOf(it) }.getOrNull()
+                                } ?: TransactionType.DEBIT
                                 CategoryDetailScreen(
                                     categoryId = categoryId,
                                     categoryName = name,
                                     onBack = { nav.popBackStack() },
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
+                                    initialFromMillis = args.fromMillis,
+                                    initialToMillis = args.toMillis,
+                                    initialType = initialType,
                                 )
                             }
                             composable<TransactionsRoute> { entry ->
@@ -438,7 +551,16 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable<AddCashRoute> {
-                                AddCashScreen(onDone = { nav.popBackStack() })
+                                AddCashScreen(
+                                    onDone = {
+                                        pendingShareText.value = null
+                                        pendingReviewTxn.value = null
+                                        reviewTxn = null
+                                        nav.popBackStack()
+                                    },
+                                    initialSharedText = shareText,
+                                    initialParsed = reviewTxn,
+                                )
                             }
                             composable<TxnRoute> { entry ->
                                 val args = entry.toRoute<TxnRoute>()
@@ -457,16 +579,32 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        val addMenuTabs = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
+                        if (addMenuOpen && addMenuTabs) {
+                            BackHandler { addMenuOpen = false }
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                    ) { addMenuOpen = false },
+                            )
+                        }
+
                         // Floating bottom nav dock — always has a side FAB on main tabs
                         if (tabRoute != null) {
+                            val usesAddMenu = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
                             val fab: Pair<ImageVector, () -> Unit> = when (tabRoute) {
                                 MainTabs.FUNDS -> Icons.Default.Add to { fundsCreateTick++ }
                                 MainTabs.SETTINGS -> Icons.Default.Search to { settingsSearchTick++ }
-                                else -> Icons.Default.Add to { nav.navigate(AddCashRoute) }
+                                else -> Icons.Default.Add to { addMenuOpen = !addMenuOpen }
                             }
                             FloatingBottomNav(
                                 selected = tabRoute,
                                 onSelect = { dest ->
+                                    addMenuOpen = false
                                     // Drop home-tile deep-link filters when leaving Activity
                                     if (dest != ActivityFilterKeys.ROUTE && dest in tabs) {
                                         nav.clearActivityDeepLinkFiltersIfNeeded()
@@ -481,9 +619,65 @@ class MainActivity : ComponentActivity() {
                                     else -> stringResource(R.string.cd_fab_log)
                                 },
                                 onFabClick = fab.second,
+                                fabMenuExpanded = addMenuOpen && usesAddMenu,
+                                fabMenuItems = if (usesAddMenu) {
+                                    listOf(
+                                        FabSpeedDialItem("Spend", Icons.Default.Payments) {
+                                            addMenuOpen = false
+                                            pendingReviewTxn.value = null
+                                            reviewTxn = null
+                                            nav.navigate(AddCashRoute)
+                                        },
+                                        FabSpeedDialItem("From text", Icons.Default.ContentPaste) {
+                                            addMenuOpen = false
+                                            showPaste = true
+                                            pendingShowPaste.value = true
+                                        },
+                                        FabSpeedDialItem("Transfer", Icons.Default.SwapHoriz) {
+                                            addMenuOpen = false
+                                            transferFromId = null
+                                            transferToId = null
+                                            transferAmount = ""
+                                            transferNote = ""
+                                            showTransfer = true
+                                        },
+                                    )
+                                } else {
+                                    emptyList()
+                                },
                                 modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
                             )
                         }
+
+                        AddEntryOverlays(
+                            showPaste = showPaste,
+                            shareText = shareText,
+                            showTransfer = showTransfer,
+                            transferFromId = transferFromId,
+                            transferToId = transferToId,
+                            transferAmount = transferAmount,
+                            transferNote = transferNote,
+                            onDismissPaste = {
+                                showPaste = false
+                                pendingShowPaste.value = false
+                                pendingShareText.value = null
+                                shareText = null
+                            },
+                            onDismissTransfer = { showTransfer = false },
+                            onPasteResult = { result ->
+                                if (result.isSelfTransfer) {
+                                    transferFromId = result.transferFromAccountId
+                                    transferToId = result.transferToAccountId
+                                    transferAmount = amountTextFromPaise(result.transaction.amountPaise)
+                                    transferNote = result.transaction.note.orEmpty()
+                                    showTransfer = true
+                                } else {
+                                    reviewTxn = result.transaction
+                                    pendingReviewTxn.value = result.transaction
+                                    nav.navigate(AddCashRoute)
+                                }
+                            },
+                        )
 
                         } // end content Box
                     }
@@ -536,17 +730,33 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeIntent(intent: Intent?) {
-        // Handle widget quick action intents
-        val navigateTo = intent?.getStringExtra("navigate_to")
+        if (intent == null) return
+        val navigateTo = intent.getStringExtra("navigate_to")
         if (navigateTo != null) {
             pendingNavigateTo.value = navigateTo
         }
 
-        val id = intent?.getStringExtra("transactionId") ?: return
+        val shared = sharedTextFrom(intent)
+        if (!shared.isNullOrBlank()) {
+            pendingShareText.value = shared
+            pendingShowPaste.value = true
+        }
+
+        val id = intent.getStringExtra("transactionId") ?: return
         val openClassify = intent.getBooleanExtra("openClassify", false)
         if (openClassify) {
             pendingClassifyId.value = id
         }
+    }
+
+    private fun sharedTextFrom(intent: Intent): String? {
+        val raw = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_PROCESS_TEXT ->
+                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            else -> null
+        }
+        return raw?.trim()?.takeIf { it.isNotEmpty() }
     }
 
     private fun requestStartupPermissions() {

@@ -19,11 +19,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-/** Cash / Digital bucket or exact bank/wallet / account name. */
+/** Sentinel for digital rows with no owning account. */
+const val PAYMENT_DIGITAL_UNASSIGNED = "Digital-unassigned"
+
+/** Cash / Digital bucket, unassigned digital, or exact bank/wallet / account name. */
 fun matchesPaymentFilter(txn: Transaction, pay: String): Boolean {
     val isCash = txn.isCash || txn.accountName.equals("Cash", true)
+    val unassignedDigital = !isCash && txn.accountId == null
     return when {
         pay.equals("Cash", true) -> isCash
+        pay.equals(PAYMENT_DIGITAL_UNASSIGNED, true) ||
+            pay.equals("Digital (no bank)", true) -> unassignedDigital
         pay.equals("Digital", true) -> !isCash
         else -> txn.accountName.equals(pay, true)
     }

@@ -40,6 +40,15 @@ data class CsvImportRoute(val accountId: Long = -1L)
 data object CategoriesRoute
 
 @Serializable
+@SerialName("month_flow")
+data class MonthFlowRoute(
+    /** `DEBIT` (expenses) or `CREDIT` (income). */
+    val direction: String,
+    /** `category` or `source`. */
+    val group: String,
+)
+
+@Serializable
 @SerialName("add_cash")
 data object AddCashRoute
 
@@ -57,7 +66,25 @@ data class FundRoute(val id: Long)
 
 @Serializable
 @SerialName("category")
-data class CategoryRoute(val id: String, val name: String)
+data class CategoryRoute(
+    val id: String,
+    val name: String,
+    val fromMillis: Long = 0L,
+    val toMillis: Long = 0L,
+    /** `DEBIT`, `CREDIT`, or empty for the screen default (debit). */
+    val type: String = "",
+)
+
+@Serializable
+@SerialName("account")
+data class AccountRoute(
+    val id: Long,
+    val name: String,
+    /** `DEBIT`, `CREDIT`, or empty for all types. */
+    val type: String = "",
+)
+
+const val UNASSIGNED_DIGITAL_ACCOUNT_ID = -1L
 
 @Serializable
 @SerialName("settings_section")

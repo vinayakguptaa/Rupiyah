@@ -25,6 +25,15 @@ class ViewModelHelpersTest {
     }
 
     @Test
+    fun `matchesPaymentFilter matches Digital unassigned`() {
+        val unassigned = txn(accountName = null)
+        val hdfc = txn(accountName = "HDFC").copy(accountId = 12L)
+        assertThat(matchesPaymentFilter(unassigned, PAYMENT_DIGITAL_UNASSIGNED)).isTrue()
+        assertThat(matchesPaymentFilter(hdfc, PAYMENT_DIGITAL_UNASSIGNED)).isFalse()
+        assertThat(matchesPaymentFilter(unassigned, "Digital")).isTrue()
+    }
+
+    @Test
     fun `matchesPaymentFilter matches exact payment method`() {
         val t = txn(accountName = "HDFC")
         assertThat(matchesPaymentFilter(t, "HDFC")).isTrue()

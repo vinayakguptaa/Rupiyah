@@ -105,6 +105,7 @@ fun TransactionFilterBar(
         !showBankFilter -> null
         paymentMethod == null -> null
         paymentMethod == "Digital" -> "Digital"
+        paymentMethod == "Digital-unassigned" -> "Digital (no bank)"
         else -> paymentMethod
     }
     val fundPill = if (showFundFilter) {
@@ -236,11 +237,13 @@ fun TransactionFilterBar(
                         add("All banks")
                         add("Cash")
                         add("Digital (all)")
+                        add("Digital (no bank)")
                         addAll(bankAccounts)
                     }
                     val bankValue = when {
                         draftPayment == null -> "All banks"
                         draftPayment == "Digital" -> "Digital (all)"
+                        draftPayment == "Digital-unassigned" -> "Digital (no bank)"
                         else -> draftPayment!!
                     }
                     FilterDropdownField(
@@ -251,6 +254,7 @@ fun TransactionFilterBar(
                             draftPayment = when (pick) {
                                 "All banks" -> null
                                 "Digital (all)" -> "Digital"
+                                "Digital (no bank)" -> "Digital-unassigned"
                                 else -> pick
                             }
                         },

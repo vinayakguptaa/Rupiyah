@@ -6,6 +6,7 @@ import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.AccountBalance
+import com.krtky.financetracker.data.repository.UnassignedDigital
 import com.krtky.financetracker.domain.model.AccountKind
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +34,13 @@ class AccountsViewModel @Inject constructor(
 
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    val unassignedDigital = accountRepository.observeUnassignedDigital()
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            UnassignedDigital(count = 0, netPaise = 0L),
+        )
 
     fun addAccount(name: String, kind: AccountKind = AccountKind.BANK) {
         val trimmed = name.trim()
