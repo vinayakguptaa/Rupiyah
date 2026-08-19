@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,17 +44,120 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.ui.util.formatDate
 import com.krtky.financetracker.ui.viewmodel.TimeRange
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 data class CategoryFilterOption(val id: Long, val name: String)
 
 data class TabFilterOption(val id: Long, val name: String)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DateRangePickerSheet(
+    initialStartMillis: Long?,
+    initialEndMillis: Long?,
+    onDismiss: () -> Unit,
+    onConfirm: (startMillis: Long, endMillis: Long) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val pickerState = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialStartMillis,
+        initialSelectedEndDateMillis = initialEndMillis,
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = scheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Select period",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+            DateRangePicker(
+                state = pickerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp)
+                    .graphicsLayer { clip = false },
+                title = null,
+                headline = null,
+                showModeToggle = false,
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        val start = pickerState.selectedStartDateMillis
+                        val end = pickerState.selectedEndDateMillis
+                        if (start != null && end != null) {
+                            onConfirm(start, end)
+                        }
+                        onDismiss()
+                    },
+                    enabled = pickerState.selectedStartDateMillis != null &&
+                        pickerState.selectedEndDateMillis != null,
+                ) {
+                    Text("OK", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RangeDateField(
+    label: String,
+    value: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = scheme.surface,
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+            )
+            Text(
+                value ?: "Select",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (value != null) scheme.onSurface else scheme.onSurfaceVariant,
+            )
+        }
+    }
+}
 
 /**
  * Filters button + removable active-filter pills.
@@ -87,13 +190,14 @@ fun TransactionFilterBar(
     showBankFilter: Boolean = true,
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
-    var showCustomPicker by remember { mutableStateOf(false) }
+    var showRangeSheet by remember { mutableStateOf(false) }
     var draftType by remember { mutableStateOf<TransactionType?>(null) }
     var draftPayment by remember { mutableStateOf<String?>(null) }
     var draftCategory by remember { mutableStateOf<Long?>(null) }
     var draftTab by remember { mutableStateOf<Long?>(null) }
     var draftRange by remember { mutableStateOf(TimeRange.MONTH) }
-    val dateFmt = remember { SimpleDateFormat("dd MMM", Locale.getDefault()) }
+    var draftFromMillis by remember { mutableStateOf(customFromMillis) }
+    var draftToMillis by remember { mutableStateOf(customToMillis) }
     val scheme = MaterialTheme.colorScheme
 
     val typePill = when (type) {
@@ -125,7 +229,7 @@ fun TransactionFilterBar(
         TimeRange.YEAR -> "This year"
         TimeRange.ALL -> "All time"
         TimeRange.CUSTOM -> if (customFromMillis != null && customToMillis != null) {
-            "${dateFmt.format(Date(customFromMillis))} – ${dateFmt.format(Date(customToMillis))}"
+            "${customFromMillis.formatDate()} – ${customToMillis.formatDate()}"
         } else {
             "Custom"
         }
@@ -146,6 +250,8 @@ fun TransactionFilterBar(
                 draftCategory = categoryId
                 draftTab = tabId
                 draftRange = timeRange
+                draftFromMillis = customFromMillis
+                draftToMillis = customToMillis
                 sheetOpen = true
             },
             shape = RoundedCornerShape(20.dp),
@@ -331,6 +437,27 @@ fun TransactionFilterBar(
                     },
                 )
 
+                if (draftRange == TimeRange.CUSTOM) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RangeDateField(
+                            label = "From",
+                            value = draftFromMillis?.formatDate(),
+                            onClick = { showRangeSheet = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                        RangeDateField(
+                            label = "To",
+                            value = draftToMillis?.formatDate(),
+                            onClick = { showRangeSheet = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = {
@@ -339,12 +466,17 @@ fun TransactionFilterBar(
                         if (showCategoryFilter) onCategoryChange(draftCategory)
                         if (showTabFilter) onTabChange(draftTab)
                         if (draftRange == TimeRange.CUSTOM) {
-                            showCustomPicker = true
+                            if (draftFromMillis != null && draftToMillis != null) {
+                                onCustomRange(draftFromMillis!!, draftToMillis!!)
+                                sheetOpen = false
+                            }
                         } else {
                             onTimeRangeChange(draftRange)
                             sheetOpen = false
                         }
                     },
+                    enabled = draftRange != TimeRange.CUSTOM ||
+                        (draftFromMillis != null && draftToMillis != null),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -362,6 +494,8 @@ fun TransactionFilterBar(
                         draftCategory = null
                         draftTab = null
                         draftRange = TimeRange.MONTH
+                        draftFromMillis = null
+                        draftToMillis = null
                         onClearAll()
                         sheetOpen = false
                     },
@@ -374,50 +508,16 @@ fun TransactionFilterBar(
         }
     }
 
-    if (showCustomPicker) {
-        val pickerState = rememberDateRangePickerState(
-            initialSelectedStartDateMillis = customFromMillis,
-            initialSelectedEndDateMillis = customToMillis,
+    if (showRangeSheet) {
+        DateRangePickerSheet(
+            initialStartMillis = draftFromMillis,
+            initialEndMillis = draftToMillis,
+            onDismiss = { showRangeSheet = false },
+            onConfirm = { start, end ->
+                draftFromMillis = start
+                draftToMillis = end
+            },
         )
-        DatePickerDialog(
-            onDismissRequest = { showCustomPicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val start = pickerState.selectedStartDateMillis
-                        val end = pickerState.selectedEndDateMillis
-                        if (start != null && end != null) {
-                            onTypeChange(draftType)
-                            if (showBankFilter) onPaymentChange(draftPayment)
-                            if (showCategoryFilter) onCategoryChange(draftCategory)
-                            if (showTabFilter) onTabChange(draftTab)
-                            onCustomRange(start, end)
-                            showCustomPicker = false
-                            sheetOpen = false
-                        }
-                    },
-                    enabled = pickerState.selectedStartDateMillis != null &&
-                        pickerState.selectedEndDateMillis != null,
-                ) { Text("Apply") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCustomPicker = false }) { Text("Cancel") }
-            },
-        ) {
-            DateRangePicker(
-                state = pickerState,
-                modifier = Modifier.height(500.dp),
-                title = {
-                    Text(
-                        "Select period",
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                },
-                headline = null,
-                showModeToggle = false,
-            )
-        }
     }
 }
 
