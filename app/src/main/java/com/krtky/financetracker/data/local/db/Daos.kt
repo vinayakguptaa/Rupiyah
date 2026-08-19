@@ -66,11 +66,17 @@ interface TabDao {
     @Query("SELECT * FROM funds WHERE archived = 0 ORDER BY name")
     fun observeActive(): Flow<List<TabEntity>>
 
+    @Query("SELECT * FROM funds WHERE archived = 1 ORDER BY name")
+    fun observeArchived(): Flow<List<TabEntity>>
+
     @Query("SELECT * FROM funds ORDER BY name")
     suspend fun getAll(): List<TabEntity>
 
     @Query("SELECT * FROM funds WHERE id = :id")
     suspend fun getById(id: Long): TabEntity?
+
+    @Query("SELECT * FROM funds WHERE id = :id")
+    fun observeById(id: Long): Flow<TabEntity?>
 
     @Query("SELECT * FROM funds WHERE name = :name LIMIT 1")
     suspend fun getByName(name: String): TabEntity?

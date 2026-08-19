@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
@@ -21,15 +20,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,6 +67,7 @@ fun TabDetailScreen(
     tabId: Long,
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit,
+    onSettle: (tabId: Long, amountPaise: Long, type: TransactionType, tabName: String) -> Unit = { _, _, _, _ -> },
     vm: TabDetailViewModel = hiltViewModel(),
 ) {
     val tab by vm.tab.collectAsStateWithLifecycle()
@@ -91,7 +88,6 @@ fun TabDetailScreen(
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
-    var showSettle by remember { mutableStateOf(false) }
 
     LaunchedEffect(tabId) { vm.load(tabId) }
 
@@ -129,13 +125,22 @@ fun TabDetailScreen(
             ) {
                 Icon(Icons.Default.FileDownload, contentDescription = "Download CSV")
             }
-            if (allTabs.size > 1) {
+            val archived = tab?.tab?.archived == true
+            if (!archived && allTabs.size > 1) {
                 IconButton(onClick = { showTransfer = true }) {
                     Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer")
                 }
             }
-            if (!(tab?.isSettled() ?: true)) {
-                IconButton(onClick = { showSettle = true }) {
+            if (!archived && !(tab?.isSettled() ?: true)) {
+                IconButton(
+                    onClick = {
+                        val t = tab ?: return@IconButton
+                        val amount = kotlin.math.abs(t.balancePaise)
+                        if (amount <= 0L) return@IconButton
+                        val type = if (t.balancePaise > 0L) TransactionType.CREDIT else TransactionType.DEBIT
+                        onSettle(t.tab.id, amount, type, t.tab.name)
+                    },
+                ) {
                     Icon(
                         Icons.Default.Check,
                         contentDescription = "Mark settled",
@@ -143,8 +148,22 @@ fun TabDetailScreen(
                     )
                 }
             }
-            IconButton(onClick = { confirmDelete = true }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete tab", tint = scheme.error)
+            if (archived) {
+                IconButton(
+                    onClick = {
+                        scope.launch { vm.restoreTab() }
+                    },
+                ) {
+                    Icon(
+                        Icons.Default.Unarchive,
+                        contentDescription = stringResource(R.string.tabs_restore),
+                        tint = scheme.primary,
+                    )
+                }
+            } else {
+                IconButton(onClick = { confirmDelete = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Archive tab", tint = scheme.error)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -284,43 +303,4 @@ fun TabDetailScreen(
         )
     }
 
-    if (showSettle && tab != null) {
-        val open = tab!!.balancePaise.let { if (it < 0) -it else it }
-        ModalBottomSheet(
-            onDismissRequest = { showSettle = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("Mark settled?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(
-                    "Records a ${open.inr()} settlement on ${tab!!.tab.name} and brings the balance to zero.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Button(
-                    onClick = {
-                        scope.launch {
-                            vm.settleTab()
-                            showSettle = false
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) { Text("Mark settled") }
-                OutlinedButton(
-                    onClick = { showSettle = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) { Text("Cancel") }
-            }
-        }
-    }
 }

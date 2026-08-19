@@ -50,7 +50,14 @@ data class MonthFlowRoute(
 
 @Serializable
 @SerialName("add_cash")
-data object AddCashRoute
+data class AddCashRoute(
+    val tabId: Long = 0L,
+    val amountPaise: Long = 0L,
+    /** [com.krtky.financetracker.domain.model.TransactionType] name, or empty for debit. */
+    val type: String = "",
+    val categoryName: String = "",
+    val note: String = "",
+)
 
 @Serializable
 @SerialName("txn")
@@ -114,7 +121,7 @@ fun destinationFromNavigateExtra(raw: String): Any? = when (raw) {
     MainTabs.TRANSACTIONS, "transactions" -> TransactionsRoute
     MainTabs.TABS, "tabs", "funds" -> TabsRoute
     MainTabs.SETTINGS, "settings" -> SettingsRoute
-    "add_cash", "add-cash" -> AddCashRoute
+    "add_cash", "add-cash" -> AddCashRoute()
     "accounts" -> AccountsRoute
     "categories" -> CategoriesRoute
     else -> when {

@@ -364,7 +364,7 @@ class MainActivity : ComponentActivity() {
                             composable<HomeRoute> {
                                 HomeScreen(
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
-                                    onAddCash = { nav.navigate(AddCashRoute) },
+                                    onAddCash = { nav.navigate(AddCashRoute()) },
                                     onOpenHistory = { nav.tab(MainTabs.TRANSACTIONS) },
                                     onOpenTabs = { nav.tab(MainTabs.TABS) },
                                     onOpenAccounts = { nav.navigate(AccountsRoute) },
@@ -460,7 +460,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     },
                                     onOpenSource = { _, _ -> },
-                                    onAddTransaction = { nav.navigate(AddCashRoute) },
+                                    onAddTransaction = { nav.navigate(AddCashRoute()) },
                                 )
                             }
                             composable<MonthFlowRoute> { entry ->
@@ -495,7 +495,7 @@ class MainActivity : ComponentActivity() {
                                             ),
                                         )
                                     },
-                                    onAddTransaction = { nav.navigate(AddCashRoute) },
+                                    onAddTransaction = { nav.navigate(AddCashRoute()) },
                                 )
                             }
                             composable<CategoryRoute> { entry ->
@@ -520,7 +520,7 @@ class MainActivity : ComponentActivity() {
                             composable<TransactionsRoute> { entry ->
                                 TransactionsScreen(
                                     onOpen = { nav.navigate(TxnRoute(it)) },
-                                    onAddTransaction = { nav.navigate(AddCashRoute) },
+                                    onAddTransaction = { nav.navigate(AddCashRoute()) },
                                     savedStateHandle = entry.savedStateHandle,
                                 )
                             }
@@ -536,6 +536,19 @@ class MainActivity : ComponentActivity() {
                                     tabId = args.id,
                                     onBack = { nav.popBackStack() },
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
+                                    onSettle = { tabId, amountPaise, type, tabName ->
+                                        pendingReviewTxn.value = null
+                                        reviewTxn = null
+                                        nav.navigate(
+                                            AddCashRoute(
+                                                tabId = tabId,
+                                                amountPaise = amountPaise,
+                                                type = type.name,
+                                                categoryName = "Settlement",
+                                                note = "Settled · $tabName",
+                                            ),
+                                        )
+                                    },
                                 )
                             }
                             composable<SettingsRoute> {
@@ -553,7 +566,13 @@ class MainActivity : ComponentActivity() {
                                     onBack = { nav.popBackStack() },
                                 )
                             }
-                            composable<AddCashRoute> {
+                            composable<AddCashRoute> { entry ->
+                                val args = entry.toRoute<AddCashRoute>()
+                                val prefillType = when (args.type.uppercase()) {
+                                    "CREDIT" -> TransactionType.CREDIT
+                                    "DEBIT" -> TransactionType.DEBIT
+                                    else -> TransactionType.DEBIT
+                                }
                                 AddCashScreen(
                                     onDone = {
                                         pendingShareText.value = null
@@ -562,6 +581,15 @@ class MainActivity : ComponentActivity() {
                                         nav.popBackStack()
                                     },
                                     initialParsed = reviewTxn,
+                                    initialAmount = if (args.amountPaise > 0L) {
+                                        amountTextFromPaise(args.amountPaise)
+                                    } else {
+                                        ""
+                                    },
+                                    initialType = prefillType,
+                                    initialTabId = args.tabId.takeIf { it > 0L },
+                                    initialCategoryName = args.categoryName,
+                                    initialNote = args.note,
                                 )
                             }
                             composable<TxnRoute> { entry ->
@@ -633,7 +661,7 @@ class MainActivity : ComponentActivity() {
                                             addMenuOpen = false
                                             pendingReviewTxn.value = null
                                             reviewTxn = null
-                                            nav.navigate(AddCashRoute)
+                                            nav.navigate(AddCashRoute())
                                         },
                                         FabSpeedDialItem("From text", Icons.Default.ContentPaste) {
                                             addMenuOpen = false
@@ -681,7 +709,7 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     reviewTxn = result.transaction
                                     pendingReviewTxn.value = result.transaction
-                                    nav.navigate(AddCashRoute)
+                                    nav.navigate(AddCashRoute())
                                 }
                             },
                         )

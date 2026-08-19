@@ -60,7 +60,7 @@ class SheetsSyncService @Inject constructor(
     )
 
     private val analyticsTabs = listOf(
-        "Dashboard", "Monthly", "Categories", "Accounts", "Funds", "Merchants",
+        "Dashboard", "Monthly", "Categories", "Accounts", "Tabs", "Merchants",
     )
 
     fun isConfigured(): Boolean =

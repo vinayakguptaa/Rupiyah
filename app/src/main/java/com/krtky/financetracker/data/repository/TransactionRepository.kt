@@ -797,13 +797,30 @@ class TransactionRepository @Inject constructor(
     fun observeTabs(): Flow<List<TabBalance>> = combine(
         tabDao.observeActive(),
         txnDao.observeAll(),
-    ) { tabs, allTxns ->
+    ) { tabs, allTxns -> tabBalances(tabs, allTxns) }
+
+    fun observeArchivedTabs(): Flow<List<TabBalance>> = combine(
+        tabDao.observeArchived(),
+        txnDao.observeAll(),
+    ) { tabs, allTxns -> tabBalances(tabs, allTxns) }
+
+    fun observeTab(id: Long): Flow<TabBalance?> = combine(
+        tabDao.observeById(id),
+        txnDao.observeAll(),
+    ) { tab, allTxns ->
+        tab?.let { tabBalances(listOf(it), allTxns).firstOrNull() }
+    }
+
+    private fun tabBalances(
+        tabs: List<TabEntity>,
+        allTxns: List<TransactionEntity>,
+    ): List<TabBalance> {
         val byTab = allTxns
             .asSequence()
             .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
             .filter { it.tabId != null }
             .groupBy { it.tabId!! }
-        tabs.map { tab ->
+        return tabs.map { tab ->
             val rows = byTab[tab.id].orEmpty()
             val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
             val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
@@ -834,7 +851,23 @@ class TransactionRepository @Inject constructor(
 
     suspend fun deleteTab(tabId: Long) {
         val tab = tabDao.getById(tabId) ?: return
-        tabDao.update(tab.copy(archived = true))
+        if (!tab.archived) tabDao.update(tab.copy(archived = true))
+    }
+
+    suspend fun restoreTab(tabId: Long) {
+        val tab = tabDao.getById(tabId) ?: return
+        if (tab.archived) {
+            tabDao.update(tab.copy(archived = false))
+            recalculateTabLedger(tabId)
+        }
+    }
+
+    suspend fun renameTab(tabId: Long, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        val tab = tabDao.getById(tabId) ?: return
+        if (tab.name == trimmed) return
+        tabDao.update(tab.copy(name = trimmed))
     }
 
     /** Current open balance for [tabId]: debits − credits across non-self-transfer rows. */
@@ -848,17 +881,7 @@ class TransactionRepository @Inject constructor(
         return debits - credits
     }
 
-    /**
-     * Close a tab's open balance to zero with a bookkeeping entry.
-     *
-     * If they owe you, a **CREDIT** records the settlement (balance drops to zero);
-     * if you owe them, a **DEBIT** records your payment. Kind is
-     * [TransactionKind.TAB_TRANSFER] so the entry never enters lifestyle/credit metrics
-     * or the category screens, but it stays visible in the tab's activity.
-     *
-     * @return true if a settlement was recorded, false if the tab is missing or already settled.
-     */
-    suspend fun settleTab(tabId: Long): Boolean {
+        suspend fun settleTab(tabId: Long, accountId: Long? = null): Boolean {
         val balance = tabBalancePaise(tabId) ?: return false
         if (balance == 0L) return false
         val tab = tabDao.getById(tabId) ?: return false
@@ -872,6 +895,7 @@ class TransactionRepository @Inject constructor(
             amountPaise = amount,
             occurredAt = now,
             tabId = tabId,
+            accountId = accountId,
             source = TransactionSource.MANUAL,
             note = "Settled · ${tab.name}",
             classificationStatus = ClassificationStatus.CLASSIFIED,

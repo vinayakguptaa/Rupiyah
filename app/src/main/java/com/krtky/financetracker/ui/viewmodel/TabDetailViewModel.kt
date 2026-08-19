@@ -16,14 +16,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TabDetailViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
@@ -31,10 +30,14 @@ class TabDetailViewModel @Inject constructor(
     accountRepository: AccountRepository,
 ) : ViewModel() {
     private val tabIdFlow = MutableStateFlow<Long?>(null)
-    private val _tab = MutableStateFlow<TabBalance?>(null)
     private val filters = TransactionFilterState()
 
-    val tab: StateFlow<TabBalance?> = _tab
+    val tab: StateFlow<TabBalance?> = tabIdFlow
+        .flatMapLatest { id ->
+            if (id == null) flowOf(null)
+            else transactionRepository.observeTab(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val allTabs = tabsState(transactionRepository)
     val typeFilter: StateFlow<TransactionType?> = filters.type
     val paymentFilter: StateFlow<String?> = filters.payment
@@ -85,9 +88,6 @@ class TabDetailViewModel @Inject constructor(
 
     fun load(id: Long) {
         tabIdFlow.value = id
-        viewModelScope.launch {
-            _tab.value = transactionRepository.observeTabs().first().firstOrNull { it.tab.id == id }
-        }
     }
 
     fun setType(t: TransactionType?) = filters.setType(t)
@@ -104,9 +104,10 @@ class TabDetailViewModel @Inject constructor(
         return true
     }
 
-    suspend fun settleTab(): Boolean {
+    suspend fun restoreTab(): Boolean {
         val id = tabIdFlow.value ?: return false
-        return transactionRepository.settleTab(id)
+        transactionRepository.restoreTab(id)
+        return true
     }
 
     suspend fun transferBetweenTabs(

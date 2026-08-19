@@ -88,6 +88,9 @@ fun AddCashScreen(
     initialAmount: String = "",
     initialType: TransactionType = TransactionType.DEBIT,
     initialParsed: Transaction? = null,
+    initialTabId: Long? = null,
+    initialCategoryName: String = "",
+    initialNote: String = "",
     vm: AddCashViewModel = hiltViewModel(),
 ) {
     val categories by vm.categories.collectAsStateWithLifecycle()
@@ -100,8 +103,18 @@ fun AddCashScreen(
     val haptics = rememberAppHaptics()
 
     val formState = remember {
-        TransactionFormState(initialAmount, initialType)
+        TransactionFormState(initialAmount, initialType).also { state ->
+            if (initialNote.isNotBlank()) state.note = initialNote
+            if (initialTabId != null) {
+                state.tabId = initialTabId
+                state.addToTab = true
+            }
+        }
     }
+    val skipLastUsed = initialParsed != null ||
+        initialTabId != null ||
+        initialCategoryName.isNotBlank() ||
+        initialAmount.isNotBlank()
 
     var reviewFromAi by remember { mutableStateOf(initialParsed != null) }
     var parsedAccountHint by remember { mutableStateOf(initialParsed) }
@@ -167,8 +180,8 @@ fun AddCashScreen(
         recommendedTabId = rec
     }
 
-    LaunchedEffect(lastCategory, lastTab, categories, tabs, reviewFromAi) {
-        if (appliedLastUsed || reviewFromAi) return@LaunchedEffect
+    LaunchedEffect(lastCategory, lastTab, categories, tabs, reviewFromAi, skipLastUsed) {
+        if (appliedLastUsed || reviewFromAi || skipLastUsed) return@LaunchedEffect
         if (lastCategory != null && categories.any { it.id == lastCategory }) {
             formState.categoryId = lastCategory
         }
@@ -177,6 +190,21 @@ fun AddCashScreen(
             formState.addToTab = true
         }
         appliedLastUsed = true
+    }
+
+    LaunchedEffect(categories, initialCategoryName) {
+        if (initialCategoryName.isBlank()) return@LaunchedEffect
+        categories.firstOrNull { it.name.equals(initialCategoryName, ignoreCase = true) }?.let {
+            formState.categoryId = it.id
+        }
+    }
+
+    LaunchedEffect(tabs, initialTabId) {
+        val id = initialTabId ?: return@LaunchedEffect
+        if (tabs.any { it.tab.id == id }) {
+            formState.tabId = id
+            formState.addToTab = true
+        }
     }
 
     val paymentLabel = accounts.firstOrNull { it.id == formState.selectedAccountId }?.name ?: "Select account"

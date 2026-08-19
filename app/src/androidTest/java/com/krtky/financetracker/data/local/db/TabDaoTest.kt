@@ -48,6 +48,15 @@ class TabDaoTest {
     }
 
     @Test
+    fun observeArchived_includesOnlyArchived() = runBlocking {
+        dao.upsert(TabEntity(name = "Active"))
+        val archivedId = dao.upsert(TabEntity(name = "Archived", archived = true))
+        val archived = dao.observeArchived().first()
+        assertThat(archived).hasSize(1)
+        assertThat(archived[0].id).isEqualTo(archivedId)
+    }
+
+    @Test
     fun update_modifiesEntity() = runBlocking {
         val id = dao.upsert(TabEntity(name = "Old Name"))
         dao.update(TabEntity(id = id, name = "New Name"))

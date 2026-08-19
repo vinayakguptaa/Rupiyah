@@ -42,6 +42,12 @@
     <string name="empty_funds_title">No tabs yet</string>
     <string name="empty_funds_body">Use a tab for loans, shared trips, or IOUs — not ordinary spends.</string>
     <string name="empty_funds_action">Add tab</string>
+    <string name="tabs_archived_title">Archived</string>
+    <string name="tabs_archived_subtitle">Hidden from this list · history kept</string>
+    <string name="tabs_restore">Restore</string>
+    <string name="tabs_settled_title">Settled</string>
+    <string name="tabs_net_owed">Net owed</string>
+    <string name="tabs_save_name">Save name</string>
     <string name="empty_activity_title">No transactions yet</string>
     <string name="empty_activity_body">No matches for these filters. Widen the date range or clear search.</string>
     <string name="empty_activity_action">Add transaction</string>

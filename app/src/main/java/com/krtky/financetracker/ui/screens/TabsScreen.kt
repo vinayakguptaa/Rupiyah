@@ -3,7 +3,7 @@ package com.krtky.financetracker.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,26 +19,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,11 +75,13 @@ fun TabsScreen(
     vm: TabsViewModel = hiltViewModel(),
 ) {
     val tabs by vm.tabs.collectAsStateWithLifecycle()
+    val archivedTabs by vm.archivedTabs.collectAsStateWithLifecycle()
     var showCreate by remember { mutableStateOf(false) }
     var showAdjust by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var adjustTabId by remember { mutableStateOf<Long?>(null) }
     var adjustTabName by remember { mutableStateOf("") }
+    var editName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     var ready by remember { mutableStateOf(false) }
@@ -94,12 +94,9 @@ fun TabsScreen(
             showCreate = true
         }
     }
-
-    // Open-balance hero: money outstanding across tabs, not an envelope budget.
+    val openTabs = remember(tabs) { tabs.filter { !it.isSettled() } }
+    val settledTabs = remember(tabs) { tabs.filter { it.isSettled() } }
     val netOpen = tabs.sumOf { it.balancePaise }
-    val theyOwe = tabs.filter { it.theyOweYou() }.sumOf { it.balancePaise }
-    val youOwe = tabs.filter { it.youOweThem() }.sumOf { -it.balancePaise }
-    val openTabCount = tabs.count { it.balancePaise != 0L }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -117,88 +114,54 @@ fun TabsScreen(
                 )
             }
 
-            // Hero: net open balance (they owe you / you owe them)
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.extraLarge,
                     color = scheme.surfaceContainerHigh,
                 ) {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(Dimens.CardInnerGap),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    when {
-                                        netOpen > 0L -> "They owe you"
-                                        netOpen < 0L -> "You owe them"
-                                        else -> "All settled"
-                                    },
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    if (netOpen == 0L) "₹0" else netOpen.let { if (it < 0) -it else it }.inrCompact(),
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TabStatChip(
-                                label = stringResource(R.string.tab_they_owe),
-                                value = theyOwe.inrCompact(),
-                                icon = Icons.Default.AccountBalanceWallet,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TabStatChip(
-                                label = stringResource(R.string.tab_you_owe),
-                                value = youOwe.inrCompact(),
-                                icon = Icons.Default.CreditCard,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TabStatChip(
-                                label = stringResource(R.string.tab_open_count),
-                                value = openTabCount.toString(),
-                                icon = Icons.Default.AccountBalanceWallet,
-                                modifier = Modifier.weight(1f),
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                        Text(
+                            stringResource(R.string.tabs_net_owed),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (netOpen == 0L) "₹0" else netOpen.let { if (it < 0) -it else it }.inrCompact(),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (netOpen < 0L) scheme.error else scheme.onSurface,
+                        )
+                        if (netOpen != 0L) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (netOpen < 0L) "You owe them" else "They owe you",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
             }
 
-            item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${tabs.size} tab${if (tabs.size == 1) "" else "s"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-
-            if (tabs.isEmpty()) {
+            if (openTabs.isEmpty()) {
                 item {
                     EmptyState(
                         icon = Icons.Default.AccountBalanceWallet,
                         title = stringResource(R.string.empty_funds_title),
-                        body = stringResource(R.string.empty_funds_body),
+                        body = when {
+                            settledTabs.isNotEmpty() || archivedTabs.isNotEmpty() ->
+                                "No open balances — settled and archived tabs are below."
+                            else -> stringResource(R.string.empty_funds_body)
+                        },
                         actionLabel = stringResource(R.string.empty_funds_action),
                         onAction = { showCreate = true },
                     )
                 }
             }
 
-            itemsIndexed(tabs, key = { _, f -> f.tab.id }) { index, f ->
+            itemsIndexed(openTabs, key = { _, f -> f.tab.id }) { index, f ->
                 AnimatedVisibility(
                     visible = ready,
                     enter = fadeIn(M3EMotion.effectsDefault()) +
@@ -211,7 +174,7 @@ fun TabsScreen(
                         scheme.primaryContainer to scheme.onPrimaryContainer,
                         scheme.tertiaryContainer to scheme.onTertiaryContainer,
                     )[index % 5]
-                    BudgetStyleTabCard(
+                    SimpleTabCard(
                         tab = f,
                         headerColor = colors.first,
                         onHeaderColor = colors.second,
@@ -219,14 +182,80 @@ fun TabsScreen(
                         onAdjust = {
                             adjustTabId = f.tab.id
                             adjustTabName = f.tab.name
+                            editName = f.tab.name
                             showAdjust = true
                         },
                     )
                 }
             }
 
+            if (settledTabs.isNotEmpty()) {
+                item {
+                    SectionLabel(
+                        title = stringResource(R.string.tabs_settled_title),
+                        subtitle = "Zero balance · history kept",
+                    )
+                }
+                items(settledTabs, key = { "settled-${it.tab.id}" }) { row ->
+                    QuietTabRow(
+                        tab = row,
+                        caption = "Settled",
+                        onOpen = { onOpenTab(row.tab.id) },
+                        trailing = {
+                            TextButton(
+                                onClick = {
+                                    adjustTabId = row.tab.id
+                                    adjustTabName = row.tab.name
+                                    editName = row.tab.name
+                                    showAdjust = true
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = "Manage",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (archivedTabs.isNotEmpty()) {
+                item {
+                    SectionLabel(
+                        title = stringResource(R.string.tabs_archived_title),
+                        subtitle = stringResource(R.string.tabs_archived_subtitle),
+                    )
+                }
+                items(archivedTabs, key = { "arch-${it.tab.id}" }) { row ->
+                    QuietTabRow(
+                        tab = row,
+                        caption = if (row.isSettled()) {
+                            "Archived · settled"
+                        } else if (row.youOweThem()) {
+                            "Archived · you owe ${(-row.balancePaise).inr()}"
+                        } else {
+                            "Archived · they owe ${row.balancePaise.inr()}"
+                        },
+                        onOpen = { onOpenTab(row.tab.id) },
+                        trailing = {
+                            TextButton(
+                                onClick = { scope.launch { vm.restore(row.tab.id) } },
+                            ) {
+                                Icon(
+                                    Icons.Default.Unarchive,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(stringResource(R.string.tabs_restore))
+                            }
+                        },
+                    )
+                }
+            }
         }
-        // FAB lives beside the floating navbar (MainActivity FloatingBottomNav)
     }
 
     if (showCreate) {
@@ -288,6 +317,26 @@ fun TabsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text("Manage $adjustTabName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            vm.rename(adjustTabId!!, editName)
+                            adjustTabName = editName.trim()
+                            showAdjust = false
+                        }
+                    },
+                    enabled = editName.isNotBlank() && editName.trim() != adjustTabName,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) { Text(stringResource(R.string.tabs_save_name)) }
                 Text(
                     "Archiving keeps the tab's transaction history but hides it from this list.",
                     style = MaterialTheme.typography.bodySmall,
@@ -314,35 +363,66 @@ fun TabsScreen(
 }
 
 @Composable
-private fun TabStatChip(
-    label: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
+private fun SectionLabel(title: String, subtitle: String) {
+    val scheme = MaterialTheme.colorScheme
+    Column {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = scheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun QuietTabRow(
+    tab: TabBalance,
+    caption: String,
+    onOpen: () -> Unit,
+    trailing: @Composable () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = scheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = scheme.surfaceContainerLow,
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(icon, null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpen)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    tab.tab.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurfaceVariant,
+                )
+                Text(
+                    caption,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
             }
+            trailing()
         }
     }
 }
 
-/** Open-balance tab card: who owes whom, not an envelope budget bar. */
 @Composable
-private fun BudgetStyleTabCard(
+private fun SimpleTabCard(
     tab: TabBalance,
     headerColor: Color,
     onHeaderColor: Color,
@@ -351,98 +431,47 @@ private fun BudgetStyleTabCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     val youOweThem = tab.youOweThem()
-    val settled = tab.isSettled()
-    val cardHeader = if (youOweThem) scheme.error else headerColor
-    val cardOnHeader = if (youOweThem) scheme.onError else onHeaderColor
+    val cardColor = if (youOweThem) scheme.error else headerColor
+    val onCard = if (youOweThem) scheme.onError else onHeaderColor
 
     Surface(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        color = scheme.surfaceContainerHigh,
+        color = cardColor,
     ) {
-        Column {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                color = cardHeader,
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            tab.tab.name,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = cardOnHeader,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            when {
-                                youOweThem -> "You owe ${(-tab.balancePaise).inr()}"
-                                settled -> "Settled"
-                                else -> "They owe ${tab.balancePaise.inr()}"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = cardOnHeader.copy(alpha = 0.9f),
-                        )
-                    }
-                    Surface(
-                        onClick = onAdjust,
-                        shape = CircleShape,
-                        color = cardOnHeader.copy(alpha = 0.18f),
-                    ) {
-                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Tune, null, tint = cardOnHeader, modifier = Modifier.size(20.dp))
-                        }
-                    }
-                }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    tab.tab.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = onCard,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (youOweThem) {
+                        "You owe ${(-tab.balancePaise).inr()}"
+                    } else {
+                        "They owe ${tab.balancePaise.inr()}"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = onCard.copy(alpha = 0.9f),
+                )
             }
-
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        if (settled) "No money open" else "Open balance",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = scheme.onSurfaceVariant,
-                    )
-                    Text(
-                        if (settled) "₹0" else tab.balancePaise.let { if (it < 0) -it else it }.inr(),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (youOweThem) scheme.error else scheme.onSurface,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                if (tab.theyOweYou() && tab.debitedPaise > 0L) {
-                    val recovered =
-                        (tab.creditedPaise.toFloat() / tab.debitedPaise.toFloat()).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { recovered },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = scheme.primary,
-                        trackColor = scheme.surfaceContainerHighest,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Repaid ${tab.creditedPaise.inr()} of ${tab.debitedPaise.inr()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                } else {
-                    Text(
-                        "In ${tab.creditedPaise.inr()} · Out ${tab.debitedPaise.inr()}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
+            Surface(
+                onClick = onAdjust,
+                shape = CircleShape,
+                color = onCard.copy(alpha = 0.18f),
+            ) {
+                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Tune, null, tint = onCard, modifier = Modifier.size(20.dp))
                 }
             }
         }
