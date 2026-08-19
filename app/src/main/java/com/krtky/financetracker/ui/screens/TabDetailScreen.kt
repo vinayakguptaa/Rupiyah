@@ -45,9 +45,10 @@ import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.EmptyState
-import com.krtky.financetracker.ui.components.TabTransferSheet
-import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.TransactionFilterBar
+import com.krtky.financetracker.ui.components.TransferContainer
+import com.krtky.financetracker.ui.components.TransferSheet
+import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.TransactionSortButton
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.categoryColor
@@ -251,10 +252,17 @@ fun TabDetailScreen(
     }
 
     if (showTransfer && tab != null) {
-        TabTransferSheet(
-            sourceTabId = tab!!.tab.id,
-            sourceTabName = tab!!.tab.name,
-            allTabs = allTabs,
+        val sourceTab = tab!!.tab
+        val containers = allTabs
+            .filter { it.tab.id == sourceTab.id || !it.tab.archived }
+            .map { TransferContainer(it.tab.id, it.tab.name, it.balancePaise.inr()) }
+        TransferSheet(
+            containers = containers,
+            title = "Move money",
+            subtitle = "Moves money between tabs. Not a spend.",
+            fromLabel = "From tab",
+            toLabel = "To tab",
+            initialFromId = sourceTab.id,
             onDismiss = { showTransfer = false },
             onTransfer = vm::transferBetweenTabs,
         )

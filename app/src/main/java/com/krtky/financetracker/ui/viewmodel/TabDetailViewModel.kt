@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
+import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
@@ -106,10 +107,11 @@ class TabDetailViewModel @Inject constructor(
     suspend fun transferBetweenTabs(
         fromTabId: Long,
         toTabId: Long,
-        amountPaise: Long,
+        amountText: String,
         note: String,
     ): Boolean {
-        transactionRepository.transferBetweenTabs(fromTabId, toTabId, amountPaise, note.ifBlank { null })
+        val money = Money.fromRupeesString(amountText) ?: return false
+        transactionRepository.transferBetweenTabs(fromTabId, toTabId, money.paise, note.ifBlank { null })
         return true
     }
 }

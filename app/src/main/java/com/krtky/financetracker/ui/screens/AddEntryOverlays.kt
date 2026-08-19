@@ -5,6 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.domain.model.Money
+import com.krtky.financetracker.ui.components.TransferContainer
+import com.krtky.financetracker.ui.components.TransferSheet
+import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.viewmodel.AddCashViewModel
 import com.krtky.financetracker.ui.viewmodel.PasteParseResult
 
@@ -40,12 +43,17 @@ fun AddEntryOverlays(
     }
 
     if (showTransfer) {
-        SelfTransferSheet(
-            accounts = accounts,
-            accountBalances = accountBalances,
+        TransferSheet(
+            containers = accounts.map {
+                TransferContainer(
+                    id = it.id,
+                    name = it.name,
+                    balanceLabel = accountBalances[it.name]?.inr(),
+                )
+            },
+            initialFromId = transferFromId,
+            initialToId = transferToId,
             initialAmount = transferAmount,
-            initialFromAccountId = transferFromId,
-            initialToAccountId = transferToId,
             initialNote = transferNote,
             onDismiss = onDismissTransfer,
             onTransfer = { fromId, toId, amountText, note ->
