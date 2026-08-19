@@ -87,7 +87,6 @@ fun AddCashScreen(
     onDone: () -> Unit,
     initialAmount: String = "",
     initialType: TransactionType = TransactionType.DEBIT,
-    initialSharedText: String? = null,
     initialParsed: Transaction? = null,
     vm: AddCashViewModel = hiltViewModel(),
 ) {
@@ -106,27 +105,18 @@ fun AddCashScreen(
 
     var reviewFromAi by remember { mutableStateOf(initialParsed != null) }
     var parsedAccountHint by remember { mutableStateOf(initialParsed) }
-    var amountPadIsEntryGate by remember { mutableStateOf(initialParsed == null && initialSharedText.isNullOrBlank()) }
     var saveSource by remember {
         mutableStateOf(if (initialParsed != null) TransactionSource.PASTE else TransactionSource.MANUAL)
     }
-    var showTransferSheet by remember { mutableStateOf(false) }
     var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var recommendedTabId by remember { mutableStateOf<Long?>(null) }
     var appliedLastUsed by remember { mutableStateOf(false) }
-    var transferAmount by remember { mutableStateOf(initialAmount) }
     val scope = rememberCoroutineScope()
 
     val lastCategory by vm.lastUsedCategoryId.collectAsStateWithLifecycle()
     val lastTab by vm.lastUsedTabId.collectAsStateWithLifecycle()
     val lastPayment by vm.lastUsedPaymentMethod.collectAsStateWithLifecycle()
-
-    LaunchedEffect(formState.showAmountPad) {
-        if (formState.showAmountPad) {
-            amountPadIsEntryGate = false
-        }
-    }
 
     fun resolveParsedAccount(parsed: Transaction): Long? {
         if (accounts.isEmpty()) return parsed.accountId
@@ -649,56 +639,11 @@ fun AddCashScreen(
         AmountNumpadSheet(
             initialAmount = formState.amount,
             title = "Enter amount",
-            pickTransactionType = amountPadIsEntryGate || formState.amount.isBlank(),
-            onDismiss = {
-                formState.showAmountPad = false
-                if (amountPadIsEntryGate && formState.amount.isBlank()) onDone()
-                amountPadIsEntryGate = false
-            },
-            onConfirmEntry = { entry ->
-                formState.amount = entry.amountText
-                if (entry.isSelfTransfer) {
-                    transferAmount = entry.amountText
-                    showTransferSheet = true
-                } else {
-                    formState.type = entry.type
-                }
-                formState.showAmountPad = false
-                amountPadIsEntryGate = false
-                haptics.select()
-            },
-            onConfirmWithType = { amountText, selectedType ->
-                formState.amount = amountText
-                formState.type = selectedType
-                formState.showAmountPad = false
-                amountPadIsEntryGate = false
-                haptics.select()
-            },
+            onDismiss = { formState.showAmountPad = false },
             onConfirmAmount = { amountText ->
                 formState.amount = amountText
                 formState.showAmountPad = false
-                amountPadIsEntryGate = false
                 haptics.select()
-            },
-        )
-    }
-
-    if (showTransferSheet) {
-        SelfTransferSheet(
-            accounts = accounts,
-            accountBalances = accountBalances,
-            initialAmount = transferAmount.ifBlank { formState.amount },
-            onDismiss = { showTransferSheet = false },
-            onTransfer = { fromId, toId, amountText, note ->
-                val ok = vm.saveSelfTransfer(
-                    amountText = amountText,
-                    fromAccountId = fromId,
-                    toAccountId = toId,
-                    note = note,
-                    occurredAt = formState.computeDisplayWhen(),
-                )
-                if (ok) onDone()
-                ok
             },
         )
     }

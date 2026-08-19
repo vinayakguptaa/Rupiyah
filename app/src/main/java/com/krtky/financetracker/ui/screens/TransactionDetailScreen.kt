@@ -565,7 +565,6 @@ fun TransactionDetailScreen(
         AmountNumpadSheet(
             initialAmount = amount,
             title = "Edit amount",
-            pickTransactionType = false,
             onDismiss = { showAmountPad = false },
             onConfirmAmount = { amountText ->
                 amount = amountText

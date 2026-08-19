@@ -558,7 +558,6 @@ class MainActivity : ComponentActivity() {
                                         reviewTxn = null
                                         nav.popBackStack()
                                     },
-                                    initialSharedText = shareText,
                                     initialParsed = reviewTxn,
                                 )
                             }
