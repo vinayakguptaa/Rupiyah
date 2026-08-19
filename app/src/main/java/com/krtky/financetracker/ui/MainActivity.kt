@@ -47,9 +47,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -60,7 +62,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.krtky.financetracker.R
-import com.krtky.financetracker.ui.components.ClassifyTransactionSheet
+import com.krtky.financetracker.notification.classificationNotificationId
 import com.krtky.financetracker.ui.components.FabSpeedDialItem
 import com.krtky.financetracker.ui.components.FloatingBottomNav
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
@@ -246,6 +248,7 @@ class MainActivity : ComponentActivity() {
                     val spatial = M3EMotion.spatialDefault<IntOffset>()
                     val effects = M3EMotion.effectsDefault<Float>()
                     var classifyId by remember { pendingClassifyId }
+                    var classifyTxnId by remember { mutableStateOf<String?>(null) }
                     var navigateTo by remember { pendingNavigateTo }
                     var shareText by remember { pendingShareText }
                     var showPaste by remember { pendingShowPaste }
@@ -563,8 +566,13 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<TxnRoute> { entry ->
                                 val args = entry.toRoute<TxnRoute>()
+                                val startEditing = args.id == classifyTxnId
+                                LaunchedEffect(args.id) {
+                                    if (classifyTxnId == args.id) classifyTxnId = null
+                                }
                                 TransactionDetailScreen(
                                     id = args.id,
+                                    startEditing = startEditing,
                                     onBack = { nav.popBackStack() },
                                     onOpenSplit = { nav.navigate(SplitRoute(args.id)) },
                                 )
@@ -681,15 +689,17 @@ class MainActivity : ComponentActivity() {
                         } // end content Box
                     }
 
-                    // Sequential classify popup on any screen
-                    classifyId?.let { id ->
-                        ClassifyTransactionSheet(
-                            transactionId = id,
-                            onDismiss = {
-                                pendingClassifyId.value = null
-                                classifyId = null
-                            },
-                        )
+                    // Open a pending-classification transaction in the edit screen
+                    val context = LocalContext.current
+                    LaunchedEffect(classifyId) {
+                        classifyId?.let { id ->
+                            pendingClassifyId.value = null
+                            classifyId = null
+                            NotificationManagerCompat.from(context)
+                                .cancel(classificationNotificationId(id))
+                            classifyTxnId = id
+                            nav.navigate(TxnRoute(id))
+                        }
                     }
                 }
             }

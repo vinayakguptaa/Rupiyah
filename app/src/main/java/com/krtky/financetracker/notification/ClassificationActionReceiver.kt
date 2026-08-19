@@ -29,7 +29,7 @@ class ClassificationActionReceiver : BroadcastReceiver() {
                     ACTION_CATEGORY -> {
                         val catId = intent.getLongExtra(EXTRA_CATEGORY_ID, -1L).takeIf { it > 0 }
                         transactionRepository.classify(txnId, catId, null, null)
-                        NotificationManagerCompat.from(context).cancel(txnId.hashCode())
+                        NotificationManagerCompat.from(context).cancel(classificationNotificationId(txnId))
                     }
                     ACTION_FUND -> {
                         val tabId = intent.getLongExtra(EXTRA_TAB_ID, -1L).takeIf { it > 0 }
@@ -55,7 +55,7 @@ class ClassificationActionReceiver : BroadcastReceiver() {
                             if (txn?.categoryId == null) {
                                 notifier.notifyPayment(txnId)
                             } else {
-                                NotificationManagerCompat.from(context).cancel(txnId.hashCode())
+                                NotificationManagerCompat.from(context).cancel(classificationNotificationId(txnId))
                             }
                         }
                     }

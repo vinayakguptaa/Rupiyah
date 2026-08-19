@@ -171,7 +171,7 @@ class ClassificationNotifier @Inject constructor(
             != PackageManager.PERMISSION_GRANTED
         ) return
 
-        NotificationManagerCompat.from(context).notify(NOTIF_BASE + (transactionId.hashCode() and 0xFFFF), builder.build())
+        NotificationManagerCompat.from(context).notify(classificationNotificationId(transactionId), builder.build())
 
         val entity = db.transactionDao().getById(transactionId) ?: return
         db.transactionDao().update(
@@ -183,6 +183,9 @@ class ClassificationNotifier @Inject constructor(
 
     companion object {
         const val CHANNEL_ID = "payments_v2"
-        private const val NOTIF_BASE = 10_000
     }
 }
+
+/** Notification id used for a payment/classification alert. */
+fun classificationNotificationId(transactionId: String): Int =
+    10_000 + (transactionId.hashCode() and 0xFFFF)

@@ -75,6 +75,7 @@ fun TransactionDetailScreen(
     id: String,
     onBack: () -> Unit,
     onOpenSplit: () -> Unit = {},
+    startEditing: Boolean = false,
     vm: TransactionDetailViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(id) { vm.load(id) }
@@ -114,7 +115,7 @@ fun TransactionDetailScreen(
     var showTimePicker by remember { mutableStateOf(false) }
     var showAmountPad by remember { mutableStateOf(false) }
     /** Info first; Edit FAB opens the full editor. */
-    var editing by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(startEditing) }
 
     val nowCal = remember { Calendar.getInstance() }
     var selectedYear by remember { mutableStateOf(nowCal.get(Calendar.YEAR)) }
