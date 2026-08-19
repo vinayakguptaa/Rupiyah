@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.krtky.financetracker.domain.model.Money
 import kotlinx.coroutines.launch
 
 /** One selectable container (bank/cash account or tab) in a [TransferSheet]. */
@@ -75,7 +76,7 @@ fun TransferSheet(
     var saving by remember { mutableStateOf(false) }
 
     val canSave = !saving &&
-        amountText.isNotBlank() &&
+        (Money.fromRupeesString(amountText)?.paise ?: 0L) > 0L &&
         fromId != null &&
         toId != null &&
         fromId != toId
