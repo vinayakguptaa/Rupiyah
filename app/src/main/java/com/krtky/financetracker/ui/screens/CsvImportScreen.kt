@@ -53,12 +53,11 @@ import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.chrome.StackTopBar
 import com.krtky.financetracker.ui.theme.Dimens
+import com.krtky.financetracker.ui.util.formatDate
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.viewmodel.CsvImportStep
 import com.krtky.financetracker.ui.viewmodel.CsvImportViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -74,7 +73,6 @@ fun CsvImportScreen(
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
     val context = LocalContext.current
-    val dateFmt = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
 
     // Prefill account when opened from Accounts row
     androidx.compose.runtime.LaunchedEffect(initialAccountId, accounts) {
@@ -328,7 +326,7 @@ fun CsvImportScreen(
                     items(preview.rows, key = { it.id }) { row ->
                         PreviewRowCard(
                             row = row,
-                            dateLabel = dateFmt.format(Date(row.parsed.occurredAt)),
+                            dateLabel = row.parsed.occurredAt.formatDate(),
                             onAction = { action ->
                                 haptics.select()
                                 vm.setRowAction(row.id, action)

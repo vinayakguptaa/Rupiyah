@@ -14,10 +14,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
+import com.krtky.financetracker.ui.util.formatMonthName
+import com.krtky.financetracker.ui.util.formatShortDate
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
@@ -54,10 +54,10 @@ internal fun txnDisplayName(txn: Transaction): String =
         ?: "Transaction"
 
 internal fun monthLabel(now: Long = System.currentTimeMillis()): String =
-    SimpleDateFormat("MMMM", Locale.getDefault()).format(Date(now))
+    now.formatMonthName()
 
 internal fun shortDate(ts: Long): String =
-    SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(ts))
+    ts.formatShortDate()
 
 /**
  * MoM percent matching home [com.krtky.financetracker.ui.screens.HomeScreen] `pctChange`.

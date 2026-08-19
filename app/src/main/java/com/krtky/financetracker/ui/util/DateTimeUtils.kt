@@ -3,7 +3,6 @@ package com.krtky.financetracker.ui.util
 import com.krtky.financetracker.ui.viewmodel.TimeRange
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 
 fun startOfDayMillis(millis: Long = System.currentTimeMillis()): Long =
@@ -40,20 +39,19 @@ fun timeRangeSubtitle(
     customFrom: Long,
     customTo: Long,
 ): String {
-    val fmt = SimpleDateFormat("dd MMM", Locale.getDefault())
     return when (range) {
         TimeRange.TODAY -> "Today"
         TimeRange.WEEK -> "This week"
         TimeRange.MONTH -> "This month"
         TimeRange.YEAR -> "This year"
         TimeRange.ALL -> "All time"
-        TimeRange.CUSTOM -> "${fmt.format(Date(customFrom))} – ${fmt.format(Date(customTo))}"
+        TimeRange.CUSTOM -> "${customFrom.formatDate()} – ${customTo.formatDate()}"
     }
 }
 
 /** Form date pattern used by Add / Edit transaction screens. */
 fun formDateFormatter(): SimpleDateFormat =
-    SimpleDateFormat("MM/dd/yyyy", Locale.getDefault())
+    SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
 /** Form time pattern used by Add / Edit transaction screens. */
 fun formTimeFormatter(): SimpleDateFormat =

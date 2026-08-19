@@ -71,6 +71,8 @@ import com.krtky.financetracker.ui.theme.NavContentInsets
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.categoryColor
 import com.krtky.financetracker.ui.util.formatDateTime
+import com.krtky.financetracker.ui.util.formatMonthName
+import com.krtky.financetracker.ui.util.formatYear
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.rememberAppHaptics
@@ -78,9 +80,6 @@ import com.krtky.financetracker.ui.util.downloadTransactionsCsv
 import com.krtky.financetracker.ui.viewmodel.TimeRange
 import com.krtky.financetracker.ui.viewmodel.TransactionsViewModel
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun TransactionsScreen(
@@ -490,11 +489,9 @@ fun TransactionsScreen(
 }
 
 private fun groupByMonth(items: List<Transaction>): List<Pair<String, List<Transaction>>> {
-    val fmtYear = SimpleDateFormat("yyyy", Locale.getDefault())
-    val fmtMonth = SimpleDateFormat("MMMM", Locale.getDefault())
     return items
         .groupBy { t ->
-            "${fmtYear.format(Date(t.occurredAt))}\n${fmtMonth.format(Date(t.occurredAt))}"
+            "${t.occurredAt.formatYear()}\n${t.occurredAt.formatMonthName()}"
         }
         .toList()
 }

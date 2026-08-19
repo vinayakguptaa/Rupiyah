@@ -12,6 +12,15 @@ fun Long.formatDateTime(): String =
 fun Long.formatDate(): String =
     SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(this))
 
+fun Long.formatShortDate(): String =
+    SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(this))
+
+fun Long.formatYear(): String =
+    SimpleDateFormat("yyyy", Locale.getDefault()).format(Date(this))
+
+fun Long.formatMonthName(): String =
+    SimpleDateFormat("MMMM", Locale.getDefault()).format(Date(this))
+
 fun Long.inr(): String = Money(this).formatInr()
 
 /** Compact display like ₹16.5K / ₹1.2L for summary chips. */
