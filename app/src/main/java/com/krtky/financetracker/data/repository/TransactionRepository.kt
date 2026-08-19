@@ -790,7 +790,7 @@ class TransactionRepository @Inject constructor(
 
     /**
      * Open Tab balances (tab table).
-     * balance = opening + debits − credits  (+ they owe you / − you owe them).
+     * balance = debits − credits  (+ they owe you / − you owe them).
      * Split parts are standalone rows, so each row is counted once against its tab.
      * Self-transfers never sit on tabs.
      */
@@ -807,52 +807,29 @@ class TransactionRepository @Inject constructor(
             val rows = byTab[tab.id].orEmpty()
             val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
             val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
-            val opening = tab.budgetPaise.coerceAtLeast(0L)
             TabBalance(
                 tab = tab.toDomain(),
-                balancePaise = opening + debits - credits,
+                balancePaise = debits - credits,
                 creditedPaise = credits,
                 debitedPaise = debits,
-                openingPaise = opening,
             )
         }
     }
 
-    suspend fun addTab(name: String, budgetPaise: Long = 0L): Long {
-        val amount = budgetPaise.coerceAtLeast(0L)
+    suspend fun addTab(name: String): Long {
         val id = tabDao.upsert(
             TabEntity(
                 name = name.trim(),
-                budgetPaise = amount,
             ),
         )
-        // Keep ledger aligned (history); display uses budget + transactions only
+        // Keep ledger aligned (history); display uses transactions only
         recalculateTabLedger(id)
         return id
     }
 
-    /** Absolute tab amount / limit. Restarts the baseline; txns still apply on top. */
-    suspend fun setTabBudget(tabId: Long, budgetPaise: Long) {
-        val tab = tabDao.getById(tabId) ?: return
-        val amount = budgetPaise.coerceAtLeast(0L)
-        tabDao.update(tab.copy(budgetPaise = amount))
-        recalculateTabLedger(tabId)
-    }
-
-    /** Rebuild every active tab ledger from budget + linked transactions. */
+    /** Rebuild every active tab ledger from linked transactions. */
     suspend fun repairAllTabLedgers() {
-        tabDao.getAll().filter { !it.archived }.forEach { f ->
-            // If amount was never stored, try to infer from old opening adjustment once
-            if (f.budgetPaise <= 0L) {
-                val manuals = ledgerDao.getForTab(f.id)
-                    .filter { it.transactionId == null && it.amountPaise > 0 }
-                    .minByOrNull { it.id }
-                if (manuals != null) {
-                    tabDao.update(f.copy(budgetPaise = manuals.amountPaise))
-                }
-            }
-            recalculateTabLedger(f.id)
-        }
+        tabDao.getAll().filter { !it.archived }.forEach { recalculateTabLedger(it.id) }
     }
 
     suspend fun deleteTab(tabId: Long) {
@@ -860,10 +837,62 @@ class TransactionRepository @Inject constructor(
         tabDao.update(tab.copy(archived = true))
     }
 
+    /** Current open balance for [tabId]: debits − credits across non-self-transfer rows. */
+    private suspend fun tabBalancePaise(tabId: Long): Long? {
+        val tab = tabDao.getById(tabId) ?: return null
+        val rows = txnDao.getAllForTab(tabId)
+            .asSequence()
+            .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
+        val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
+        val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
+        return debits - credits
+    }
+
+    /**
+     * Close a tab's open balance to zero with a bookkeeping entry.
+     *
+     * If they owe you, a **CREDIT** records the settlement (balance drops to zero);
+     * if you owe them, a **DEBIT** records your payment. Kind is
+     * [TransactionKind.TAB_TRANSFER] so the entry never enters lifestyle/credit metrics
+     * or the category screens, but it stays visible in the tab's activity.
+     *
+     * @return true if a settlement was recorded, false if the tab is missing or already settled.
+     */
+    suspend fun settleTab(tabId: Long): Boolean {
+        val balance = tabBalancePaise(tabId) ?: return false
+        if (balance == 0L) return false
+        val tab = tabDao.getById(tabId) ?: return false
+        val isCredit = balance > 0L
+        val amount = kotlin.math.abs(balance)
+        val now = System.currentTimeMillis()
+        val id = "settle_" + UUID.randomUUID().toString()
+        val txn = Transaction(
+            id = id,
+            type = if (isCredit) TransactionType.CREDIT else TransactionType.DEBIT,
+            amountPaise = amount,
+            occurredAt = now,
+            tabId = tabId,
+            source = TransactionSource.MANUAL,
+            note = "Settled · ${tab.name}",
+            classificationStatus = ClassificationStatus.CLASSIFIED,
+            kind = TransactionKind.TAB_TRANSFER,
+        )
+        val hash = contentHash(
+            txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, "manual-$id",
+        )
+        val entity = txn.copy(contentHash = hash, updatedAt = now, sheetsSynced = false).toEntity()
+        db.withTransaction {
+            txnDao.insert(entity)
+            handleTabOnInsert(entity.id, entity.tabId, entity.type, entity.amountPaise, true, entity.note)
+            enqueueSync(entity.id)
+        }
+        return true
+    }
+
     /**
      * Move open-tab balance from [fromTabId] to [toTabId].
      *
-     * Open-tab formula is `opening + debits − credits`, so:
+     * Open-tab formula is `debits − credits`, so:
      * - source tab gets a **CREDIT** (balance decreases — less they owe you)
      * - destination gets a **DEBIT** (balance increases)
      *
@@ -931,29 +960,15 @@ class TransactionRepository @Inject constructor(
 
     /**
      * Ledger rebuild aligned with open-tab formula:
-     * `balance = opening + debits − credits`.
-     * Single baseline (= tab amount) + every linked transaction / split part.
+     * `balance = debits − credits`.
+     * Single baseline (zero) + every linked transaction / split part.
      */
     private suspend fun recalculateTabLedger(tabId: Long) {
-        val tab = tabDao.getById(tabId) ?: return
-        val baseline = tab.budgetPaise.coerceAtLeast(0L)
+        if (tabDao.getById(tabId) == null) return
 
         ledgerDao.deleteAllForTab(tabId)
 
-        var runningBalance = baseline
-        if (baseline > 0L) {
-            ledgerDao.insert(
-                TabLedgerEntity(
-                    tabId = tabId,
-                    transactionId = null,
-                    entryType = TabEntryType.ADJUSTMENT.name,
-                    amountPaise = baseline,
-                    balanceAfterPaise = runningBalance,
-                    note = "Tab amount",
-                    createdAt = tab.createdAt,
-                ),
-            )
-        }
+        var runningBalance = 0L
 
         // Split parts are standalone rows, so tab linking is a direct row filter.
         // Scope the scan to this tab's rows instead of the whole transactions table.
@@ -965,7 +980,7 @@ class TransactionRepository @Inject constructor(
         for (txn in hits) {
             val isCredit = isCreditType(txn.type)
             val amount = txn.amountPaise
-            // opening + debits − credits
+            // debits − credits
             runningBalance += if (isCredit) -amount else amount
             ledgerDao.insert(
                 TabLedgerEntity(

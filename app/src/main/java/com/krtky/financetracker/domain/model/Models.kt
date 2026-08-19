@@ -72,18 +72,14 @@ data class Tab(
     val name: String,
     val archived: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    /** Envelope budget / limit in paise (fixed; not inflated by later credits). */
-    val budgetPaise: Long = 0L,
 )
 
 /**
- * Open Tab balance (was Tab envelope).
+ * Open Tab balance.
  *
  * Spec: positive → they owe you; negative → you owe them.
- *   balance = opening + debits − credits
+ *   balance = debits − credits
  * (money you advanced / spent on their behalf vs settlements).
- *
- * [tab.budgetPaise] is optional opening / starting open balance.
  */
 data class TabBalance(
     val tab: Tab,
@@ -93,16 +89,7 @@ data class TabBalance(
     val creditedPaise: Long,
     /** Debits (advances / spends) on this tab. */
     val debitedPaise: Long,
-    /** Optional opening balance you set. */
-    val openingPaise: Long = 0L,
 ) {
-    /** Magnitude for display bars / default adjust amount (never zero for ratio math). */
-    fun limitPaise(): Long = when {
-        tab.budgetPaise > 0L -> tab.budgetPaise
-        openingPaise > 0L -> openingPaise
-        else -> maxOf(kotlin.math.abs(balancePaise), debitedPaise + creditedPaise, 1L)
-    }
-
     fun theyOweYou(): Boolean = balancePaise > 0L
     fun youOweThem(): Boolean = balancePaise < 0L
     fun isSettled(): Boolean = balancePaise == 0L

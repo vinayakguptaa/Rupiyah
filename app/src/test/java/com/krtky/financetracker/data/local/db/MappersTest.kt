@@ -30,19 +30,17 @@ class MappersTest {
 
     @Test
     fun `TabEntity toDomain maps correctly`() {
-        val entity = TabEntity(id = 1, name = "Groceries", archived = false, budgetPaise = 50_00_00L)
+        val entity = TabEntity(id = 1, name = "Groceries", archived = false)
         val domain = entity.toDomain()
         assertThat(domain.name).isEqualTo("Groceries")
-        assertThat(domain.budgetPaise).isEqualTo(50_00_00L)
         assertThat(domain.archived).isFalse()
     }
 
     @Test
     fun `Tab toEntity maps correctly`() {
-        val domain = Tab(id = 2, name = "Fuel", budgetPaise = 30_00_00L)
+        val domain = Tab(id = 2, name = "Fuel")
         val entity = domain.toEntity()
         assertThat(entity.name).isEqualTo("Fuel")
-        assertThat(entity.budgetPaise).isEqualTo(30_00_00L)
     }
 
     @Test

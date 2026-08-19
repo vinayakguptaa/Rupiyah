@@ -32,11 +32,10 @@ class TabDaoTest {
 
     @Test
     fun insertAndGetById() = runBlocking {
-        val id = dao.upsert(TabEntity(name = "Groceries", budgetPaise = 50_00_00L))
+        val id = dao.upsert(TabEntity(name = "Groceries"))
         val loaded = dao.getById(id)
         assertThat(loaded).isNotNull()
         assertThat(loaded!!.name).isEqualTo("Groceries")
-        assertThat(loaded.budgetPaise).isEqualTo(50_00_00L)
     }
 
     @Test

@@ -57,7 +57,6 @@ fun TabEntity.toDomain() = Tab(
     name = name,
     archived = archived,
     createdAt = createdAt,
-    budgetPaise = budgetPaise,
 )
 
 fun Tab.toEntity() = TabEntity(
@@ -65,7 +64,6 @@ fun Tab.toEntity() = TabEntity(
     name = name,
     archived = archived,
     createdAt = createdAt,
-    budgetPaise = budgetPaise,
 )
 
 /** Map stored type string (DEBIT/CREDIT) to domain. */

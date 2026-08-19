@@ -34,8 +34,6 @@ data class TabEntity(
     val name: String,
     val archived: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    /** Envelope budget / limit in paise. Progress uses this, not lifetime credits. */
-    val budgetPaise: Long = 0L,
 )
 
 @Entity(

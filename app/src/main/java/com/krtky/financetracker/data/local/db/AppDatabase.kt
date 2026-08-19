@@ -19,8 +19,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    // v1 is unsupported (no 1→2). Open path is 2→11; schema JSON from v10.
-    version = 11,
+    // v1 is unsupported (no 1→2). Open path is 2→12; schema JSON from v10.
+    version = 12,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -584,6 +584,58 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_transactions_deletedAt` " +
                         "ON `transactions` (`deletedAt`)",
                 )
+            }
+        }
+
+        /**
+         * Retires the tab opening-balance field (`funds.budgetPaise`):
+         * - any stored opening becomes a real `TAB_TRANSFER` transaction at the tab's
+         *   creation date (a DEBIT for a positive opening = "they owe you", a CREDIT for
+         *   a negative one), so the balance is preserved by the transaction stream alone;
+         * - `funds` is rebuilt without the column (SQLite has no column drop).
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val now = "CAST(strftime('%s','now') AS INTEGER) * 1000"
+                db.execSQL(
+                    """
+                    INSERT INTO transactions (
+                        id, type, amountPaise, currency, occurredAt, recordedAt, counterparty,
+                        categoryId, fundId, accountId, source, note, isCash, classificationStatus,
+                        isSkipped, kind, transferGroupId, rawDescription, classificationNotifiedAt,
+                        latitude, longitude, placeName, locationAccuracy, locationMatchedAt,
+                        smsMessageId, externalRefId, contentHash, sheetsSynced, deletedAt,
+                        updatedAt, version, receiptUri, splitGroupId
+                    )
+                    SELECT
+                        'opening_' || id,
+                        CASE WHEN budgetPaise > 0 THEN 'DEBIT' ELSE 'CREDIT' END,
+                        ABS(budgetPaise), 'INR', createdAt, $now, NULL, NULL, id, NULL,
+                        'MANUAL', 'Opening balance', 0, 'CLASSIFIED',
+                        0, 'TAB_TRANSFER', NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, 0, NULL,
+                        $now, 1, NULL, NULL
+                    FROM funds
+                    WHERE budgetPaise != 0 AND archived = 0
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `funds_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `archived` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "INSERT INTO `funds_new` (id, name, archived, createdAt) " +
+                        "SELECT id, name, archived, createdAt FROM `funds`",
+                )
+                db.execSQL("DROP TABLE `funds`")
+                db.execSQL("ALTER TABLE `funds_new` RENAME TO `funds`")
             }
         }
 

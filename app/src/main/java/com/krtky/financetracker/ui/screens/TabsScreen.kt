@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
@@ -33,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -52,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -81,8 +80,6 @@ fun TabsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var showAdjust by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
-    var newAmount by remember { mutableStateOf("") }
-    var adjustAmount by remember { mutableStateOf("") }
     var adjustTabId by remember { mutableStateOf<Long?>(null) }
     var adjustTabName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -222,16 +219,6 @@ fun TabsScreen(
                         onAdjust = {
                             adjustTabId = f.tab.id
                             adjustTabName = f.tab.name
-                            adjustAmount = if (f.limitPaise() > 0L) {
-                                val r = f.limitPaise() / 100.0
-                                if (r == r.toLong().toDouble()) {
-                                    r.toLong().toString()
-                                } else {
-                                    String.format(java.util.Locale.US, "%.2f", r)
-                                }
-                            } else {
-                                ""
-                            }
                             showAdjust = true
                         },
                     )
@@ -265,22 +252,11 @@ fun TabsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
                 )
-                OutlinedTextField(
-                    value = newAmount,
-                    onValueChange = { newAmount = it },
-                    label = { Text("Opening balance ₹ (optional)") },
-                    placeholder = { Text("e.g. 1500") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                )
                 Button(
                     onClick = {
                         scope.launch {
-                            vm.create(newName, newAmount)
+                            vm.create(newName)
                             newName = ""
-                            newAmount = ""
                             showCreate = false
                         }
                     },
@@ -311,35 +287,13 @@ fun TabsScreen(
                     .padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Edit $adjustTabName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Manage $adjustTabName", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "Opening balance for this tab. Open = opening + debits − credits. + means they owe you.",
+                    "Archiving keeps the tab's transaction history but hides it from this list.",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
-                    value = adjustAmount,
-                    onValueChange = { adjustAmount = it },
-                    label = { Text("Opening balance ₹ (optional)") },
-                    placeholder = { Text("e.g. 1500") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                )
                 Button(
-                    onClick = {
-                        scope.launch {
-                            vm.adjust(adjustTabId!!, adjustAmount)
-                            showAdjust = false
-                            adjustAmount = ""
-                        }
-                    },
-                    enabled = adjustAmount.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) { Text("Save amount") }
-                OutlinedButton(
                     onClick = {
                         scope.launch {
                             vm.delete(adjustTabId!!)
@@ -468,11 +422,28 @@ private fun BudgetStyleTabCard(
                     )
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(
-                    "In ${tab.creditedPaise.inr()} · Out ${tab.debitedPaise.inr()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
+                if (tab.theyOweYou() && tab.debitedPaise > 0L) {
+                    val recovered =
+                        (tab.creditedPaise.toFloat() / tab.debitedPaise.toFloat()).coerceIn(0f, 1f)
+                    LinearProgressIndicator(
+                        progress = { recovered },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = scheme.primary,
+                        trackColor = scheme.surfaceContainerHighest,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Repaid ${tab.creditedPaise.inr()} of ${tab.debitedPaise.inr()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "In ${tab.creditedPaise.inr()} · Out ${tab.debitedPaise.inr()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

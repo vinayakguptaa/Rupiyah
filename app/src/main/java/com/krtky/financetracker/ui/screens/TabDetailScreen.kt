@@ -13,17 +13,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +91,7 @@ fun TabDetailScreen(
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
+    var showSettle by remember { mutableStateOf(false) }
 
     LaunchedEffect(tabId) { vm.load(tabId) }
 
@@ -125,6 +132,15 @@ fun TabDetailScreen(
             if (allTabs.size > 1) {
                 IconButton(onClick = { showTransfer = true }) {
                     Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer")
+                }
+            }
+            if (!(tab?.isSettled() ?: true)) {
+                IconButton(onClick = { showSettle = true }) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Mark settled",
+                        tint = scheme.primary,
+                    )
                 }
             }
             IconButton(onClick = { confirmDelete = true }) {
@@ -266,5 +282,45 @@ fun TabDetailScreen(
             onDismiss = { showTransfer = false },
             onTransfer = vm::transferBetweenTabs,
         )
+    }
+
+    if (showSettle && tab != null) {
+        val open = tab!!.balancePaise.let { if (it < 0) -it else it }
+        ModalBottomSheet(
+            onDismissRequest = { showSettle = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Mark settled?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "Records a ${open.inr()} settlement on ${tab!!.tab.name} and brings the balance to zero.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            vm.settleTab()
+                            showSettle = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) { Text("Mark settled") }
+                OutlinedButton(
+                    onClick = { showSettle = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) { Text("Cancel") }
+            }
+        }
     }
 }

@@ -127,7 +127,6 @@ class BackupRepository @Inject constructor(
                                 put("name", f.name)
                                 put("archived", f.archived)
                                 put("createdAt", f.createdAt)
-                                put("budgetPaise", f.budgetPaise)
                                 put("ledger", buildJsonArray {
                                     ledger.forEach { l ->
                                         add(buildJsonObject {
@@ -321,7 +320,6 @@ class BackupRepository @Inject constructor(
                                     archived = obj["archived"]?.jsonPrimitive?.boolean ?: false,
                                     createdAt = obj["createdAt"]?.jsonPrimitive?.long
                                         ?: System.currentTimeMillis(),
-                                    budgetPaise = obj["budgetPaise"]?.jsonPrimitive?.long ?: 0L,
                                 )
                             )
                             obj["ledger"]?.jsonArray?.forEach { led ->

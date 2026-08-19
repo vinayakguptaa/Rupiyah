@@ -104,6 +104,11 @@ class TabDetailViewModel @Inject constructor(
         return true
     }
 
+    suspend fun settleTab(): Boolean {
+        val id = tabIdFlow.value ?: return false
+        return transactionRepository.settleTab(id)
+    }
+
     suspend fun transferBetweenTabs(
         fromTabId: Long,
         toTabId: Long,
