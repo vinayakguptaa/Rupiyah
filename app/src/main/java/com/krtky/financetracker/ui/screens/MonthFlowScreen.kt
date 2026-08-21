@@ -55,11 +55,16 @@ fun MonthFlowScreen(
     onOpenCategory: (categoryId: Long?, categoryName: String) -> Unit,
     onOpenSource: (accountId: Long?, accountName: String) -> Unit,
     onAddTransaction: () -> Unit = {},
+    investment: Boolean = false,
     vm: MonthFlowViewModel = hiltViewModel(),
 ) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
-    val isExpense = direction == TransactionType.DEBIT
+    val isExpense = !investment && direction == TransactionType.DEBIT
     val rows = when {
+        investment && group == MonthFlowGroup.Category ->
+            snapshot.investmentByCategory.map { FlowRow(it.categoryId, it.categoryName, it.totalPaise) }
+        investment && group == MonthFlowGroup.Source ->
+            snapshot.investmentBySource.map { FlowRow(it.accountId, it.accountName, it.totalPaise) }
         isExpense && group == MonthFlowGroup.Category ->
             snapshot.categorySpend.map { FlowRow(it.categoryId, it.categoryName, it.totalPaise) }
         isExpense && group == MonthFlowGroup.Source ->
@@ -69,15 +74,25 @@ fun MonthFlowScreen(
         else ->
             snapshot.incomeBySource.map { FlowRow(it.accountId, it.accountName, it.totalPaise) }
     }.filter { it.totalPaise > 0 }
-    val total = if (isExpense) snapshot.summary.expensePaise else snapshot.summary.incomePaise
+    val total = when {
+        investment -> snapshot.investedPaise + snapshot.redeemedPaise
+        isExpense -> snapshot.summary.expensePaise
+        else -> snapshot.summary.incomePaise
+    }
     val title = when {
+        investment && group == MonthFlowGroup.Category -> "Investments by category"
+        investment && group == MonthFlowGroup.Source -> "Investments by source"
         isExpense && group == MonthFlowGroup.Category -> "Expenses by category"
         isExpense && group == MonthFlowGroup.Source -> "Expenses by source"
         !isExpense && group == MonthFlowGroup.Category -> "Income by category"
         else -> "Income by source"
     }
     val subtitle = "This month"
-    val totalLabel = if (isExpense) "Total spent" else "Total received"
+    val totalLabel = when {
+        investment -> "This month"
+        isExpense -> "Total spent"
+        else -> "Total received"
+    }
     val noun = if (group == MonthFlowGroup.Category) {
         if (rows.size == 1) "category" else "categories"
     } else {
@@ -138,15 +153,15 @@ fun MonthFlowScreen(
                     } else {
                         Icons.Default.Payments
                     },
-                    title = if (isExpense) {
-                        stringResource(R.string.empty_categories_title)
-                    } else {
-                        stringResource(R.string.empty_income_flow_title)
+                    title = when {
+                        investment -> stringResource(R.string.home_no_investments_yet)
+                        isExpense -> stringResource(R.string.empty_categories_title)
+                        else -> stringResource(R.string.empty_income_flow_title)
                     },
-                    body = if (isExpense) {
-                        stringResource(R.string.empty_categories_body)
-                    } else {
-                        stringResource(R.string.empty_income_flow_body)
+                    body = when {
+                        investment -> stringResource(R.string.home_no_investments_yet)
+                        isExpense -> stringResource(R.string.empty_categories_body)
+                        else -> stringResource(R.string.empty_income_flow_body)
                     },
                     actionLabel = stringResource(R.string.empty_categories_action),
                     onAction = onAddTransaction,

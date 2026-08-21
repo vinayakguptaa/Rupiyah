@@ -42,7 +42,7 @@ data object CategoriesRoute
 @Serializable
 @SerialName("month_flow")
 data class MonthFlowRoute(
-    /** `DEBIT` (expenses) or `CREDIT` (income). */
+    /** `DEBIT` (expenses), `CREDIT` (income), or `INVESTMENT`. */
     val direction: String,
     /** `category` or `source`. */
     val group: String,

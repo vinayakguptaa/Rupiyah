@@ -111,17 +111,18 @@ object SplitRules {
     /** Null if valid; otherwise a short user-facing reason. */
     fun validateSum(parentAmountPaise: Long, splitAmounts: List<Long>): String? {
         if (splitAmounts.isEmpty()) return null
-        if (parentAmountPaise <= 0L) return "Parent amount must be greater than zero"
+        val parent = kotlin.math.abs(parentAmountPaise)
+        if (parent == 0L) return "Parent amount must be greater than zero"
         if (splitAmounts.any { it <= 0L }) return "Each split must be greater than zero"
         val sum = splitAmounts.sum()
-        if (sum != parentAmountPaise) {
+        if (sum != parent) {
             return "Splits must sum to parent amount"
         }
         return null
     }
 
     fun remainingPaise(parentAmountPaise: Long, splitAmounts: List<Long>): Long =
-        parentAmountPaise - splitAmounts.sum()
+        kotlin.math.abs(parentAmountPaise) - splitAmounts.sum()
 }
 
 /**

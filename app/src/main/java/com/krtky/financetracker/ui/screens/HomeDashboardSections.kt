@@ -55,7 +55,7 @@ internal fun LazyListScope.homeDashboardSections(
     onOpenExpenseActivity: () -> Unit,
     onOpenCreditActivity: () -> Unit,
     onOpenCategories: () -> Unit,
-    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit,
+    onOpenMonthFlow: (direction: String, group: MonthFlowGroup) -> Unit,
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -332,7 +332,7 @@ private fun HomeSectionBody(
     onOpenExpenseActivity: () -> Unit,
     onOpenCreditActivity: () -> Unit,
     onOpenCategories: () -> Unit,
-    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit,
+    onOpenMonthFlow: (direction: String, group: MonthFlowGroup) -> Unit,
     onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit,
     onOpenHistory: () -> Unit,
@@ -376,13 +376,13 @@ private fun HomeSectionBody(
                 halfWidth = halfWidth,
                 onOpenCategoryList = {
                     onOpenMonthFlow(
-                        TransactionType.DEBIT,
+                        TransactionType.DEBIT.name,
                         MonthFlowGroup.Category,
                     )
                 },
                 onOpenSourceList = {
                     onOpenMonthFlow(
-                        TransactionType.DEBIT,
+                        TransactionType.DEBIT.name,
                         MonthFlowGroup.Source,
                     )
                 },
@@ -401,13 +401,39 @@ private fun HomeSectionBody(
                 halfWidth = halfWidth,
                 onOpenCategoryList = {
                     onOpenMonthFlow(
-                        TransactionType.CREDIT,
+                        TransactionType.CREDIT.name,
                         MonthFlowGroup.Category,
                     )
                 },
                 onOpenSourceList = {
                     onOpenMonthFlow(
-                        TransactionType.CREDIT,
+                        TransactionType.CREDIT.name,
+                        MonthFlowGroup.Source,
+                    )
+                },
+            )
+        }
+        HomeSection.INVESTMENTS -> {
+            val investedTotal = data.invested + data.redeemed
+            HomeFlowBreakdownSection(
+                title = stringResource(R.string.home_investments_this_month),
+                totalPaise = investedTotal,
+                monthLabel = data.monthLabel,
+                hidden = data.isNetHidden,
+                byCategory = data.investmentByCategory,
+                bySource = data.investmentBySource,
+                emptyLabel = stringResource(R.string.home_no_investments_yet),
+                compact = compact,
+                halfWidth = halfWidth,
+                onOpenCategoryList = {
+                    onOpenMonthFlow(
+                        "INVESTMENT",
+                        MonthFlowGroup.Category,
+                    )
+                },
+                onOpenSourceList = {
+                    onOpenMonthFlow(
+                        "INVESTMENT",
                         MonthFlowGroup.Source,
                     )
                 },

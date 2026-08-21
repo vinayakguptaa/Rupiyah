@@ -7,6 +7,20 @@ import org.junit.Test
 class CsvStatementParserTest {
 
     @Test
+    fun `inspect returns headers and sample rows only`() {
+        val csv = """
+            Date,Description,Debit,Credit
+            15-01-2025,A,10,
+            16-01-2025,B,,20
+            17-01-2025,C,30,
+        """.trimIndent()
+        val inspect = CsvStatementParser.inspect(csv, sampleCount = 2)
+        assertThat(inspect.headers).containsExactly("Date", "Description", "Debit", "Credit").inOrder()
+        assertThat(inspect.sampleDataLines).hasSize(2)
+        assertThat(inspect.sampleDataLines[0]).contains("15-01-2025")
+    }
+
+    @Test
     fun `parses debit credit columns`() {
         val csv = """
             Date,Description,Debit,Credit,Ref
@@ -78,8 +92,8 @@ class CsvStatementParserTest {
             typeHint = null,
             description = null,
         )
-        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
-        assertThat(pair?.second).isEqualTo(5000L)
+        assertThat(pair?.type).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.amountPaise).isEqualTo(5000L)
     }
 
     @Test
@@ -105,8 +119,8 @@ class CsvStatementParserTest {
             typeHint = null,
             description = "UPI-ZOMATO paid",
         )
-        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
-        assertThat(pair?.second).isEqualTo(120_00L)
+        assertThat(pair?.type).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.amountPaise).isEqualTo(120_00L)
     }
 
     @Test
@@ -118,8 +132,8 @@ class CsvStatementParserTest {
             typeHint = null,
             description = null,
         )
-        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
-        assertThat(pair?.second).isEqualTo(120_00L)
+        assertThat(pair?.type).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.amountPaise).isEqualTo(120_00L)
     }
 
     @Test
@@ -131,8 +145,8 @@ class CsvStatementParserTest {
             typeHint = null,
             description = null,
         )
-        assertThat(pair?.first).isEqualTo(TransactionType.DEBIT)
-        assertThat(pair?.second).isEqualTo(120_00L)
+        assertThat(pair?.type).isEqualTo(TransactionType.DEBIT)
+        assertThat(pair?.amountPaise).isEqualTo(120_00L)
     }
 
     @Test
@@ -144,7 +158,44 @@ class CsvStatementParserTest {
             typeHint = "CR",
             description = null,
         )
-        assertThat(pair?.first).isEqualTo(TransactionType.CREDIT)
-        assertThat(pair?.second).isEqualTo(8_500_000L)
+        assertThat(pair?.type).isEqualTo(TransactionType.CREDIT)
+        assertThat(pair?.amountPaise).isEqualTo(8_500_000L)
+    }
+
+    @Test
+    fun `income expense investment transfer columns`() {
+        val csv = """
+            Date,Description,Income,Expense,Investment Amount,Transfer
+            01-01-2025,Salary,50000,,,
+            02-01-2025,Zomato,,400,,
+            03-01-2025,SIP,,,10000,
+            04-01-2025,To savings,,,,5000
+        """.trimIndent()
+        val result = CsvStatementParser.parse(csv)
+        assertThat(result.rows).hasSize(4)
+        assertThat(result.rows[0].type).isEqualTo(TransactionType.CREDIT)
+        assertThat(result.rows[0].amountPaise).isEqualTo(50_000_00L)
+        assertThat(result.rows[0].kind).isEqualTo(com.krtky.financetracker.domain.model.TransactionKind.NORMAL)
+        assertThat(result.rows[1].type).isEqualTo(TransactionType.DEBIT)
+        assertThat(result.rows[1].amountPaise).isEqualTo(400_00L)
+        assertThat(result.rows[2].type).isEqualTo(TransactionType.DEBIT)
+        assertThat(result.rows[2].amountPaise).isEqualTo(10_000_00L)
+        assertThat(result.rows[2].categoryHint).isEqualTo("Investment")
+        assertThat(result.rows[3].kind).isEqualTo(com.krtky.financetracker.domain.model.TransactionKind.SELF_TRANSFER)
+        assertThat(result.rows[3].amountPaise).isEqualTo(5_000_00L)
+        assertThat(result.rows[3].type).isEqualTo(TransactionType.DEBIT)
+    }
+
+    @Test
+    fun `type transfer is not income`() {
+        val csv = """
+            Date,Narration,Amount,Type
+            01/02/2025,To Kotak savings,5000,Transfer
+        """.trimIndent()
+        val result = CsvStatementParser.parse(csv)
+        assertThat(result.rows).hasSize(1)
+        assertThat(result.rows[0].kind).isEqualTo(com.krtky.financetracker.domain.model.TransactionKind.SELF_TRANSFER)
+        assertThat(result.rows[0].type).isEqualTo(TransactionType.DEBIT)
+        assertThat(result.rows[0].categoryHint).isEqualTo("Transfer")
     }
 }

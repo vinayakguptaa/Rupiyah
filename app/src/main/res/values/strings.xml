@@ -92,10 +92,12 @@
     <string name="home_available_balance">Available balance</string>
     <string name="home_expenses_this_month">Expenses</string>
     <string name="home_income_this_month">Income</string>
+    <string name="home_investments_this_month">Investments</string>
     <string name="home_cut_category">Category</string>
     <string name="home_cut_source">Source</string>
     <string name="home_no_expenses_yet">No expenses this month</string>
     <string name="home_no_income_yet">No income this month</string>
+    <string name="home_no_investments_yet">No investments this month</string>
     <string name="home_recent">Recent</string>
     <string name="home_see_all_activity">See all activity</string>
     <string name="home_spent_label">Spent</string>

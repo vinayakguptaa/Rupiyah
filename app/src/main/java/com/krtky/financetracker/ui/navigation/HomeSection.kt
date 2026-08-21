@@ -9,13 +9,14 @@ enum class HomeSection(val id: String, val title: String) {
     HERO("hero", "Balance"),
     CATEGORY_RING("category_ring", "Expenses"),
     INCOME("income", "Income"),
+    INVESTMENTS("investments", "Investments"),
     RECENT("recent", "Recent activity"),
     TABS_SUMMARY("funds_summary", "Open Tabs"),
     ;
 
     /** Half-width is useful for compact tiles; hero + recent stay full for readability. */
     val allowsHalfWidth: Boolean
-        get() = this == CATEGORY_RING || this == INCOME || this == TABS_SUMMARY
+        get() = this == CATEGORY_RING || this == INCOME || this == INVESTMENTS || this == TABS_SUMMARY
 
     companion object {
         val DEFAULT_ORDER: List<HomeSection> = entries.toList()
@@ -43,7 +44,17 @@ enum class HomeSection(val id: String, val title: String) {
             if (parsed.isEmpty()) return DEFAULT_LAYOUT
             val seen = parsed.map { it.section }.toSet()
             val missing = entries.filter { it !in seen }.map { HomeSectionConfig(it, 2) }
-            return parsed + missing
+            if (missing.isEmpty()) return parsed
+            val out = parsed.toMutableList()
+            missing.forEach { extra ->
+                if (extra.section == INVESTMENTS) {
+                    val afterIncome = out.indexOfFirst { it.section == INCOME }
+                    if (afterIncome >= 0) out.add(afterIncome + 1, extra) else out.add(extra)
+                } else {
+                    out.add(extra)
+                }
+            }
+            return out
         }
 
         /** @deprecated Prefer [parseLayout]; kept for call sites that only need order. */

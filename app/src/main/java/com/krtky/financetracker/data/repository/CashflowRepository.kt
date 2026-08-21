@@ -90,18 +90,26 @@ class CashflowRepository @Inject constructor(
             .filter { it.name.equals("Investment", true) }
             .map { it.id }
             .toSet()
+        val transferCatIds = cats.values
+            .filter { it.name.equals("Transfer", true) }
+            .map { it.id }
+            .toSet()
+        val cashflowSkipIds = investmentIds + transferCatIds
         val rows = txnDao.observeFiltered("", null, null, null, from, to, null)
             .first()
             .filter { !isExcludedFromCashflowKind(it.kind) }
 
-        val debitRows = rows.filter { !isCreditType(it.type) }
-        val creditRows = rows.filter { isCreditType(it.type) }
+        val cashflowRows = rows.filter { it.categoryId == null || it.categoryId !in cashflowSkipIds }
+        val debitRows = cashflowRows.filter { !isCreditType(it.type) }
+        val creditRows = cashflowRows.filter { isCreditType(it.type) }
+        val allDebit = rows.filter { !isCreditType(it.type) }
+        val allCredit = rows.filter { isCreditType(it.type) }
         val income = creditRows.sumOf { it.amountPaise }
         val expense = debitRows.sumOf { it.amountPaise }
-        val lifestyle = debitRows.filter { it.categoryId == null || it.categoryId !in investmentIds }
-        val creditsExInvest = creditRows.filter { it.categoryId == null || it.categoryId !in investmentIds }
-        val investDebits = debitRows.filter { it.categoryId != null && it.categoryId in investmentIds }
-        val investCredits = creditRows.filter { it.categoryId != null && it.categoryId in investmentIds }
+        val lifestyle = allDebit.filter { it.categoryId == null || it.categoryId !in cashflowSkipIds }
+        val creditsExInvest = allCredit.filter { it.categoryId == null || it.categoryId !in cashflowSkipIds }
+        val investDebits = allDebit.filter { it.categoryId != null && it.categoryId in investmentIds }
+        val investCredits = allCredit.filter { it.categoryId != null && it.categoryId in investmentIds }
         fun categoryName(id: Long?) = id?.let { cats[it]?.name } ?: "Uncategorized"
         fun sourceName(id: Long?) = id?.let { accounts[it]?.name?.trim() }?.takeIf { it.isNotEmpty() } ?: "Digital"
         fun byCategory(items: List<TransactionEntity>) = items
@@ -125,14 +133,38 @@ class CashflowRepository @Inject constructor(
             }
             .sortedByDescending { it.totalPaise }
         val debitByCat = byCategory(debitRows)
+        val investedPaise = investDebits.sumOf { it.amountPaise }
+        val redeemedPaise = investCredits.sumOf { it.amountPaise }
+        val investmentCatId = investmentIds.firstOrNull()
+        val investmentByCategory = buildList {
+            if (investedPaise > 0L) {
+                add(
+                    CategorySpend(
+                        categoryId = investmentCatId,
+                        categoryName = "Investment",
+                        totalPaise = investedPaise,
+                    ),
+                )
+            }
+            if (redeemedPaise > 0L) {
+                add(
+                    CategorySpend(
+                        categoryId = investmentCatId,
+                        categoryName = "Redeemed",
+                        totalPaise = redeemedPaise,
+                    ),
+                )
+            }
+        }
+        val investmentBySource = bySource(investDebits + investCredits)
         val trend = computeMonthlyTrend(now)
         return HomeCashflowSnapshot(
             summary = MonthlySummary(incomePaise = income, expensePaise = expense),
             metrics = CashflowMetrics(
                 lifestyleSpendPaise = lifestyle.sumOf { it.amountPaise },
                 creditPaise = creditsExInvest.sumOf { it.amountPaise },
-                investedPaise = investDebits.sumOf { it.amountPaise },
-                redeemedPaise = investCredits.sumOf { it.amountPaise },
+                investedPaise = investedPaise,
+                redeemedPaise = redeemedPaise,
                 lifestyleByCategory = byCategory(lifestyle),
             ),
             categorySpend = debitByCat,
@@ -140,6 +172,10 @@ class CashflowRepository @Inject constructor(
             expenseBySource = bySource(debitRows),
             incomeByCategory = byCategory(creditRows),
             incomeBySource = bySource(creditRows),
+            investedPaise = investedPaise,
+            redeemedPaise = redeemedPaise,
+            investmentByCategory = investmentByCategory,
+            investmentBySource = investmentBySource,
         )
     }
 
@@ -154,8 +190,8 @@ class CashflowRepository @Inject constructor(
             add(Calendar.MONTH, -(months - 1))
         }
         val cats = categoryDao.getAll().associateBy { it.id }
-        val investmentIds = cats.values
-            .filter { it.name.equals("Investment", true) }
+        val skipIds = cats.values
+            .filter { it.name.equals("Investment", true) || it.name.equals("Transfer", true) }
             .map { it.id }
             .toSet()
         val rows = txnDao.observeFiltered("", null, null, null, start.timeInMillis, now, null)
@@ -171,7 +207,7 @@ class CashflowRepository @Inject constructor(
         for (row in rows) {
             val key = monthKey(row.occurredAt)
             val bucket = byMonth.getOrPut(key) { Bucket() }
-            val invest = row.categoryId != null && row.categoryId in investmentIds
+            val invest = row.categoryId != null && row.categoryId in skipIds
             if (isCreditType(row.type)) {
                 if (!invest) bucket.credits += row.amountPaise
             } else if (!invest) {
@@ -234,4 +270,8 @@ data class HomeCashflowSnapshot(
     val expenseBySource: List<SourceSpend> = emptyList(),
     val incomeByCategory: List<CategorySpend> = emptyList(),
     val incomeBySource: List<SourceSpend> = emptyList(),
+    val investedPaise: Long = 0L,
+    val redeemedPaise: Long = 0L,
+    val investmentByCategory: List<CategorySpend> = emptyList(),
+    val investmentBySource: List<SourceSpend> = emptyList(),
 )

@@ -11,6 +11,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -40,14 +41,13 @@ class SplitTransactionViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val parentAmountPaise: StateFlow<Long> = txnIdFlow
-        .flatMapLatest { id ->
-            if (id.isNullOrBlank()) flowOf(0L)
-            else transactionRepository.observeSplitGroup(id).map { parts ->
-                parts.sumOf { it.amountPaise }
-            }
+    val parentAmountPaise: StateFlow<Long> = combine(_txn, splits) { txn, parts ->
+        when {
+            parts.isNotEmpty() -> parts.sumOf { kotlin.math.abs(it.amountPaise) }
+            txn != null -> kotlin.math.abs(txn.amountPaise)
+            else -> 0L
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     fun load(id: String) {
         txnIdFlow.value = id

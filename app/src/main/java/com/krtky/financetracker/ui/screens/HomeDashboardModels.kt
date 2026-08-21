@@ -23,5 +23,9 @@ internal data class HomeDashboardData(
     val expenseBySource: List<SourceSpend>,
     val incomeByCategory: List<CategorySpend>,
     val incomeBySource: List<SourceSpend>,
+    val invested: Long,
+    val redeemed: Long,
+    val investmentByCategory: List<CategorySpend>,
+    val investmentBySource: List<SourceSpend>,
     val filtered: List<Transaction>,
 )

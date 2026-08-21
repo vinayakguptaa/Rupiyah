@@ -1,5 +1,6 @@
 package com.krtky.financetracker.data.importcsv
 
+import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionType
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -19,6 +20,7 @@ data class ParsedCsvRow(
     val categoryHint: String?,
     val note: String?,
     val rawLine: String,
+    val kind: TransactionKind = TransactionKind.NORMAL,
 )
 
 data class CsvParseResult(
@@ -37,17 +39,17 @@ data class CsvParseResult(
  */
 object CsvStatementParser {
 
-    fun parse(text: String): CsvParseResult {
-        val lines = splitLines(text)
-        if (lines.isEmpty()) {
+    fun parse(text: String, mapping: ColumnMapping? = null): CsvParseResult {
+        val inspect = inspect(text)
+        if (inspect.headers.isEmpty() && inspect.lines.isEmpty()) {
             return CsvParseResult(emptyList(), emptyList(), "empty", listOf("File is empty"))
         }
 
-        val headerIndex = lines.indexOfFirst { looksLikeHeader(it) }.takeIf { it >= 0 } ?: 0
-        val headerCells = parseCsvLine(lines[headerIndex]).map { it.trim() }
-        val mapping = detectMapping(headerCells)
-        val presetName = mapping.presetName
-        val dataStart = headerIndex + 1
+        val headerCells = inspect.headers
+        val resolved = mapping ?: detectMapping(headerCells)
+        val presetName = resolved.presetName
+        val dataStart = inspect.dataStart
+        val lines = inspect.lines
 
         val rows = mutableListOf<ParsedCsvRow>()
         val errors = mutableListOf<String>()
@@ -64,7 +66,7 @@ object CsvStatementParser {
                 skipped++
                 continue
             }
-            val parsed = parseRow(i + 1, cells, mapping, line)
+            val parsed = parseRow(i + 1, cells, resolved, line)
             if (parsed != null) {
                 rows += parsed
             } else {
@@ -88,6 +90,27 @@ object CsvStatementParser {
         )
     }
 
+    data class Inspect(
+        val lines: List<String>,
+        val headerIndex: Int,
+        val headers: List<String>,
+        val dataStart: Int,
+        val sampleDataLines: List<String>,
+    )
+
+    /** Header + a few sample data lines. Used for LLM mapping without sending the file. */
+    fun inspect(text: String, sampleCount: Int = 3): Inspect {
+        val lines = splitLines(text)
+        if (lines.isEmpty()) {
+            return Inspect(emptyList(), 0, emptyList(), 0, emptyList())
+        }
+        val headerIndex = lines.indexOfFirst { looksLikeHeader(it) }.takeIf { it >= 0 } ?: 0
+        val headers = parseCsvLine(lines[headerIndex]).map { it.trim() }
+        val dataStart = headerIndex + 1
+        val samples = lines.drop(dataStart).filter { it.isNotBlank() }.take(sampleCount)
+        return Inspect(lines, headerIndex, headers, dataStart, samples)
+    }
+
     // --- mapping -----------------------------------------------------------------
 
     data class ColumnMapping(
@@ -104,14 +127,22 @@ object CsvStatementParser {
         val note: Int? = null,
         val name: Int? = null,
         val counterparty: Int? = null,
+        val investment: Int? = null,
+        val transfer: Int? = null,
     )
 
-    private fun detectMapping(headers: List<String>): ColumnMapping {
+    fun detectMapping(headers: List<String>): ColumnMapping {
         val norm = headers.map { normalizeHeader(it) }
 
         fun idx(vararg keys: String): Int? {
             for (k in keys) {
-                val i = norm.indexOfFirst { it == k || it.contains(k) }
+                val exact = norm.indexOfFirst { it == k }
+                if (exact >= 0) return exact
+            }
+            for (k in keys) {
+                val i = norm.indexOfFirst { header ->
+                    header.contains(k) && !isExcludedContainsMatch(header, k)
+                }
                 if (i >= 0) return i
             }
             return null
@@ -137,10 +168,16 @@ object CsvStatementParser {
             )
         }
 
-        val debit = idx("debit", "withdrawal", "withdrawals", "dr", "money out", "spent")
-        val credit = idx("credit", "deposit", "deposits", "cr", "money in", "received")
+        val debit = idx(
+            "debit", "withdrawal", "withdrawals", "dr", "money out", "spent", "expense", "expenses",
+        )
+        val credit = idx(
+            "credit", "deposit", "deposits", "cr", "money in", "received", "income",
+        )
         val amount = idx("amount", "txn amount", "transaction amount", "value")
         val type = idx("type", "dr/cr", "debit/credit", "transaction type", "cr/dr")
+        val investment = idx("investment amount", "invested", "investment")
+        val transfer = idx("transfer amount", "transfer")
         val date = idx("date", "txn date", "transaction date", "value date", "posting date", "tran date")
         val time = idx("time")
         val desc = idx(
@@ -177,10 +214,29 @@ object CsvStatementParser {
             note = if (note != desc) note else null,
             name = name,
             counterparty = counterparty,
+            investment = investment,
+            transfer = transfer,
         )
     }
 
-    private fun normalizeHeader(raw: String): String =
+    /** "amount" must not steal Investment Amount / opening balance / transfer amount. */
+    private fun isExcludedContainsMatch(header: String, key: String): Boolean {
+        if (key == "amount" || key == "value") {
+            val blocked = listOf(
+                "investment", "invested", "transfer", "opening", "closing",
+                "balance", "available", "limit",
+            )
+            if (blocked.any { header.contains(it) }) return true
+        }
+        if (key == "credit" && header.contains("credit card")) return true
+        if (key == "type" && (header.contains("account type") || header.contains("card type"))) return true
+        if (key == "investment" && header.contains("investment amount")) return false
+        return false
+    }
+
+    fun normalizeHeaderPublic(raw: String): String = normalizeHeader(raw)
+
+    internal fun normalizeHeader(raw: String): String =
         raw.trim().lowercase(Locale.US)
             .replace('\u00a0', ' ')
             .replace(Regex("[._/\\\\]+"), " ")
@@ -211,23 +267,32 @@ object CsvStatementParser {
 
         val debitPaise = parseMoneyPaise(cell(m.debit))
         val creditPaise = parseMoneyPaise(cell(m.credit))
+        val investmentPaise = parseMoneyPaise(cell(m.investment))
+        val transferPaise = parseMoneyPaise(cell(m.transfer))
         val amountRaw = cell(m.amount)
         val typeHint = cell(m.type)
+        val desc = cell(m.description)
 
-        val (type, amountPaise) = resolveDirectionAndAmount(
+        val resolved = resolveDirectionAndAmount(
             debitPaise = debitPaise,
             creditPaise = creditPaise,
             amountRaw = amountRaw,
             typeHint = typeHint,
-            description = cell(m.description),
+            description = desc,
+            investmentPaise = investmentPaise,
+            transferPaise = transferPaise,
         ) ?: return null
 
+        val (type, amountPaise, kind) = resolved
         if (amountPaise <= 0L) return null
 
-        val desc = cell(m.description)
         val party = cell(m.counterparty) ?: cell(m.name) ?: guessParty(desc)
         val ref = cell(m.ref)
-        val category = cell(m.category)
+        val category = when {
+            kind == TransactionKind.SELF_TRANSFER -> cell(m.category) ?: "Transfer"
+            resolved.categoryHint != null -> resolved.categoryHint
+            else -> cell(m.category)
+        }
         val note = cell(m.note)
 
         return ParsedCsvRow(
@@ -241,8 +306,16 @@ object CsvStatementParser {
             categoryHint = category,
             note = note,
             rawLine = rawLine.take(500),
+            kind = kind,
         )
     }
+
+    data class ResolvedAmount(
+        val type: TransactionType,
+        val amountPaise: Long,
+        val kind: TransactionKind = TransactionKind.NORMAL,
+        val categoryHint: String? = null,
+    )
 
     internal fun resolveDirectionAndAmount(
         debitPaise: Long?,
@@ -250,35 +323,71 @@ object CsvStatementParser {
         amountRaw: String?,
         typeHint: String?,
         description: String?,
-    ): Pair<TransactionType, Long>? {
-        if (debitPaise != null && debitPaise > 0L && (creditPaise == null || creditPaise == 0L)) {
-            return TransactionType.DEBIT to debitPaise
+        investmentPaise: Long? = null,
+        transferPaise: Long? = null,
+    ): ResolvedAmount? {
+        val debit = debitPaise?.takeIf { it > 0L }
+        val credit = creditPaise?.takeIf { it > 0L }
+        val invest = investmentPaise?.takeIf { it > 0L }
+        val transfer = transferPaise?.takeIf { it > 0L }
+
+        if (debit != null && credit == null) {
+            return ResolvedAmount(TransactionType.DEBIT, debit)
         }
-        if (creditPaise != null && creditPaise > 0L && (debitPaise == null || debitPaise == 0L)) {
-            return TransactionType.CREDIT to creditPaise
+        if (credit != null && debit == null) {
+            return ResolvedAmount(TransactionType.CREDIT, credit)
         }
-        if (debitPaise != null && creditPaise != null && debitPaise > 0L && creditPaise > 0L) {
-            // Prefer non-zero exclusive; if both set, treat larger as signal is wrong — skip
+        if (debit != null && credit != null) {
             return null
         }
+
+        if (invest != null && transfer == null) {
+            return ResolvedAmount(
+                type = TransactionType.DEBIT,
+                amountPaise = invest,
+                categoryHint = "Investment",
+            )
+        }
+        if (transfer != null && invest == null) {
+            return ResolvedAmount(
+                type = TransactionType.DEBIT,
+                amountPaise = transfer,
+                kind = TransactionKind.SELF_TRANSFER,
+                categoryHint = "Transfer",
+            )
+        }
+        if (invest != null && transfer != null) {
+            return null
+        }
+
+        val kindFromType = kindFromHint(typeHint)
 
         // Signed amount only when the sign is explicit (-, +, or parentheses).
         // A plain positive "100" with no type column must NOT default to CREDIT:
         // a spend would be imported as income (inflating balances).
         val signed = if (hasExplicitSign(amountRaw)) parseSignedMoneyPaise(amountRaw) else null
         if (signed != null && signed != 0L) {
+            val abs = kotlin.math.abs(signed)
+            if (kindFromType == TransactionKind.SELF_TRANSFER) {
+                val dir = if (signed < 0) TransactionType.DEBIT else TransactionType.CREDIT
+                return ResolvedAmount(dir, abs, TransactionKind.SELF_TRANSFER, "Transfer")
+            }
             return if (signed < 0) {
-                TransactionType.DEBIT to kotlin.math.abs(signed)
+                ResolvedAmount(TransactionType.DEBIT, abs, categoryHint = categoryFromHint(typeHint))
             } else {
                 val fromType = typeFromHint(typeHint, description) ?: TransactionType.CREDIT
-                fromType to signed
+                ResolvedAmount(fromType, signed, categoryHint = categoryFromHint(typeHint))
             }
         }
 
         val abs = parseMoneyPaise(amountRaw) ?: return null
         if (abs <= 0L) return null
+        if (kindFromType == TransactionKind.SELF_TRANSFER) {
+            val dir = typeFromHint(typeHint, description) ?: TransactionType.DEBIT
+            return ResolvedAmount(dir, abs, TransactionKind.SELF_TRANSFER, "Transfer")
+        }
         val type = typeFromHint(typeHint, description) ?: return null
-        return type to abs
+        return ResolvedAmount(type, abs, categoryHint = categoryFromHint(typeHint))
     }
 
     /** True when the amount carries an explicit sign or accounting parentheses. */
@@ -295,14 +404,36 @@ object CsvStatementParser {
         return parenNeg || s.startsWith("+") || s.startsWith("-")
     }
 
+    private fun kindFromHint(typeHint: String?): TransactionKind? {
+        val t = typeHint?.trim()?.lowercase(Locale.US).orEmpty()
+        if (t.isEmpty()) return null
+        if (t == "transfer" || t == "self transfer" || t == "self-transfer" || t.contains("transfer")) {
+            return TransactionKind.SELF_TRANSFER
+        }
+        return null
+    }
+
+    private fun categoryFromHint(typeHint: String?): String? {
+        val t = typeHint?.trim()?.lowercase(Locale.US).orEmpty()
+        if (t == "investment" || t.contains("invest")) return "Investment"
+        if (t == "transfer" || t.contains("transfer")) return "Transfer"
+        return null
+    }
+
     private fun typeFromHint(typeHint: String?, description: String?): TransactionType? {
         val t = typeHint?.trim()?.lowercase(Locale.US).orEmpty()
         when {
             t.isEmpty() -> Unit
+            t in setOf("transfer", "self transfer", "self-transfer") ->
+                return TransactionType.DEBIT
+            t in setOf("investment", "invest", "invested") ->
+                return TransactionType.DEBIT
             t in setOf("debit", "dr", "d", "expense", "withdrawal", "withdraw", "out", "spent", "payment") ->
                 return TransactionType.DEBIT
             t in setOf("credit", "cr", "c", "income", "deposit", "in", "received", "refund") ->
                 return TransactionType.CREDIT
+            t.contains("transfer") || t.contains("invest") ->
+                return TransactionType.DEBIT
             t.contains("debit") || t.contains("withdraw") || t.contains("expense") ->
                 return TransactionType.DEBIT
             t.contains("credit") || t.contains("deposit") || t.contains("income") ->

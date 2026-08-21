@@ -2,17 +2,20 @@ package com.krtky.financetracker.data.repository
 
 import android.content.Context
 import android.net.Uri
+import com.krtky.financetracker.data.importcsv.CsvHeaderRolesParser
 import com.krtky.financetracker.data.importcsv.CsvStatementParser
 import com.krtky.financetracker.data.importcsv.DedupeConfidence
 import com.krtky.financetracker.data.importcsv.ImportDedupe
 import com.krtky.financetracker.data.importcsv.ParsedCsvRow
 import com.krtky.financetracker.data.importcsv.enrichTransaction
 import com.krtky.financetracker.data.importcsv.shouldEnrichExisting
+import com.krtky.financetracker.data.llm.LlmClient
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionSource
 import com.krtky.financetracker.domain.model.TransactionType
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -65,6 +68,7 @@ class StatementImportRepository @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val accountRepository: AccountRepository,
     private val categoryRepository: CategoryRepository,
+    private val llmClient: LlmClient,
 ) {
     private val txnDao = db.transactionDao()
 
@@ -82,7 +86,7 @@ class StatementImportRepository @Inject constructor(
         val account = accountRepository.getById(accountId)
             ?: error("Account not found")
         val text = readUriText(uri)
-        val parsed = CsvStatementParser.parse(text)
+        val parsed = parseWithOptionalLlmMapping(text)
         val existing = loadCandidates(account)
         val categories = categoryRepository.getAll()
 
@@ -179,6 +183,45 @@ class StatementImportRepository @Inject constructor(
         ImportCommitResult(imported, merged, skipped, failed)
     }
 
+    /**
+     * Heuristic mapping first (bank CSVs are Date / narration / Debit / Credit).
+     * If AI is on, one small call maps headers + up to 3 sample rows — not the file.
+     */
+    private suspend fun parseWithOptionalLlmMapping(
+        text: String,
+    ): com.krtky.financetracker.data.importcsv.CsvParseResult {
+        val inspect = CsvStatementParser.inspect(text)
+        val heuristic = CsvStatementParser.detectMapping(inspect.headers)
+        val llmMapping = suggestLlmMapping(inspect)
+        val mapping = when {
+            llmMapping != null && CsvHeaderRolesParser.isUsable(llmMapping) -> llmMapping
+            else -> heuristic
+        }
+        return CsvStatementParser.parse(text, mapping)
+    }
+
+    private suspend fun suggestLlmMapping(
+        inspect: CsvStatementParser.Inspect,
+    ): CsvStatementParser.ColumnMapping? {
+        if (!llmClient.isConfigured()) return null
+        if (inspect.headers.isEmpty()) return null
+        val user = buildString {
+            appendLine("HEADERS:")
+            inspect.headers.forEachIndexed { i, h -> appendLine("$i. $h") }
+            appendLine()
+            appendLine("SAMPLE ROWS (do not parse these into transactions; they only show column meaning):")
+            inspect.sampleDataLines.take(3).forEach { line ->
+                appendLine(line.take(400))
+            }
+        }
+        val raw = llmClient.completeJson(
+            system = CsvHeaderRolesParser.LLM_SYSTEM,
+            user = user,
+        ) ?: return null
+        val roles = CsvHeaderRolesParser.fromJson(raw) ?: return null
+        return CsvHeaderRolesParser.toMapping(inspect.headers, roles)
+    }
+
     private suspend fun loadCandidates(account: Account): List<Transaction> =
         transactionRepository.getForAccount(account.id)
 
@@ -210,7 +253,7 @@ class StatementImportRepository @Inject constructor(
             source = TransactionSource.IMPORT,
             note = row.note,
             isCash = isCash,
-            classificationStatus = if (catId != null) {
+            classificationStatus = if (catId != null || row.kind != TransactionKind.NORMAL) {
                 ClassificationStatus.CLASSIFIED
             } else {
                 ClassificationStatus.PENDING
@@ -218,6 +261,7 @@ class StatementImportRepository @Inject constructor(
             rawDescription = row.description,
             externalRefId = ref,
             accountName = account.name,
+            kind = row.kind,
         )
         return try {
             transactionRepository.insertFromImport(txn) != null

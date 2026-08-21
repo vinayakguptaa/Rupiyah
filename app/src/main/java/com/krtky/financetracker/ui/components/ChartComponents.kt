@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isFinite
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.ui.theme.M3EMotion
+import com.krtky.financetracker.ui.util.PieSliceLayout
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.inrCompact
 import kotlin.math.sqrt
@@ -83,12 +84,16 @@ fun CategoryInteractivePieChart(
                 .coerceIn(minStroke.toPx(), maxStroke.toPx())
         }
         val gapDeg = run {
+            val n = categorySpends.count { it.totalPaise > 0 }.coerceAtLeast(1)
             val radius = (chartSizePx - strokeWidthPx) / 2f
             val circumference = (2.0 * Math.PI * radius).toFloat()
-            val gapPx = strokeWidthPx + with(density) { if (tight) 2.dp.toPx() else 3.dp.toPx() }
-            val minGap = if (tight) 6f else 8f
-            val maxGap = if (tight) 16f else 22f
-            ((gapPx / circumference) * 360f).coerceIn(minGap, maxGap)
+            val gapPx = with(density) { if (tight) 3.dp.toPx() else 4.dp.toPx() }
+            val minGap = if (tight) 4f else 5f
+            val maxGap = if (tight) 10f else 12f
+            val fromStroke = ((gapPx / circumference) * 360f).coerceIn(minGap, maxGap)
+            // Keep total gaps under a quarter of the ring so small slices still fit.
+            val cap = 80f / n
+            minOf(fromStroke, cap)
         }
 
         var selectedIndex by remember { mutableStateOf(-1) }
@@ -107,6 +112,24 @@ fun CategoryInteractivePieChart(
         val validSpends = categorySpends.filter { it.totalPaise > 0 }
         val calculatedTotal = validSpends.sumOf { it.totalPaise }
         val finalTotal = if (calculatedTotal > 0) calculatedTotal else totalExpense
+        val sliceArcs = remember(validSpends, finalTotal, gapDeg, strokeWidthPx, chartSizePx) {
+            if (validSpends.isEmpty() || finalTotal <= 0L) {
+                emptyList()
+            } else {
+                val n = validSpends.size
+                val usable = (360f - gapDeg * n).coerceAtLeast(1f)
+                // Angular width of the round cap ≈ stroke / radius, so the floor
+                // is at least a visible "bead" on the ring (~3% of a full pie).
+                val capDeg = ((strokeWidthPx / (chartSizePx / 2f).coerceAtLeast(1f))
+                    * (180f / Math.PI.toFloat())).coerceIn(8f, 16f)
+                val minSweep = minOf(12f, capDeg, usable / n)
+                PieSliceLayout.arcs(
+                    weights = validSpends.map { it.totalPaise.toFloat() },
+                    gapDeg = gapDeg,
+                    minSweepDeg = minSweep,
+                )
+            }
+        }
         val overallProgress = if (incomePaise > 0) {
             (finalTotal.toFloat() / incomePaise.toFloat()).coerceIn(0f, 1f)
         } else if (finalTotal > 0) 1f else 0f
@@ -117,7 +140,7 @@ fun CategoryInteractivePieChart(
         )
 
         val tapModifier = if (interactive || onCenterClick != null) {
-            Modifier.pointerInput(validSpends, finalTotal, chartSizePx, interactive) {
+            Modifier.pointerInput(validSpends, sliceArcs, chartSizePx, interactive) {
                 detectTapGestures { offset ->
                     val center = Offset(chartSizePx / 2f, chartSizePx / 2f)
                     val dx = offset.x - center.x
@@ -137,20 +160,20 @@ fun CategoryInteractivePieChart(
                     } else if (
                         interactive &&
                         dist <= outerRadius + 12f &&
-                        validSpends.isNotEmpty() &&
-                        finalTotal > 0
+                        sliceArcs.isNotEmpty()
                     ) {
                         var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
                         angle = (angle + 90f + 360f) % 360f
-                        var currentAngle = 0f
                         var foundIndex = -1
-                        validSpends.forEachIndexed { index, cat ->
-                            val sweep = (360f - gapDeg * validSpends.size) *
-                                (cat.totalPaise.toFloat() / finalTotal.toFloat())
-                            if (angle >= currentAngle && angle <= currentAngle + sweep + gapDeg) {
-                                foundIndex = index
+                        sliceArcs.forEachIndexed { index, arc ->
+                            val start = (arc.startDeg + 90f + 360f) % 360f
+                            val end = start + arc.sweepDeg + gapDeg
+                            val hit = if (end <= 360f) {
+                                angle >= start && angle <= end
+                            } else {
+                                angle >= start || angle <= (end - 360f)
                             }
-                            currentAngle += sweep + gapDeg
+                            if (hit) foundIndex = index
                         }
                         if (foundIndex != -1) {
                             if (selectedIndex == foundIndex) {
@@ -203,22 +226,18 @@ fun CategoryInteractivePieChart(
                         )
                     }
                 } else if (selectedIndex == -1) {
-                    val usable = 360f - gapDeg * validSpends.size.coerceAtLeast(1)
-                    var startAngle = -90f + gapDeg / 2f
-                    validSpends.forEachIndexed { index, cat ->
-                        val sweep = usable * (cat.totalPaise.toFloat() / finalTotal.toFloat())
-                        if (sweep > 0.5f) {
+                    sliceArcs.forEachIndexed { index, arc ->
+                        if (arc.sweepDeg > 0.2f) {
                             drawArc(
                                 color = colors[index % colors.size],
-                                startAngle = startAngle,
-                                sweepAngle = sweep,
+                                startAngle = arc.startDeg,
+                                sweepAngle = arc.sweepDeg,
                                 useCenter = false,
                                 topLeft = topLeft,
                                 size = arcSize,
                                 style = stroke,
                             )
                         }
-                        startAngle += sweep + gapDeg
                     }
                 } else {
                     val cat = validSpends[selectedIndex]

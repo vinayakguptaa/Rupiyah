@@ -51,9 +51,6 @@ class LlmClient @Inject constructor(
         banks: List<String> = emptyList(),
     ): ExtractedTransaction? {
         if (!secureStore.isLlmReady()) return null
-        val apiKey = secureStore.llmApiKey ?: return null
-        val base = secureStore.llmBaseUrl.trimEnd('/')
-        val model = secureStore.llmModel
         val system = secureStore.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }
 
         val user = buildString {
@@ -80,6 +77,24 @@ class LlmClient @Inject constructor(
             append(messageBody.take(6000))
         }
 
+        val cleaned = completeJson(system = system, user = user) ?: return null
+        return runCatching {
+            json.decodeFromString(ExtractedTransaction.serializer(), cleaned)
+        }.getOrNull()
+    }
+
+    /**
+     * One JSON-object chat completion. Returns the assistant content with
+     * markdown fences stripped, or null if AI is off / the call fails.
+     *
+     * Used for small structured tasks (CSV header mapping). Do not send
+     * whole files — keep [user] to headers + a few sample rows.
+     */
+    suspend fun completeJson(system: String, user: String): String? {
+        if (!secureStore.isLlmReady()) return null
+        val apiKey = secureStore.llmApiKey ?: return null
+        val base = secureStore.llmBaseUrl.trimEnd('/')
+        val model = secureStore.llmModel
         val payload = ChatRequest(
             model = model,
             temperature = 0.0,
@@ -89,26 +104,24 @@ class LlmClient @Inject constructor(
                 ChatMessage("user", user),
             ),
         )
-
         val body = json.encodeToString(ChatRequest.serializer(), payload)
             .toRequestBody("application/json".toMediaType())
-
         val request = Request.Builder()
             .url("$base/chat/completions")
             .addHeader("Authorization", "Bearer $apiKey")
             .addHeader("Content-Type", "application/json")
             .post(body)
             .build()
-
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            client.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
-                val text = resp.body?.string() ?: return@use null
-                val chat = json.decodeFromString(ChatResponse.serializer(), text)
-                val content = chat.choices.firstOrNull()?.message?.content ?: return@use null
-                val cleaned = content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-                json.decodeFromString(ExtractedTransaction.serializer(), cleaned)
-            }
+            runCatching {
+                client.newCall(request).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val text = resp.body?.string() ?: return@use null
+                    val chat = json.decodeFromString(ChatResponse.serializer(), text)
+                    val content = chat.choices.firstOrNull()?.message?.content ?: return@use null
+                    content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                }
+            }.getOrNull()
         }
     }
 

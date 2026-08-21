@@ -36,6 +36,11 @@ class SplitRulesTest {
     }
 
     @Test
+    fun `credit parent uses absolute amount`() {
+        assertThat(SplitRules.validateSum(-10_000L, listOf(4_000L, 6_000L))).isNull()
+    }
+
+    @Test
     fun `remainingPaise tracks leftover`() {
         assertThat(SplitRules.remainingPaise(1000L, listOf(300L, 200L))).isEqualTo(500L)
         assertThat(SplitRules.remainingPaise(1000L, listOf(600L, 400L))).isEqualTo(0L)

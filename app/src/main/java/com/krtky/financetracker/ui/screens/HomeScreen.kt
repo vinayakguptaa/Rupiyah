@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
-import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
 import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.theme.NavContentInsets
@@ -62,7 +61,7 @@ fun HomeScreen(
     onOpenExpenseActivity: () -> Unit = onOpenHistory,
     onOpenCreditActivity: () -> Unit = onOpenHistory,
     onOpenCategories: () -> Unit = {},
-    onOpenMonthFlow: (direction: TransactionType, group: MonthFlowGroup) -> Unit = { _, _ -> },
+    onOpenMonthFlow: (direction: String, group: MonthFlowGroup) -> Unit = { _, _ -> },
     /** Open classify sheet for a pending transaction. */
     onClassifyPending: (String) -> Unit = {},
     /** Open Settings detail (e.g. email). */
@@ -281,6 +280,10 @@ fun HomeScreen(
                         expenseBySource = homeCashflow.expenseBySource,
                         incomeByCategory = homeCashflow.incomeByCategory,
                         incomeBySource = homeCashflow.incomeBySource,
+                        invested = homeCashflow.investedPaise,
+                        redeemed = homeCashflow.redeemedPaise,
+                        investmentByCategory = homeCashflow.investmentByCategory,
+                        investmentBySource = homeCashflow.investmentBySource,
                         filtered = filtered,
                     ),
                     onMoveSection = { from, to ->

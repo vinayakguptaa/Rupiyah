@@ -392,7 +392,7 @@ class MainActivity : ComponentActivity() {
                                     onOpenMonthFlow = { direction, group ->
                                         nav.navigate(
                                             MonthFlowRoute(
-                                                direction = direction.name,
+                                                direction = direction,
                                                 group = if (group == MonthFlowGroup.Source) {
                                                     "source"
                                                 } else {
@@ -465,9 +465,14 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<MonthFlowRoute> { entry ->
                                 val args = entry.toRoute<MonthFlowRoute>()
-                                val direction = runCatching {
-                                    TransactionType.valueOf(args.direction)
-                                }.getOrDefault(TransactionType.DEBIT)
+                                val investment = args.direction.equals("INVESTMENT", ignoreCase = true)
+                                val direction = if (investment) {
+                                    TransactionType.DEBIT
+                                } else {
+                                    runCatching {
+                                        TransactionType.valueOf(args.direction)
+                                    }.getOrDefault(TransactionType.DEBIT)
+                                }
                                 val group = if (args.group.equals("source", true)) {
                                     MonthFlowGroup.Source
                                 } else {
@@ -476,13 +481,24 @@ class MainActivity : ComponentActivity() {
                                 MonthFlowScreen(
                                     direction = direction,
                                     group = group,
+                                    investment = investment,
                                     onBack = { nav.popBackStack() },
                                     onOpenCategory = { id, name ->
+                                        val type = when {
+                                            investment && name.equals("Redeemed", true) ->
+                                                TransactionType.CREDIT.name
+                                            investment -> TransactionType.DEBIT.name
+                                            else -> direction.name
+                                        }
                                         nav.navigate(
                                             CategoryRoute(
                                                 id = id?.toString() ?: "none",
-                                                name = name.ifBlank { "Category" },
-                                                type = direction.name,
+                                                name = if (name.equals("Redeemed", true)) {
+                                                    "Investment"
+                                                } else {
+                                                    name.ifBlank { "Category" }
+                                                },
+                                                type = type,
                                             ),
                                         )
                                     },
@@ -491,7 +507,7 @@ class MainActivity : ComponentActivity() {
                                             AccountRoute(
                                                 id = id ?: UNASSIGNED_DIGITAL_ACCOUNT_ID,
                                                 name = name.ifBlank { "Digital" },
-                                                type = direction.name,
+                                                type = if (investment) "" else direction.name,
                                             ),
                                         )
                                     },
