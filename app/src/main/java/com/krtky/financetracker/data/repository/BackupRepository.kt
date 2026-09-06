@@ -308,23 +308,32 @@ class BackupRepository @Inject constructor(
                             )
                         }
 
-                        // 5b. Import Accounts (v2+; optional on older backups)
-                        jsonObj["accounts"]?.jsonArray?.forEach { item ->
-                            val obj = item.jsonObject
-                            db.accountDao().upsert(
-                                AccountEntity(
-                                    id = obj["id"]?.jsonPrimitive?.long ?: 0L,
-                                    name = obj["name"]?.jsonPrimitive?.content.orEmpty(),
-                                    kind = obj["kind"]?.jsonPrimitive?.content ?: "BANK",
-                                    currency = obj["currency"]?.jsonPrimitive?.content ?: "INR",
-                                    openingBalancePaise = obj["openingBalancePaise"]?.jsonPrimitive?.long ?: 0L,
-                                    archived = obj["archived"]?.jsonPrimitive?.boolean ?: false,
-                                    sortOrder = obj["sortOrder"]?.jsonPrimitive?.int ?: 0,
-                                    createdAt = obj["createdAt"]?.jsonPrimitive?.long
-                                        ?: System.currentTimeMillis(),
-                                ),
-                            )
+                        // 5b. Import Accounts (v2+). Older backups only had prefs bank names —
+                        // seed those before transactions so Cash/banks exist (IDs will be new).
+                        val accountsJson = jsonObj["accounts"]?.jsonArray
+                        if (!accountsJson.isNullOrEmpty()) {
+                            accountsJson.forEach { item ->
+                                val obj = item.jsonObject
+                                db.accountDao().upsert(
+                                    AccountEntity(
+                                        id = obj["id"]?.jsonPrimitive?.long ?: 0L,
+                                        name = obj["name"]?.jsonPrimitive?.content.orEmpty(),
+                                        kind = obj["kind"]?.jsonPrimitive?.content ?: "BANK",
+                                        currency = obj["currency"]?.jsonPrimitive?.content ?: "INR",
+                                        openingBalancePaise = obj["openingBalancePaise"]?.jsonPrimitive?.long
+                                            ?: 0L,
+                                        archived = obj["archived"]?.jsonPrimitive?.boolean ?: false,
+                                        sortOrder = obj["sortOrder"]?.jsonPrimitive?.int ?: 0,
+                                        createdAt = obj["createdAt"]?.jsonPrimitive?.long
+                                            ?: System.currentTimeMillis(),
+                                    ),
+                                )
+                            }
+                        } else {
+                            seedAccountsFromBankPrefs()
                         }
+                        val validAccountIds = db.accountDao().getAll().map { it.id }.toSet()
+                        val cashAccountId = db.accountDao().getByName("Cash")?.id
 
                         // 6. Import Funds & Ledger
                         jsonObj["funds"]?.jsonArray?.forEach { item ->
@@ -359,7 +368,14 @@ class BackupRepository @Inject constructor(
                             val obj = item.jsonObject
                             val catId = obj["categoryId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
                             val fId = obj["fundId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
-                            val accId = obj["accountId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
+                            val rawAccId = obj["accountId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
+                            val isCash = obj["isCash"]?.jsonPrimitive?.boolean ?: false
+                            // Drop orphan ids (e.g. pre-v2 backups whose account rows were re-seeded).
+                            val accId = when {
+                                rawAccId != null && rawAccId in validAccountIds -> rawAccId
+                                isCash -> cashAccountId
+                                else -> null
+                            }
                             db.transactionDao().insert(
                                 TransactionEntity(
                                     id = obj["id"]?.jsonPrimitive?.content.orEmpty(),
@@ -377,7 +393,7 @@ class BackupRepository @Inject constructor(
                                     accountId = accId,
                                     source = obj["source"]?.jsonPrimitive?.content ?: "MANUAL",
                                     note = obj["note"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
-                                    isCash = obj["isCash"]?.jsonPrimitive?.boolean ?: false,
+                                    isCash = isCash,
                                     classificationStatus = obj["classificationStatus"]?.jsonPrimitive?.content
                                         ?: "PENDING",
                                     isSkipped = obj["isSkipped"]?.jsonPrimitive?.boolean ?: false,
@@ -424,26 +440,26 @@ class BackupRepository @Inject constructor(
                     .sortedBy { it.sortOrder }
                     .map { it.name }
                 userPreferences.setBankAccounts(activeBanks.joinToString(","))
-                // If backup had only bank_accounts string (pre-v2), seed accounts table
-                if (jsonObj["accounts"]?.jsonArray.isNullOrEmpty()) {
-                    val fromPrefs = userPreferences.parseBankList(userPreferences.bankAccounts.first())
-                    // AccountRepository not injected — lightweight Cash ensure via DAO
-                    if (db.accountDao().getByName("Cash") == null) {
-                        db.accountDao().upsert(
-                            AccountEntity(name = "Cash", kind = "CASH", sortOrder = 0),
-                        )
-                    }
-                    fromPrefs.forEachIndexed { i, name ->
-                        if (db.accountDao().getByName(name) == null) {
-                            db.accountDao().upsert(
-                                AccountEntity(name = name, kind = "BANK", sortOrder = i + 1),
-                            )
-                        }
-                    }
-                }
                 Result.success("Restored accounts, tabs, transactions & splits")
             } catch (e: Exception) {
                 Result.failure(e)
+            }
+        }
+    }
+
+    /** Pre-v2 backups: create Cash + banks from prefs names (new auto ids). */
+    private suspend fun seedAccountsFromBankPrefs() {
+        val fromPrefs = userPreferences.parseBankList(userPreferences.bankAccounts.first())
+        if (db.accountDao().getByName("Cash") == null) {
+            db.accountDao().upsert(
+                AccountEntity(name = "Cash", kind = "CASH", sortOrder = 0),
+            )
+        }
+        fromPrefs.forEachIndexed { i, name ->
+            if (db.accountDao().getByName(name) == null) {
+                db.accountDao().upsert(
+                    AccountEntity(name = name, kind = "BANK", sortOrder = i + 1),
+                )
             }
         }
     }

@@ -71,7 +71,7 @@ With AI helper on, matching bank SMS become draft transactions (account auto-mat
 ## Backup & restore
 
 **Settings → Backup & restore** exports categories, accounts (incl. archived), tabs, transactions, **splits**, and prefs.  
-Restore replaces local data. Email credentials are not restored (email import removed).
+Restore replaces local data (same full restore runs from onboarding’s **Import backup file**). Email credentials are not restored (email import removed).
 
 ---
 

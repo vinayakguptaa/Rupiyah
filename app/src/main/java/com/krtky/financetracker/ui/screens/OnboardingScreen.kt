@@ -394,9 +394,9 @@ private fun ImportBackupPage(onImport: () -> Unit, onNext: () -> Unit, imported:
         Spacer(Modifier.height(12.dp))
         Text(
             if (imported) {
-                "Your transactions, categories, and settings have been restored. You can still configure permissions on the next pages."
+                "Your accounts, transactions, categories, tabs, and settings have been restored. You can still configure permissions on the next pages."
             } else {
-                "Have a Rupiyah backup file? Import it now to restore your transactions, categories, and settings."
+                "Have a Rupiyah backup file? Import it now to restore accounts, transactions, categories, tabs, and settings."
             },
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
