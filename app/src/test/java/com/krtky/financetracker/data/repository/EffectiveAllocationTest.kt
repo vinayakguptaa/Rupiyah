@@ -128,6 +128,23 @@ class EffectiveAllocationTest {
         assertThat(allocs[0].amountPaise).isEqualTo(60_00L)
     }
 
+    @Test
+    fun `mixed direction split children both allocate`() {
+        // Credit 1350 parent → Credit 3350 Settlement + Debit 2000 Food
+        val parent = sampleTxn(id = "m1", amount = 1350_00L, type = "CREDIT", deletedAt = 2_000L)
+        val children = listOf(
+            sampleChild(id = "c1", group = "m1", amount = 3350_00L, type = "CREDIT", categoryId = 14L),
+            sampleChild(id = "c2", group = "m1", amount = 2000_00L, type = "DEBIT", categoryId = 2L),
+        )
+        val allocs = expand(listOf(parent) + children)
+        assertThat(allocs).hasSize(2)
+        assertThat(allocs.sumOf {
+            if (it.type == TransactionType.CREDIT) -it.amountPaise else it.amountPaise
+        }).isEqualTo(-1350_00L)
+        assertThat(allocs.first { it.type == TransactionType.DEBIT }.amountPaise).isEqualTo(2000_00L)
+        assertThat(allocs.first { it.type == TransactionType.CREDIT }.amountPaise).isEqualTo(3350_00L)
+    }
+
     private data class Alloc(
         val amountPaise: Long,
         val categoryId: Long?,

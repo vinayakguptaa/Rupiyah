@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.TransferContainer
 import com.krtky.financetracker.ui.components.TransferSheet
+import com.krtky.financetracker.ui.components.TabOweSheet
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.TransactionSortButton
 import com.krtky.financetracker.ui.util.CategoryIcons
@@ -88,6 +90,7 @@ fun TabDetailScreen(
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
+    var showOwe by remember { mutableStateOf(false) }
 
     LaunchedEffect(tabId) { vm.load(tabId) }
 
@@ -126,6 +129,19 @@ fun TabDetailScreen(
                 Icon(Icons.Default.FileDownload, contentDescription = "Download CSV")
             }
             val archived = tab?.tab?.archived == true
+            if (!archived) {
+                IconButton(
+                    onClick = {
+                        haptics.select()
+                        showOwe = true
+                    },
+                ) {
+                    Icon(
+                        Icons.Default.Handshake,
+                        contentDescription = stringResource(R.string.tab_owe_cd),
+                    )
+                }
+            }
             if (!archived && allTabs.size > 1) {
                 IconButton(onClick = { showTransfer = true }) {
                     Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer")
@@ -303,4 +319,14 @@ fun TabDetailScreen(
         )
     }
 
+    if (showOwe && tab != null) {
+        TabOweSheet(
+            onDismiss = { showOwe = false },
+            onSave = { amountText, note, youOweThem ->
+                val ok = vm.recordOwe(amountText, note, youOweThem)
+                if (ok) haptics.click()
+                ok
+            },
+        )
+    }
 }

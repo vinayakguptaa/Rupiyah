@@ -109,6 +109,13 @@
     <string name="tab_they_owe">They owe you</string>
     <string name="tab_you_owe">You owe them</string>
     <string name="tab_open_count">Open tabs</string>
+    <string name="tab_owe_action">They covered</string>
+    <string name="tab_owe_cd">Record that they covered</string>
+    <string name="tab_owe_sheet_title">Tab IOU</string>
+    <string name="tab_owe_sheet_subtitle">Updates who owes whom. Not a bank spend.</string>
+    <string name="tab_owe_they_covered">They covered</string>
+    <string name="tab_owe_you_covered">You covered</string>
+    <string name="tab_owe_save">Record</string>
     <string name="cd_search_settings">Search settings</string>
     <string name="cd_download_csv">Download CSV</string>
     <string name="cd_search_transactions">Search transactions</string>

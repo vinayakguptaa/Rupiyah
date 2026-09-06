@@ -109,9 +109,10 @@ class AddCashViewModel @Inject constructor(
     ): String? {
         val money = Money.fromRupeesString(amountText) ?: return null
         if (splits.isNotEmpty()) {
-            val err = com.krtky.financetracker.domain.model.SplitRules.validateSum(
+            val err = com.krtky.financetracker.domain.model.SplitRules.validateParts(
+                type,
                 money.paise,
-                splits.map { it.amountPaise },
+                splits,
             )
             if (err != null) return null
         }

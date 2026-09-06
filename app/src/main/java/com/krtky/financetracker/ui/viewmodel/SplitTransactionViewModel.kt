@@ -6,12 +6,12 @@ import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TransactionType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -36,22 +36,38 @@ class SplitTransactionViewModel @Inject constructor(
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
             else transactionRepository.observeSplitGroup(id).map { parts ->
-                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.tabId, it.note) }
+                parts.map {
+                    SplitPart(
+                        amountPaise = it.amountPaise,
+                        categoryId = it.categoryId,
+                        counterparty = it.counterparty,
+                        tabId = it.tabId,
+                        note = it.note,
+                        type = it.type,
+                    )
+                }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val parentAmountPaise: StateFlow<Long> = combine(_txn, splits) { txn, parts ->
-        when {
-            parts.isNotEmpty() -> parts.sumOf { kotlin.math.abs(it.amountPaise) }
-            txn != null -> kotlin.math.abs(txn.amountPaise)
-            else -> 0L
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+    /** Always the parent bank amount (not abs-sum of children). */
+    val parentAmountPaise: StateFlow<Long> = _txn
+        .map { txn -> txn?.amountPaise?.let { kotlin.math.abs(it) } ?: 0L }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
+
+    val parentType: StateFlow<TransactionType> = _txn
+        .map { it?.type ?: TransactionType.DEBIT }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionType.DEBIT)
 
     fun load(id: String) {
         txnIdFlow.value = id
-        viewModelScope.launch { _txn.value = transactionRepository.getById(id) }
+        viewModelScope.launch {
+            val t = transactionRepository.getById(id) ?: return@launch
+            // Always hold the soft-deleted or live parent for amount/type.
+            val parentId = t.splitGroupId ?: t.id
+            _txn.value = transactionRepository.getById(parentId) ?: t
+            txnIdFlow.value = parentId
+        }
     }
 
     suspend fun saveSplit(parts: List<SplitPart>): Result<Unit> {
@@ -61,6 +77,7 @@ class SplitTransactionViewModel @Inject constructor(
             val groupId = result.getOrThrow()
             val parent = transactionRepository.getById(groupId)
             _txn.value = parent
+            txnIdFlow.value = groupId
         }
         return result.map { }
     }

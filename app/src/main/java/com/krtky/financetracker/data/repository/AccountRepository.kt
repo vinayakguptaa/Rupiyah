@@ -9,6 +9,7 @@ import com.krtky.financetracker.domain.model.AccountBalance
 import com.krtky.financetracker.domain.model.AccountKind
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.domain.model.isTabOnlyBookkeeping
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -42,13 +43,14 @@ class AccountRepository @Inject constructor(
     fun observeAllBalances(): Flow<List<AccountBalance>> =
         balancesFlow(activeOnly = false)
 
-    /** Digital rows with no owning account (display-only bucket). */
+    /** Digital rows with no owning account (display-only bucket). Tab-only rows excluded. */
     fun observeUnassignedDigital(): Flow<UnassignedDigital> =
         txnDao.observeAll().map { txns ->
             val mine = txns.filter {
                 it.deletedAt == null &&
                     it.accountId == null &&
-                    !it.isCash
+                    !it.isCash &&
+                    !isTabOnlyBookkeeping(it.kind)
             }
             val net = mine.sumOf { t ->
                 if (t.type.equals("CREDIT", true)) t.amountPaise else -t.amountPaise
@@ -62,7 +64,9 @@ class AccountRepository @Inject constructor(
             accounts.map { entity ->
                 val account = entity.toDomain()
                 val mine = txns.filter {
-                    it.deletedAt == null && it.accountId == account.id
+                    it.deletedAt == null &&
+                        it.accountId == account.id &&
+                        !isTabOnlyBookkeeping(it.kind)
                 }
                 val net = mine.sumOf { t ->
                     val type = t.type.uppercase()

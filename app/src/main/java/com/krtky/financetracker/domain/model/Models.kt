@@ -10,9 +10,14 @@ enum class ClassificationStatus { PENDING, CLASSIFIED, SKIPPED }
 /**
  * NORMAL — ordinary cashflow.
  * SELF_TRANSFER — linked legs between owned accounts (excluded from lifestyle/credit metrics).
- * TAB_TRANSFER — move open balance between tabs (affects tab balances only; excluded from cashflow).
+ * TAB_TRANSFER — tab-only bookkeeping (move IOU between tabs, openings, future “they paid”).
+ *   Affects tab balances only; excluded from cashflow and from Digital / owned-account totals.
  */
 enum class TransactionKind { NORMAL, SELF_TRANSFER, TAB_TRANSFER }
+
+/** Tab-only bookkeeping must not move owned-account or Digital (no bank) aggregates. */
+fun isTabOnlyBookkeeping(kind: String?): Boolean =
+    kind?.uppercase() == TransactionKind.TAB_TRANSFER.name
 
 enum class AccountKind { BANK, CARD, CASH, WALLET }
 
@@ -108,25 +113,48 @@ data class CashflowMetrics(
 
 /** Validation helpers for split editor (pure; unit-testable). */
 object SplitRules {
-    /** Null if valid; otherwise a short user-facing reason. */
-    fun validateSum(parentAmountPaise: Long, splitAmounts: List<Long>): String? {
-        if (splitAmounts.isEmpty()) return null
-        val parent = kotlin.math.abs(parentAmountPaise)
-        if (parent == 0L) return "Parent amount must be greater than zero"
-        if (splitAmounts.any { it <= 0L }) return "Each split must be greater than zero"
-        val sum = splitAmounts.sum()
-        if (sum != parent) {
-            return "Splits must sum to parent amount"
+    /** Debit = +, Credit = −. Matches account net (credits − debits flipped for “out positive”). */
+    fun signedPaise(type: TransactionType, amountPaise: Long): Long =
+        if (type == TransactionType.DEBIT) amountPaise else -amountPaise
+
+    fun signedParent(parentType: TransactionType, parentAmountPaise: Long): Long =
+        signedPaise(parentType, kotlin.math.abs(parentAmountPaise))
+
+    fun signedPartsSum(parts: List<SplitPart>): Long =
+        parts.sumOf { signedPaise(it.type, it.amountPaise) }
+
+    /**
+     * Null if valid; otherwise a short user-facing reason.
+     * Empty [parts] clears a draft split. Non-empty: each amount > 0 and
+     * Debit lines − Credit lines must equal the signed parent.
+     */
+    fun validateParts(
+        parentType: TransactionType,
+        parentAmountPaise: Long,
+        parts: List<SplitPart>,
+    ): String? {
+        if (parts.isEmpty()) return null
+        val parentAbs = kotlin.math.abs(parentAmountPaise)
+        if (parentAbs == 0L) return "Parent amount must be greater than zero"
+        if (parts.any { it.amountPaise <= 0L }) return "Each split must be greater than zero"
+        val parentSigned = signedParent(parentType, parentAbs)
+        val sum = signedPartsSum(parts)
+        if (sum != parentSigned) {
+            return "Debit − Credit must equal parent"
         }
         return null
     }
 
-    fun remainingPaise(parentAmountPaise: Long, splitAmounts: List<Long>): Long =
-        kotlin.math.abs(parentAmountPaise) - splitAmounts.sum()
+    /** Remaining signed amount to allocate (0 when balanced). */
+    fun remainingSignedPaise(
+        parentType: TransactionType,
+        parentAmountPaise: Long,
+        parts: List<SplitPart>,
+    ): Long = signedParent(parentType, parentAmountPaise) - signedPartsSum(parts)
 }
 
 /**
- * One line of a split: amount must be > 0; parts must sum to the parent.
+ * One line of a split: amount must be > 0; signed Debit−Credit must equal parent.
  *
  * Splitting replaces the original transaction with standalone child rows
  * that share a [Transaction.splitGroupId]; the parent is soft-deleted.
@@ -137,6 +165,8 @@ data class SplitPart(
     val counterparty: String? = null,
     val tabId: Long? = null,
     val note: String? = null,
+    /** Defaults to parent type when omitted (same-direction splits). */
+    val type: TransactionType = TransactionType.DEBIT,
 )
 
 data class Transaction(

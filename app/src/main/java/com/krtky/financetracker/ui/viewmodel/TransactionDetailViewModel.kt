@@ -67,7 +67,16 @@ class TransactionDetailViewModel @Inject constructor(
         .flatMapLatest { id ->
             if (id.isNullOrBlank()) flowOf(emptyList())
             else transactionRepository.observeSplitGroup(id).map { parts ->
-                parts.map { SplitPart(it.amountPaise, it.categoryId, it.counterparty, it.tabId, it.note) }
+                parts.map {
+                    SplitPart(
+                        amountPaise = it.amountPaise,
+                        categoryId = it.categoryId,
+                        counterparty = it.counterparty,
+                        tabId = it.tabId,
+                        note = it.note,
+                        type = it.type,
+                    )
+                }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

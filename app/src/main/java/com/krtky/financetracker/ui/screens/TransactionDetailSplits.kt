@@ -21,6 +21,7 @@ import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.util.AppHaptics
 import com.krtky.financetracker.ui.util.inr
 
@@ -114,7 +115,7 @@ internal fun TransactionDetailSplits(
                             }
                         }
                         Text(
-                            line.amountPaise.inr(),
+                            "${if (line.type == TransactionType.CREDIT) "Cr" else "Dr"} ${line.amountPaise.inr()}",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                         )

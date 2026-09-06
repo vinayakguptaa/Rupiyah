@@ -59,6 +59,8 @@ import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
+import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.ui.components.FormTypeSegment
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
@@ -74,6 +76,7 @@ private data class SplitDraft(
     val counterparty: String = "",
     val tabId: Long? = null,
     val note: String = "",
+    val type: TransactionType = TransactionType.DEBIT,
 )
 
 /**
@@ -92,6 +95,7 @@ fun SplitTransactionScreen(
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val parent = txn
     val parentAmount by vm.parentAmountPaise.collectAsStateWithLifecycle()
+    val parentType by vm.parentType.collectAsStateWithLifecycle()
 
     if (parent == null) {
         Column(
@@ -127,6 +131,7 @@ fun SplitTransactionScreen(
 
     SplitEditorScreen(
         parentAmountPaise = parentAmount,
+        parentType = parentType,
         initialSplits = splits,
         categories = categories,
         tabs = tabs,
@@ -145,6 +150,7 @@ fun SplitTransactionScreen(
 @Composable
 fun SplitEditorScreen(
     parentAmountPaise: Long,
+    parentType: TransactionType,
     initialSplits: List<SplitPart>,
     categories: List<Category>,
     tabs: List<TabBalance>,
@@ -157,11 +163,11 @@ fun SplitEditorScreen(
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
     val scope = rememberCoroutineScope()
-    val drafts = remember(initialSplits, parentAmountPaise) {
+    val drafts = remember(initialSplits, parentAmountPaise, parentType) {
         mutableStateListOf<SplitDraft>().apply {
             if (initialSplits.isEmpty()) {
-                add(SplitDraft(localId = UUID.randomUUID().toString()))
-                add(SplitDraft(localId = UUID.randomUUID().toString()))
+                add(SplitDraft(localId = UUID.randomUUID().toString(), type = parentType))
+                add(SplitDraft(localId = UUID.randomUUID().toString(), type = parentType))
             } else {
                 initialSplits.forEach { s ->
                     add(
@@ -176,6 +182,7 @@ fun SplitEditorScreen(
                             counterparty = s.counterparty.orEmpty(),
                             tabId = s.tabId,
                             note = s.note.orEmpty(),
+                            type = s.type,
                         ),
                     )
                 }
@@ -185,9 +192,19 @@ fun SplitEditorScreen(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val amounts = drafts.map { Money.fromRupeesString(it.amountText)?.paise ?: 0L }
-    val remaining = SplitRules.remainingPaise(parentAmountPaise, amounts)
-    val validation = SplitRules.validateSum(parentAmountPaise, amounts)
+    val parts = drafts.map { d ->
+        SplitPart(
+            amountPaise = Money.fromRupeesString(d.amountText)?.paise ?: 0L,
+            categoryId = d.categoryId,
+            counterparty = d.counterparty.ifBlank { null },
+            tabId = d.tabId,
+            note = d.note.ifBlank { null },
+            type = d.type,
+        )
+    }
+    val amounts = parts.map { it.amountPaise }
+    val remaining = SplitRules.remainingSignedPaise(parentType, parentAmountPaise, parts)
+    val validation = SplitRules.validateParts(parentType, parentAmountPaise, parts)
 
     val fieldBg = scheme.surfaceContainerHigh
     val fieldColors = TextFieldDefaults.colors(
@@ -254,23 +271,14 @@ fun SplitEditorScreen(
                     Button(
                         onClick = {
                             scope.launch {
-                                val err = SplitRules.validateSum(parentAmountPaise, amounts)
+                                val err = SplitRules.validateParts(parentType, parentAmountPaise, parts)
                                 if (err != null) {
                                     error = err
                                     return@launch
                                 }
                                 saving = true
                                 error = null
-                                val lines = drafts.mapIndexed { index, d ->
-                                    SplitPart(
-                                        amountPaise = amounts[index],
-                                        categoryId = d.categoryId,
-                                        counterparty = d.counterparty.ifBlank { null },
-                                        tabId = d.tabId,
-                                        note = d.note.ifBlank { null },
-                                    )
-                                }
-                                val result = onSave(lines)
+                                val result = onSave(parts)
                                 saving = false
                                 if (result.isSuccess) {
                                     haptics.click()
@@ -335,7 +343,7 @@ fun SplitEditorScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "Parent ${parentAmountPaise.inr()} · lines must sum exactly",
+                "Parent ${if (parentType == TransactionType.CREDIT) "Credit" else "Debit"} ${parentAmountPaise.inr()} · Debit − Credit must equal parent",
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
             )
@@ -403,6 +411,29 @@ fun SplitEditorScreen(
                                     )
                                 }
                             }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FormTypeSegment(
+                                label = "Debit",
+                                selected = draft.type == TransactionType.DEBIT,
+                                onClick = {
+                                    haptics.select()
+                                    drafts[index] = draft.copy(type = TransactionType.DEBIT)
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                            FormTypeSegment(
+                                label = "Credit",
+                                selected = draft.type == TransactionType.CREDIT,
+                                onClick = {
+                                    haptics.select()
+                                    drafts[index] = draft.copy(type = TransactionType.CREDIT)
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                         TextField(
                             value = draft.amountText,
@@ -496,7 +527,12 @@ fun SplitEditorScreen(
 
             TextButton(
                 onClick = {
-                    drafts.add(SplitDraft(localId = UUID.randomUUID().toString()))
+                    drafts.add(
+                        SplitDraft(
+                            localId = UUID.randomUUID().toString(),
+                            type = parentType,
+                        ),
+                    )
                 },
                 modifier = Modifier.align(Alignment.Start),
             ) {

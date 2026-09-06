@@ -10,6 +10,7 @@ import com.krtky.financetracker.domain.model.SourceSpend
 import com.krtky.financetracker.domain.model.MonthlyTrend
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.domain.model.isTabOnlyBookkeeping
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -41,7 +42,7 @@ class CashflowRepository @Inject constructor(
     /**
      * Net balance per account label (credits − debits + opening), matching the
      * Accounts-screen formula in [AccountRepository].
-     * Rows with no owning account group under "Digital".
+     * Unmatched cashflow rows group under "Digital"; tab-only bookkeeping is excluded.
      */
     fun observeAccountBalances(): Flow<Map<String, Long>> =
         combine(
@@ -50,20 +51,22 @@ class CashflowRepository @Inject constructor(
         ) { accounts, txns ->
             val live = txns.filter { it.deletedAt == null }
             val byAccount = accounts.associate { acc ->
-                val mine = live.filter { it.accountId == acc.id }
+                val mine = live.filter {
+                    it.accountId == acc.id && !isTabOnlyBookkeeping(it.kind)
+                }
                 val net = mine.sumOf { signedPaise(it) }
                 acc.name.trim() to (acc.openingBalancePaise + net)
             }.toMutableMap()
 
-            // Rows with no owning account (e.g. legacy unlinked spends) — keep Home's
-            // total honest.
+            // Rows with no owning account (e.g. unmatched SMS) — keep Home's total honest.
             //
             // NOTE: "Digital" here is a DISPLAY-ONLY pseudo-bucket, not a real
-            // `accounts` row. It aggregates every row with no owning account so the
-            // Home total stays complete, but it is deliberately absent from the
-            // Accounts screen (which lists real accounts only). Each *named* account's
-            // balance agrees exactly between Home and the Accounts screen.
-            val unmatched = live.filter { it.accountId == null }
+            // `accounts` row. Tab-only bookkeeping (TAB_TRANSFER) is excluded so
+            // openings / tab↔tab moves never inflate available balance.
+            // Each *named* account's balance agrees with the Accounts screen.
+            val unmatched = live.filter {
+                it.accountId == null && !isTabOnlyBookkeeping(it.kind)
+            }
             if (unmatched.isNotEmpty()) {
                 val digital = unmatched.sumOf { signedPaise(it) }
                 byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digital

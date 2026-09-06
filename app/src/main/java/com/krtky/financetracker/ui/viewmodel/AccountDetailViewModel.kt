@@ -82,6 +82,7 @@ class AccountDetailViewModel @Inject constructor(
                         list.filter {
                             !it.isCash &&
                                 it.accountId == null &&
+                                !it.isTabTransfer() &&
                                 !it.accountName.equals("Cash", true)
                         }
                     } else {

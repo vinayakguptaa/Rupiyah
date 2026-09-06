@@ -120,4 +120,22 @@ class TabDetailViewModel @Inject constructor(
         transactionRepository.transferBetweenTabs(fromTabId, toTabId, money.paise, note.ifBlank { null })
         return true
     }
+
+    /**
+     * @param youOweThem true = they covered (CREDIT on tab); false = you covered off-books (DEBIT).
+     */
+    suspend fun recordOwe(
+        amountText: String,
+        note: String,
+        youOweThem: Boolean = true,
+    ): Boolean {
+        val id = tabIdFlow.value ?: return false
+        val money = Money.fromRupeesString(amountText) ?: return false
+        return transactionRepository.recordTabOwe(
+            tabId = id,
+            amountPaise = money.paise,
+            youOweThem = youOweThem,
+            note = note.ifBlank { null },
+        ) != null
+    }
 }

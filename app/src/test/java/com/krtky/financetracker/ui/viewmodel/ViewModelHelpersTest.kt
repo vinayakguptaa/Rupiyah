@@ -2,13 +2,27 @@ package com.krtky.financetracker.ui.viewmodel
 
 import com.google.common.truth.Truth.assertThat
 import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionType
 import org.junit.Test
 
 class ViewModelHelpersTest {
 
-    private fun txn(accountName: String? = null, isCash: Boolean = false) =
-        Transaction(id = "1", type = TransactionType.DEBIT, amountPaise = 100L, occurredAt = 1L, accountName = accountName, isCash = isCash)
+    private fun txn(
+        accountName: String? = null,
+        isCash: Boolean = false,
+        kind: TransactionKind = TransactionKind.NORMAL,
+        accountId: Long? = null,
+    ) = Transaction(
+        id = "1",
+        type = TransactionType.DEBIT,
+        amountPaise = 100L,
+        occurredAt = 1L,
+        accountName = accountName,
+        isCash = isCash,
+        kind = kind,
+        accountId = accountId,
+    )
 
     @Test
     fun `matchesPaymentFilter matches Cash exactly`() {
@@ -27,10 +41,18 @@ class ViewModelHelpersTest {
     @Test
     fun `matchesPaymentFilter matches Digital unassigned`() {
         val unassigned = txn(accountName = null)
-        val hdfc = txn(accountName = "HDFC").copy(accountId = 12L)
+        val hdfc = txn(accountName = "HDFC", accountId = 12L)
         assertThat(matchesPaymentFilter(unassigned, PAYMENT_DIGITAL_UNASSIGNED)).isTrue()
         assertThat(matchesPaymentFilter(hdfc, PAYMENT_DIGITAL_UNASSIGNED)).isFalse()
         assertThat(matchesPaymentFilter(unassigned, "Digital")).isTrue()
+    }
+
+    @Test
+    fun `matchesPaymentFilter excludes tab-only rows from Digital`() {
+        val tabMove = txn(accountName = null, kind = TransactionKind.TAB_TRANSFER)
+        assertThat(matchesPaymentFilter(tabMove, PAYMENT_DIGITAL_UNASSIGNED)).isFalse()
+        assertThat(matchesPaymentFilter(tabMove, "Digital (no bank)")).isFalse()
+        assertThat(matchesPaymentFilter(tabMove, "Digital")).isFalse()
     }
 
     @Test

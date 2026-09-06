@@ -165,8 +165,11 @@ class TransactionRepository @Inject constructor(
             tabDao.observeActive(),
             accountDao.observeAll(),
         ) { txns, cats, tabs, accounts ->
-            val me = txns.firstOrNull { it.id == transactionId } ?: return@combine emptyList()
-            val groupId = me.splitGroupId ?: return@combine emptyList()
+            // Group id is the soft-deleted parent id. Accept a child id or the parent id.
+            val me = txns.firstOrNull { it.id == transactionId }
+            val groupId = me?.splitGroupId
+                ?: transactionId.takeIf { id -> txns.any { it.splitGroupId == id } }
+                ?: return@combine emptyList()
             mapTxns(
                 txns.filter { it.splitGroupId == groupId },
                 cats,
@@ -178,11 +181,14 @@ class TransactionRepository @Inject constructor(
     /** Suspend version of [observeSplitGroup] for editor initial load. */
     suspend fun getSplitGroup(transactionId: String): List<Transaction> {
         val me = txnDao.getById(transactionId) ?: return emptyList()
-        val groupId = me.splitGroupId ?: return emptyList()
+        val live = txnDao.getAllNonDeleted()
+        val groupId = me.splitGroupId
+            ?: transactionId.takeIf { id -> live.any { it.splitGroupId == id } }
+            ?: return emptyList()
         val cats = categoryDao.getAll().associate { it.id to it.toDomain() }
         val tabs = tabDao.getAll().associate { it.id to it.name }
         val accounts = accountDao.getAll().associate { it.id to it.name }
-        return txnDao.getAllNonDeleted()
+        return live
             .filter { it.splitGroupId == groupId }
             .map {
                 it.toDomain(
@@ -214,10 +220,8 @@ class TransactionRepository @Inject constructor(
         if (parts.size < 2) {
             return Result.failure(IllegalArgumentException("A split needs at least two parts"))
         }
-        if (parts.any { it.amountPaise <= 0L }) {
-            return Result.failure(IllegalArgumentException("Each part must be greater than zero"))
-        }
-        SplitRules.validateSum(parent.amountPaise, parts.map { it.amountPaise })
+        val parentType = parseTransactionType(parent.type)
+        SplitRules.validateParts(parentType, parent.amountPaise, parts)
             ?.let { return Result.failure(IllegalArgumentException(it)) }
 
         val groupId = parent.id
@@ -254,7 +258,7 @@ class TransactionRepository @Inject constructor(
                 }
                 val child = Transaction(
                     id = UUID.randomUUID().toString(),
-                    type = parseTransactionType(parent.type),
+                    type = part.type,
                     amountPaise = part.amountPaise,
                     currency = parent.currency,
                     occurredAt = parent.occurredAt,
@@ -427,11 +431,8 @@ class TransactionRepository @Inject constructor(
             val id = insertManual(txn.copy(id = groupId), addToTab)
             return@withTransaction id
         }
-        SplitRules.validateSum(txn.amountPaise, parts.map { it.amountPaise })
+        SplitRules.validateParts(txn.type, txn.amountPaise, parts)
             ?.let { throw IllegalArgumentException(it) }
-        if (parts.any { it.amountPaise <= 0L }) {
-            throw IllegalArgumentException("Each part must be greater than zero")
-        }
         val partyBase = txn.counterparty
         val parentLabel = partyBase ?: "transaction"
         val firstId = parts.first().let { firstPart ->
@@ -443,6 +444,7 @@ class TransactionRepository @Inject constructor(
             }
             val child = txn.copy(
                 id = UUID.randomUUID().toString(),
+                type = firstPart.type,
                 amountPaise = firstPart.amountPaise,
                 counterparty = party,
                 categoryId = firstPart.categoryId,
@@ -469,6 +471,7 @@ class TransactionRepository @Inject constructor(
             }
             val child = txn.copy(
                 id = UUID.randomUUID().toString(),
+                type = part.type,
                 amountPaise = part.amountPaise,
                 counterparty = party,
                 categoryId = part.categoryId,
@@ -870,47 +873,39 @@ class TransactionRepository @Inject constructor(
         tabDao.update(tab.copy(name = trimmed))
     }
 
-    /** Current open balance for [tabId]: debits − credits across non-self-transfer rows. */
-    private suspend fun tabBalancePaise(tabId: Long): Long? {
-        val tab = tabDao.getById(tabId) ?: return null
-        val rows = txnDao.getAllForTab(tabId)
-            .asSequence()
-            .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
-        val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
-        val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
-        return debits - credits
-    }
-
-        suspend fun settleTab(tabId: Long, accountId: Long? = null): Boolean {
-        val balance = tabBalancePaise(tabId) ?: return false
-        if (balance == 0L) return false
-        val tab = tabDao.getById(tabId) ?: return false
-        val isCredit = balance > 0L
-        val amount = kotlin.math.abs(balance)
-        val now = System.currentTimeMillis()
-        val id = "settle_" + UUID.randomUUID().toString()
+    /**
+     * Tab-only IOU before money hits an account.
+     *
+     * [youOweThem] true → CREDIT (they covered / you owe more; open balance ↓).
+     * false → DEBIT (you covered for them off-books; open balance ↑).
+     * No [accountId]; excluded from Digital / cashflow via [TransactionKind.TAB_TRANSFER].
+     */
+    suspend fun recordTabOwe(
+        tabId: Long,
+        amountPaise: Long,
+        youOweThem: Boolean = true,
+        note: String? = null,
+        occurredAt: Long = System.currentTimeMillis(),
+    ): String? {
+        if (amountPaise <= 0L) return null
+        if (tabDao.getById(tabId) == null) return null
+        val id = UUID.randomUUID().toString()
+        val defaultNote = if (youOweThem) "They covered" else "You covered"
         val txn = Transaction(
             id = id,
-            type = if (isCredit) TransactionType.CREDIT else TransactionType.DEBIT,
-            amountPaise = amount,
-            occurredAt = now,
+            type = if (youOweThem) TransactionType.CREDIT else TransactionType.DEBIT,
+            amountPaise = amountPaise,
+            occurredAt = occurredAt,
             tabId = tabId,
-            accountId = accountId,
+            accountId = null,
             source = TransactionSource.MANUAL,
-            note = "Settled · ${tab.name}",
+            note = note?.trim()?.takeIf { it.isNotBlank() } ?: defaultNote,
             classificationStatus = ClassificationStatus.CLASSIFIED,
             kind = TransactionKind.TAB_TRANSFER,
+            externalRefId = "tab_owe_$id",
         )
-        val hash = contentHash(
-            txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, "manual-$id",
-        )
-        val entity = txn.copy(contentHash = hash, updatedAt = now, sheetsSynced = false).toEntity()
-        db.withTransaction {
-            txnDao.insert(entity)
-            handleTabOnInsert(entity.id, entity.tabId, entity.type, entity.amountPaise, true, entity.note)
-            enqueueSync(entity.id)
-        }
-        return true
+        insertManual(txn, addToTab = true)
+        return id
     }
 
     /**
