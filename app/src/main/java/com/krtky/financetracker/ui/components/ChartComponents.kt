@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isFinite
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.ui.theme.M3EMotion
+import com.krtky.financetracker.ui.util.FlowSliceCollapse
 import com.krtky.financetracker.ui.util.PieSliceLayout
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.inrCompact
@@ -41,6 +43,9 @@ import kotlin.math.sqrt
 
 /**
  * Category spend pie: multi-segment ring with gaps; optional tap-to-select.
+ *
+ * @param exactProportions when true, skip min-sweep inflation so angles match amounts
+ *   (use after collapsing the long tail into Rest on Home).
  */
 @Composable
 fun CategoryInteractivePieChart(
@@ -52,6 +57,7 @@ fun CategoryInteractivePieChart(
     incomePaise: Long = 0L,
     interactive: Boolean = true,
     compact: Boolean = false,
+    exactProportions: Boolean = false,
     centerTitle: String? = null,
     hidden: Boolean = false,
     onCenterClick: (() -> Unit)? = null,
@@ -64,6 +70,17 @@ fun CategoryInteractivePieChart(
     val muted = scheme.onSurfaceVariant
     val density = LocalDensity.current
     val defaultLabel = centerTitle ?: stringResource(com.krtky.financetracker.R.string.home_spent_label)
+    val restMuted = scheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val fallbackColors = listOf(
+        scheme.primary,
+        scheme.tertiary,
+        scheme.error,
+        scheme.secondary,
+        scheme.primary.copy(alpha = 0.68f),
+        scheme.tertiary.copy(alpha = 0.68f),
+        scheme.error.copy(alpha = 0.68f),
+        scheme.secondary.copy(alpha = 0.68f),
+    )
 
     BoxWithConstraints(
         modifier = if (modifier == Modifier) Modifier.size(size) else modifier,
@@ -98,31 +115,38 @@ fun CategoryInteractivePieChart(
 
         var selectedIndex by remember { mutableStateOf(-1) }
 
-        val colors = listOf(
-            scheme.primary,
-            scheme.tertiary,
-            scheme.error,
-            scheme.secondary,
-            scheme.primary.copy(alpha = 0.68f),
-            scheme.tertiary.copy(alpha = 0.68f),
-            scheme.error.copy(alpha = 0.68f),
-            scheme.secondary.copy(alpha = 0.68f),
-        )
-
         val validSpends = categorySpends.filter { it.totalPaise > 0 }
+        val colors = validSpends.mapIndexed { index, spend ->
+            when {
+                spend.categoryName.equals(FlowSliceCollapse.REST_NAME, true) -> restMuted
+                spend.color != null -> Color(spend.color.toInt())
+                else -> fallbackColors[index % fallbackColors.size]
+            }
+        }
         val calculatedTotal = validSpends.sumOf { it.totalPaise }
         val finalTotal = if (calculatedTotal > 0) calculatedTotal else totalExpense
-        val sliceArcs = remember(validSpends, finalTotal, gapDeg, strokeWidthPx, chartSizePx) {
+        val sliceArcs = remember(
+            validSpends,
+            finalTotal,
+            gapDeg,
+            strokeWidthPx,
+            chartSizePx,
+            exactProportions,
+        ) {
             if (validSpends.isEmpty() || finalTotal <= 0L) {
                 emptyList()
             } else {
                 val n = validSpends.size
                 val usable = (360f - gapDeg * n).coerceAtLeast(1f)
-                // Angular width of the round cap ≈ stroke / radius, so the floor
-                // is at least a visible "bead" on the ring (~3% of a full pie).
-                val capDeg = ((strokeWidthPx / (chartSizePx / 2f).coerceAtLeast(1f))
-                    * (180f / Math.PI.toFloat())).coerceIn(8f, 16f)
-                val minSweep = minOf(12f, capDeg, usable / n)
+                val minSweep = if (exactProportions) {
+                    0f
+                } else {
+                    // Angular width of the round cap ≈ stroke / radius, so the floor
+                    // is at least a visible "bead" on the ring (~3% of a full pie).
+                    val capDeg = ((strokeWidthPx / (chartSizePx / 2f).coerceAtLeast(1f))
+                        * (180f / Math.PI.toFloat())).coerceIn(8f, 16f)
+                    minOf(12f, capDeg, usable / n)
+                }
                 PieSliceLayout.arcs(
                     weights = validSpends.map { it.totalPaise.toFloat() },
                     gapDeg = gapDeg,

@@ -21,11 +21,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +36,9 @@ import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.CategorySpend
 import com.krtky.financetracker.domain.model.SourceSpend
 import com.krtky.financetracker.ui.components.CategoryInteractivePieChart
+import com.krtky.financetracker.ui.util.FlowSlice
+import com.krtky.financetracker.ui.util.FlowSliceCollapse
+import com.krtky.financetracker.ui.util.FlowSliceColors
 import com.krtky.financetracker.ui.util.inr
 import kotlin.math.roundToInt
 
@@ -56,15 +61,49 @@ internal fun HomeFlowBreakdownSection(
 ) {
     val scheme = MaterialTheme.colorScheme
     var cut by rememberSaveable(title) { mutableStateOf(FlowCut.Category) }
-    val slices = when (cut) {
-        FlowCut.Category -> byCategory.map { it.categoryName to it.totalPaise }
-        FlowCut.Source -> bySource.map { it.accountName to it.totalPaise }
+    val collapsed = remember(cut, byCategory, bySource) {
+        val rawSlices = when (cut) {
+            FlowCut.Category -> byCategory.map {
+                FlowSlice(
+                    id = it.categoryId,
+                    name = it.categoryName,
+                    totalPaise = it.totalPaise,
+                    colorArgb = it.color,
+                )
+            }
+            FlowCut.Source -> bySource.map {
+                FlowSlice(
+                    id = it.accountId,
+                    name = it.accountName,
+                    totalPaise = it.totalPaise,
+                    colorArgb = FlowSliceColors.forSourceKey(it.accountName),
+                )
+            }
+        }
+        FlowSliceCollapse.collapse(rawSlices, coverage = 0.80, maxNamed = 4)
     }
-    val pieSlices = slices.map { (name, paise) ->
-        CategorySpend(categoryId = null, categoryName = name, totalPaise = paise)
+    val pieSlices = collapsed.map { slice ->
+        CategorySpend(
+            categoryId = slice.id,
+            categoryName = slice.name,
+            totalPaise = slice.totalPaise,
+            color = slice.colorArgb,
+        )
     }
     val onOpenList = if (cut == FlowCut.Category) onOpenCategoryList else onOpenSourceList
-    val top = slices.filter { it.second > 0 }.take(5)
+    val restMuted = scheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val legendColors = collapsed.mapIndexed { index, slice ->
+        when {
+            slice.isRest -> restMuted
+            slice.colorArgb != null -> Color(slice.colorArgb.toInt())
+            else -> listOf(
+                scheme.primary,
+                scheme.tertiary,
+                scheme.secondary,
+                scheme.error,
+            )[index % 4]
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -127,6 +166,7 @@ internal fun HomeFlowBreakdownSection(
                     incomePaise = 0L,
                     goalLabel = monthLabel,
                     compact = true,
+                    exactProportions = true,
                     centerTitle = title,
                     hidden = hidden,
                     interactive = true,
@@ -155,13 +195,14 @@ internal fun HomeFlowBreakdownSection(
                         centerTitle = title,
                         hidden = hidden,
                         interactive = false,
+                        exactProportions = true,
                     )
                     FlowSliceList(
-                        top = top,
+                        slices = collapsed,
+                        colors = legendColors,
                         totalPaise = totalPaise,
                         hidden = hidden,
                         emptyLabel = emptyLabel,
-                        moreCount = (slices.size - top.size).coerceAtLeast(0),
                         compact = false,
                         modifier = Modifier.weight(1f),
                     )
@@ -223,36 +264,29 @@ private fun FlowCutTabs(
 
 @Composable
 private fun FlowSliceList(
-    top: List<Pair<String, Long>>,
+    slices: List<FlowSlice>,
+    colors: List<Color>,
     totalPaise: Long,
     hidden: Boolean,
     emptyLabel: String,
-    moreCount: Int,
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val pieColors = listOf(
-        scheme.primary,
-        scheme.tertiary,
-        scheme.secondary,
-        scheme.error,
-        scheme.primary.copy(alpha = 0.55f),
-    )
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp),
     ) {
-        if (top.isEmpty()) {
+        if (slices.isEmpty()) {
             Text(
                 emptyLabel,
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
             )
         } else {
-            top.forEachIndexed { index, (name, paise) ->
+            slices.forEachIndexed { index, slice ->
                 val pct = if (totalPaise > 0) {
-                    (paise.toFloat() / totalPaise.toFloat() * 100f).roundToInt()
+                    (slice.totalPaise.toFloat() / totalPaise.toFloat() * 100f).roundToInt()
                 } else {
                     0
                 }
@@ -265,10 +299,10 @@ private fun FlowSliceList(
                         Modifier
                             .size(if (compact) 7.dp else 8.dp)
                             .clip(CircleShape)
-                            .background(pieColors.getOrElse(index) { scheme.primary }),
+                            .background(colors.getOrElse(index) { scheme.primary }),
                     )
                     Text(
-                        name,
+                        slice.name,
                         style = if (compact) {
                             MaterialTheme.typography.labelMedium
                         } else {
@@ -277,12 +311,13 @@ private fun FlowSliceList(
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        color = if (slice.isRest) scheme.onSurfaceVariant else scheme.onSurface,
                     )
                     Text(
                         if (hidden) {
                             "••••"
                         } else if (compact) {
-                            paise.inr()
+                            slice.totalPaise.inr()
                         } else {
                             "$pct%"
                         },
@@ -292,13 +327,6 @@ private fun FlowSliceList(
                         maxLines = 1,
                     )
                 }
-            }
-            if (moreCount > 0) {
-                Text(
-                    "+$moreCount more",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.primary,
-                )
             }
         }
     }

@@ -89,6 +89,8 @@ data class AccountRoute(
     val name: String,
     /** `DEBIT`, `CREDIT`, or empty for all types. */
     val type: String = "",
+    val fromMillis: Long = 0L,
+    val toMillis: Long = 0L,
 )
 
 const val UNASSIGNED_DIGITAL_ACCOUNT_ID = -1L

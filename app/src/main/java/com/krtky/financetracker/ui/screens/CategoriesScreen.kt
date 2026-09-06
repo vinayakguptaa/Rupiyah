@@ -4,12 +4,12 @@ import androidx.compose.runtime.Composable
 import com.krtky.financetracker.domain.model.TransactionType
 
 /**
- * Legacy entry: this month’s expenses by category.
+ * Legacy entry: expenses by category (month-steppable via Month Flow).
  */
 @Composable
 fun CategoriesScreen(
     onBack: () -> Unit,
-    onOpenCategory: (categoryId: Long?, categoryName: String) -> Unit,
+    onOpenCategory: (categoryId: Long?, categoryName: String, fromMillis: Long, toMillis: Long) -> Unit,
     onAddTransaction: () -> Unit = {},
 ) {
     MonthFlowScreen(
@@ -17,7 +17,7 @@ fun CategoriesScreen(
         group = MonthFlowGroup.Category,
         onBack = onBack,
         onOpenCategory = onOpenCategory,
-        onOpenSource = { _, _ -> },
+        onOpenSource = { _, _, _, _ -> },
         onAddTransaction = onAddTransaction,
     )
 }

@@ -14,20 +14,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -40,25 +44,35 @@ import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.viewmodel.MonthFlowViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 enum class MonthFlowGroup { Category, Source }
 
 /**
- * This-month expenses or income, cut by category or by source (account).
+ * Expenses / income / investments for a calendar month, cut by category or source.
+ * Home always opens the current month; use the chevrons to step backward.
  */
 @Composable
 fun MonthFlowScreen(
     direction: TransactionType,
     group: MonthFlowGroup,
     onBack: () -> Unit,
-    onOpenCategory: (categoryId: Long?, categoryName: String) -> Unit,
-    onOpenSource: (accountId: Long?, accountName: String) -> Unit,
+    onOpenCategory: (categoryId: Long?, categoryName: String, fromMillis: Long, toMillis: Long) -> Unit,
+    onOpenSource: (accountId: Long?, accountName: String, fromMillis: Long, toMillis: Long) -> Unit,
     onAddTransaction: () -> Unit = {},
     investment: Boolean = false,
     vm: MonthFlowViewModel = hiltViewModel(),
 ) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
+    val selectedMonth by vm.selectedMonthMillis.collectAsStateWithLifecycle()
+    val isCurrentMonth by vm.isCurrentMonth.collectAsStateWithLifecycle()
+    val bounds by vm.monthBounds.collectAsStateWithLifecycle()
+    val monthLabel = remember(selectedMonth) {
+        SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date(selectedMonth))
+    }
     val isExpense = !investment && direction == TransactionType.DEBIT
     val rows = when {
         investment && group == MonthFlowGroup.Category ->
@@ -87,9 +101,8 @@ fun MonthFlowScreen(
         !isExpense && group == MonthFlowGroup.Category -> "Income by category"
         else -> "Income by source"
     }
-    val subtitle = "This month"
     val totalLabel = when {
-        investment -> "This month"
+        investment -> monthLabel
         isExpense -> "Total spent"
         else -> "Total received"
     }
@@ -99,6 +112,7 @@ fun MonthFlowScreen(
         if (rows.size == 1) "source" else "sources"
     }
     val scheme = MaterialTheme.colorScheme
+    val (fromMillis, toMillis) = bounds
 
     LazyColumn(
         modifier = Modifier
@@ -115,8 +129,16 @@ fun MonthFlowScreen(
         item {
             StackTopBar(
                 title = title,
-                subtitle = subtitle,
+                subtitle = null,
                 onBack = onBack,
+            )
+        }
+        item {
+            MonthStepper(
+                label = monthLabel,
+                canGoForward = !isCurrentMonth,
+                onPrevious = { vm.shiftMonth(-1) },
+                onNext = { vm.shiftMonth(1) },
             )
         }
         item {
@@ -173,6 +195,7 @@ fun MonthFlowScreen(
                     name = row.name,
                     totalPaise = row.totalPaise,
                     periodTotal = total,
+                    periodLabel = monthLabel,
                     icon = if (group == MonthFlowGroup.Category) {
                         CategoryIcons.iconFor(null, row.name)
                     } else {
@@ -180,13 +203,52 @@ fun MonthFlowScreen(
                     },
                     onClick = {
                         if (group == MonthFlowGroup.Category) {
-                            onOpenCategory(row.id, row.name)
+                            onOpenCategory(row.id, row.name, fromMillis, toMillis)
                         } else {
-                            onOpenSource(row.id, row.name)
+                            onOpenSource(row.id, row.name, fromMillis, toMillis)
                         }
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun MonthStepper(
+    label: String,
+    canGoForward: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        IconButton(onClick = onPrevious) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Previous month",
+                tint = scheme.onSurface,
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconButton(onClick = onNext, enabled = canGoForward) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Next month",
+                tint = if (canGoForward) scheme.onSurface else scheme.onSurface.copy(alpha = 0.32f),
+            )
         }
     }
 }
@@ -202,6 +264,7 @@ private fun FlowSliceRow(
     name: String,
     totalPaise: Long,
     periodTotal: Long,
+    periodLabel: String,
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
@@ -239,7 +302,7 @@ private fun FlowSliceRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "$pct% of this month",
+                    "$pct% of $periodLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onSurfaceVariant,
                 )

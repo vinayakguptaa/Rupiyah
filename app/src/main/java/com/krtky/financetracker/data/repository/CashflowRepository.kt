@@ -119,6 +119,7 @@ class CashflowRepository @Inject constructor(
                     categoryId = catId,
                     categoryName = categoryName(catId),
                     totalPaise = group.sumOf { it.amountPaise },
+                    color = catId?.let { cats[it]?.color },
                 )
             }
             .sortedByDescending { it.totalPaise }
@@ -136,6 +137,7 @@ class CashflowRepository @Inject constructor(
         val investedPaise = investDebits.sumOf { it.amountPaise }
         val redeemedPaise = investCredits.sumOf { it.amountPaise }
         val investmentCatId = investmentIds.firstOrNull()
+        val investmentColor = investmentCatId?.let { cats[it]?.color }
         val investmentByCategory = buildList {
             if (investedPaise > 0L) {
                 add(
@@ -143,6 +145,7 @@ class CashflowRepository @Inject constructor(
                         categoryId = investmentCatId,
                         categoryName = "Investment",
                         totalPaise = investedPaise,
+                        color = investmentColor,
                     ),
                 )
             }
@@ -152,6 +155,7 @@ class CashflowRepository @Inject constructor(
                         categoryId = investmentCatId,
                         categoryName = "Redeemed",
                         totalPaise = redeemedPaise,
+                        color = investmentColor,
                     ),
                 )
             }

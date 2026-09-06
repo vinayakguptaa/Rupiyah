@@ -68,10 +68,13 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
     SettingsBlock(
         title = "Save or restore your data",
         helpTitle = "Backup & restore",
-        helpMessage = "Export creates a file with your transactions, categories, tabs, and settings. Keep it somewhere safe (like Google Drive). Import puts that data back. The file may include API keys if you saved any.",
+        helpMessage = "JSON backup includes transactions, categories, tabs, and settings (and optionally API keys). " +
+            "Activity CSV from the Activity download button can also be restored here — it merges by Transaction ID " +
+            "and creates missing categories/tabs/accounts. JSON replace is full wipe-and-restore; CSV is a merge.",
     ) {
         Text(
-            "Use Export to make a safety copy. Use Import only when you want to restore an old copy.",
+            "Save a JSON backup for a full safety copy. You can also restore an Activity CSV export " +
+                "(Downloads → activity_….csv) — that merges transactions without wiping settings.",
             style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,
         )
@@ -85,10 +88,20 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
                 shape = shapes.large,
             ) { Text("Save backup file") }
             OutlinedButton(
-                onClick = { importLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                onClick = {
+                    importLauncher.launch(
+                        arrayOf(
+                            "application/json",
+                            "text/csv",
+                            "text/comma-separated-values",
+                            "text/*",
+                            "*/*",
+                        ),
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = shapes.large,
-            ) { Text("Restore from backup file") }
+            ) { Text("Restore from backup / Activity CSV") }
         }
     }
 

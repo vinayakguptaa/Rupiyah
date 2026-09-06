@@ -222,6 +222,8 @@ data class CategorySpend(
     val categoryId: Long?,
     val categoryName: String,
     val totalPaise: Long,
+    /** ARGB from the category row; null if unknown / uncategorized. */
+    val color: Long? = null,
 )
 
 /** This-month flow grouped by account (source). */

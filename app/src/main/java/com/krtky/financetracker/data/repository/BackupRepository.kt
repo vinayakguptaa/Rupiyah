@@ -2,6 +2,8 @@ package com.krtky.financetracker.data.repository
 
 import android.content.Context
 import android.net.Uri
+import com.krtky.financetracker.data.importcsv.ActivityCsvParser
+import com.krtky.financetracker.data.importcsv.ActivityCsvRow
 import com.krtky.financetracker.data.local.db.AccountEntity
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.CategoryEntity
@@ -10,6 +12,8 @@ import com.krtky.financetracker.data.local.db.TabLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
+import com.krtky.financetracker.domain.model.AccountKind
+import com.krtky.financetracker.domain.model.ClassificationStatus
 import com.krtky.financetracker.ui.theme.ColorSchemeStyle
 import com.krtky.financetracker.ui.theme.ThemeMode
 import com.krtky.financetracker.ui.theme.ThemePreset
@@ -198,6 +202,18 @@ class BackupRepository @Inject constructor(
                 val content = context.contentResolver.openInputStream(uri)?.use { isStream ->
                     isStream.readBytes().toString(Charsets.UTF_8)
                 } ?: return@withContext Result.failure(IllegalStateException("Failed to read file"))
+
+                val trimmed = content.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+                if (ActivityCsvParser.looksLikeActivityCsv(trimmed)) {
+                    return@withContext importActivityCsv(trimmed)
+                }
+                if (!trimmed.startsWith("{")) {
+                    return@withContext Result.failure(
+                        IllegalStateException(
+                            "Unrecognized backup. Use a Rupiyah JSON backup or an Activity CSV export.",
+                        ),
+                    )
+                }
 
                 val jsonObj = Json.parseToJsonElement(content).jsonObject
 
@@ -430,6 +446,201 @@ class BackupRepository @Inject constructor(
                 Result.failure(e)
             }
         }
+    }
+
+    /**
+     * Merge an Activity CSV export by Transaction ID.
+     * Creates missing categories / tabs / accounts by name. Does **not** wipe
+     * settings (unlike JSON restore). Safe for the legacy shifted-column exports.
+     */
+    private suspend fun importActivityCsv(content: String): Result<String> {
+        val parsed = ActivityCsvParser.parse(content)
+        if (parsed.rows.isEmpty()) {
+            val detail = parsed.errors.take(3).joinToString("; ").ifBlank { "no rows" }
+            return Result.failure(IllegalStateException("No usable Activity CSV rows ($detail)"))
+        }
+
+        val categoryByName = db.categoryDao().getAll()
+            .associateBy { it.name.trim().lowercase() }
+            .toMutableMap()
+        val tabByName = db.tabDao().getAll()
+            .associateBy { it.name.trim().lowercase() }
+            .toMutableMap()
+        val accountByName = db.accountDao().getAll()
+            .associateBy { it.name.trim().lowercase() }
+            .toMutableMap()
+
+        var inserted = 0
+        var updated = 0
+        var failed = 0
+        val now = System.currentTimeMillis()
+
+        for (row in parsed.rows) {
+            try {
+                val categoryId = resolveCategoryId(row.categoryName, categoryByName)
+                val tabId = resolveTabId(row.tabName, tabByName)
+                val accountId = resolveAccountId(row.accountName, row.isCash, accountByName)
+                val existing = db.transactionDao().getById(row.id)
+                val entity = toRestoredEntity(row, existing, categoryId, tabId, accountId, now)
+                if (existing == null) {
+                    val rowId = db.transactionDao().insert(entity)
+                    if (rowId == -1L) {
+                        failed++
+                    } else {
+                        inserted++
+                    }
+                } else {
+                    db.transactionDao().update(entity)
+                    updated++
+                }
+            } catch (_: Exception) {
+                failed++
+            }
+        }
+
+        transactionRepository.repairAllTabLedgers()
+        val activeBanks = db.accountDao().getAll()
+            .filter { !it.archived && !it.name.equals("Cash", true) }
+            .sortedBy { it.sortOrder }
+            .map { it.name }
+        userPreferences.setBankAccounts(activeBanks.joinToString(","))
+
+        val legacyNote = if (parsed.usedLegacyShiftedLayout) {
+            " (fixed legacy column shift)"
+        } else {
+            ""
+        }
+        val errorNote = if (parsed.errors.isNotEmpty()) {
+            "; ${parsed.errors.size} row(s) skipped"
+        } else {
+            ""
+        }
+        return Result.success(
+            "Activity CSV$legacyNote: $inserted new, $updated updated" +
+                (if (failed > 0) ", $failed failed" else "") +
+                errorNote,
+        )
+    }
+
+    private suspend fun resolveCategoryId(
+        name: String?,
+        cache: MutableMap<String, CategoryEntity>,
+    ): Long? {
+        val trimmed = name?.trim().orEmpty()
+        if (trimmed.isBlank()) return null
+        val key = trimmed.lowercase()
+        cache[key]?.let { return it.id }
+        val id = db.categoryDao().upsert(
+            CategoryEntity(
+                name = trimmed,
+                icon = "category",
+                color = 0xFF7F8C8D,
+                sortOrder = (cache.values.maxOfOrNull { it.sortOrder } ?: 0) + 1,
+                isSystem = false,
+                isQuickAction = false,
+            ),
+        )
+        val stored = db.categoryDao().getById(id) ?: CategoryEntity(id = id, name = trimmed)
+        cache[key] = stored
+        return stored.id
+    }
+
+    private suspend fun resolveTabId(
+        name: String?,
+        cache: MutableMap<String, TabEntity>,
+    ): Long? {
+        val trimmed = name?.trim().orEmpty()
+        if (trimmed.isBlank()) return null
+        val key = trimmed.lowercase()
+        cache[key]?.let { return it.id }
+        val id = db.tabDao().upsert(TabEntity(name = trimmed))
+        val stored = db.tabDao().getById(id) ?: TabEntity(id = id, name = trimmed)
+        cache[key] = stored
+        return stored.id
+    }
+
+    private suspend fun resolveAccountId(
+        name: String?,
+        isCash: Boolean,
+        cache: MutableMap<String, AccountEntity>,
+    ): Long? {
+        val trimmed = name?.trim().orEmpty().ifBlank { if (isCash) "Cash" else "" }
+        if (trimmed.isBlank()) return null
+        val key = trimmed.lowercase()
+        cache[key]?.let { existing ->
+            if (existing.archived) {
+                db.accountDao().update(existing.copy(archived = false))
+                cache[key] = existing.copy(archived = false)
+            }
+            return existing.id
+        }
+        val kind = when {
+            trimmed.equals("Cash", true) -> AccountKind.CASH.name
+            trimmed.contains("card", true) || trimmed.contains("onecard", true) ->
+                AccountKind.CARD.name
+            else -> AccountKind.BANK.name
+        }
+        val id = db.accountDao().upsert(
+            AccountEntity(
+                name = trimmed,
+                kind = kind,
+                sortOrder = if (trimmed.equals("Cash", true)) 0 else 50,
+            ),
+        )
+        val stored = db.accountDao().getById(id)
+            ?: AccountEntity(id = id, name = trimmed, kind = kind)
+        cache[key] = stored
+        return stored.id
+    }
+
+    private fun toRestoredEntity(
+        row: ActivityCsvRow,
+        existing: TransactionEntity?,
+        categoryId: Long?,
+        tabId: Long?,
+        accountId: Long?,
+        now: Long,
+    ): TransactionEntity {
+        val classified = when {
+            categoryId != null -> ClassificationStatus.CLASSIFIED.name
+            existing != null -> existing.classificationStatus
+            else -> ClassificationStatus.PENDING.name
+        }
+        return TransactionEntity(
+            id = row.id,
+            type = row.type.name,
+            amountPaise = row.amountPaise,
+            currency = existing?.currency ?: "INR",
+            occurredAt = row.occurredAt,
+            recordedAt = existing?.recordedAt ?: now,
+            counterparty = row.name,
+            categoryId = categoryId,
+            tabId = tabId,
+            accountId = accountId,
+            source = row.source.name,
+            note = row.note,
+            isCash = row.isCash,
+            classificationStatus = classified,
+            isSkipped = existing?.isSkipped ?: false,
+            kind = row.kind.name,
+            transferGroupId = row.transferGroupId ?: existing?.transferGroupId,
+            splitGroupId = row.splitGroupId ?: existing?.splitGroupId,
+            rawDescription = existing?.rawDescription,
+            classificationNotifiedAt = existing?.classificationNotifiedAt,
+            latitude = existing?.latitude,
+            longitude = existing?.longitude,
+            placeName = row.placeName ?: existing?.placeName,
+            locationAccuracy = existing?.locationAccuracy,
+            locationMatchedAt = existing?.locationMatchedAt,
+            smsMessageId = existing?.smsMessageId,
+            externalRefId = existing?.externalRefId,
+            contentHash = existing?.contentHash ?: "activity-csv-${row.id}",
+            sheetsSynced = false,
+            deletedAt = null,
+            updatedAt = now,
+            version = (existing?.version ?: 0) + 1,
+            receiptUri = existing?.receiptUri,
+        )
     }
 
     private fun normalizeDirection(raw: String?): String = when (raw?.uppercase()) {

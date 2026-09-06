@@ -58,11 +58,16 @@ fun AccountDetailScreen(
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit,
     initialType: TransactionType? = null,
+    initialFromMillis: Long = 0L,
+    initialToMillis: Long = 0L,
     vm: AccountDetailViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(accountId, accountName, initialType) {
+    LaunchedEffect(accountId, accountName, initialType, initialFromMillis, initialToMillis) {
         vm.load(accountId, accountName)
         vm.setType(initialType)
+        if (initialFromMillis > 0L && initialToMillis > 0L) {
+            vm.setCustomRange(initialFromMillis, initialToMillis)
+        }
     }
     val txns by vm.transactions.collectAsStateWithLifecycle()
     val net by vm.netPaise.collectAsStateWithLifecycle()

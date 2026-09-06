@@ -435,6 +435,8 @@ class MainActivity : ComponentActivity() {
                                     onBack = { nav.popBackStack() },
                                     onOpenTxn = { nav.navigate(TxnRoute(it)) },
                                     initialType = initialType,
+                                    initialFromMillis = args.fromMillis,
+                                    initialToMillis = args.toMillis,
                                 )
                             }
                             composable<CsvImportRoute> { entry ->
@@ -450,16 +452,18 @@ class MainActivity : ComponentActivity() {
                                     direction = TransactionType.DEBIT,
                                     group = MonthFlowGroup.Category,
                                     onBack = { nav.popBackStack() },
-                                    onOpenCategory = { id, name ->
+                                    onOpenCategory = { id, name, from, to ->
                                         nav.navigate(
                                             CategoryRoute(
                                                 id = id?.toString() ?: "none",
                                                 name = name.ifBlank { "Category" },
                                                 type = TransactionType.DEBIT.name,
+                                                fromMillis = from,
+                                                toMillis = to,
                                             ),
                                         )
                                     },
-                                    onOpenSource = { _, _ -> },
+                                    onOpenSource = { _, _, _, _ -> },
                                     onAddTransaction = { nav.navigate(AddCashRoute()) },
                                 )
                             }
@@ -483,7 +487,7 @@ class MainActivity : ComponentActivity() {
                                     group = group,
                                     investment = investment,
                                     onBack = { nav.popBackStack() },
-                                    onOpenCategory = { id, name ->
+                                    onOpenCategory = { id, name, from, to ->
                                         val type = when {
                                             investment && name.equals("Redeemed", true) ->
                                                 TransactionType.CREDIT.name
@@ -499,15 +503,19 @@ class MainActivity : ComponentActivity() {
                                                     name.ifBlank { "Category" }
                                                 },
                                                 type = type,
+                                                fromMillis = from,
+                                                toMillis = to,
                                             ),
                                         )
                                     },
-                                    onOpenSource = { id, name ->
+                                    onOpenSource = { id, name, from, to ->
                                         nav.navigate(
                                             AccountRoute(
                                                 id = id ?: UNASSIGNED_DIGITAL_ACCOUNT_ID,
                                                 name = name.ifBlank { "Digital" },
                                                 type = if (investment) "" else direction.name,
+                                                fromMillis = from,
+                                                toMillis = to,
                                             ),
                                         )
                                     },

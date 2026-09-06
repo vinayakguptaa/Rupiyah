@@ -15,6 +15,33 @@ import java.util.Date
 import java.util.Locale
 
 /**
+ * Activity / account / tab CSV export format.
+ *
+ * Readable in Excel and round-trippable via Settings → Backup restore.
+ * UTF-8 with BOM so Excel on Windows does not mojibake notes (e.g. `·`).
+ */
+object ActivityCsvFormat {
+    val HEADERS: List<String> = listOf(
+        "Date",
+        "Time",
+        "Type",
+        "Amount (INR)",
+        "Name",
+        "Category",
+        "Tab",
+        "Account",
+        "Cash vs Digital",
+        "Note",
+        "Place",
+        "Source",
+        "Kind",
+        "Split Group ID",
+        "Transfer Group ID",
+        "Transaction ID",
+    )
+}
+
+/**
  * Build a CSV of the **currently filtered** [transactions] and save it to the
  * system Downloads folder (not a share sheet).
  *
@@ -30,41 +57,12 @@ fun downloadTransactionsCsv(
         return Result.failure(IllegalStateException("No transactions"))
     }
 
-    val df = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    val tf = SimpleDateFormat("HH:mm:ss", Locale.US)
     val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
     val safePrefix = fileNamePrefix.replace(Regex("[^A-Za-z0-9_-]"), "_").take(40)
     val fileName = "${safePrefix}_$stamp.csv"
-
-    val header = listOf(
-        "Date", "Time", "Type", "Amount (INR)", "Name", "Counterparty",
-        "Category", "Tab", "Account", "Cash vs Digital", "Note",
-        "Place", "Source", "Transaction ID",
-    )
-    val rows = transactions.map { t ->
-        listOf(
-            df.format(Date(t.occurredAt)),
-            tf.format(Date(t.occurredAt)),
-            t.type.name,
-            String.format(Locale.US, "%.2f", t.amountPaise / 100.0),
-            t.counterparty.orEmpty(),
-            t.categoryName.orEmpty(),
-            t.tabName.orEmpty(),
-            t.accountName.orEmpty(),
-            if (t.isCash) "Cash" else "Digital",
-            t.note.orEmpty(),
-            t.placeName.orEmpty(),
-            t.source.name,
-            t.id,
-        )
-    }
-    val csv = buildString {
-        appendLine(header.joinToString(",") { csvEscape(it) })
-        rows.forEach { row ->
-            appendLine(row.joinToString(",") { csvEscape(it) })
-        }
-    }
-    val bytes = csv.toByteArray(Charsets.UTF_8)
+    val csv = buildTransactionsCsv(transactions)
+    // BOM helps Excel pick UTF-8 instead of a Windows ANSI code page.
+    val bytes = ("\uFEFF$csv").toByteArray(Charsets.UTF_8)
 
     return runCatching {
         val savedAs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -81,6 +79,38 @@ fun downloadTransactionsCsv(
             "Download failed: ${it.message ?: "unknown error"}",
             Toast.LENGTH_LONG,
         ).show()
+    }
+}
+
+/** Pure CSV body (no BOM). Prefer [downloadTransactionsCsv] for saving. */
+fun buildTransactionsCsv(transactions: List<Transaction>): String {
+    val df = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val tf = SimpleDateFormat("HH:mm:ss", Locale.US)
+    val rows = transactions.map { t ->
+        listOf(
+            df.format(Date(t.occurredAt)),
+            tf.format(Date(t.occurredAt)),
+            t.type.name,
+            String.format(Locale.US, "%.2f", t.amountPaise / 100.0),
+            t.counterparty.orEmpty().trim(),
+            t.categoryName.orEmpty(),
+            t.tabName.orEmpty(),
+            t.accountName.orEmpty(),
+            if (t.isCash) "Cash" else "Digital",
+            t.note.orEmpty(),
+            t.placeName.orEmpty(),
+            t.source.name,
+            t.kind.name,
+            t.splitGroupId.orEmpty(),
+            t.transferGroupId.orEmpty(),
+            t.id,
+        )
+    }
+    return buildString {
+        appendLine(ActivityCsvFormat.HEADERS.joinToString(",") { csvEscape(it) })
+        rows.forEach { row ->
+            appendLine(row.joinToString(",") { csvEscape(it) })
+        }
     }
 }
 
@@ -124,7 +154,7 @@ private fun writeToLegacyDownloads(fileName: String, bytes: ByteArray): String {
     return fileName
 }
 
-private fun csvEscape(value: String): String {
+internal fun csvEscape(value: String): String {
     val needsQuotes = value.contains(',') || value.contains('"') ||
         value.contains('\n') || value.contains('\r')
     val escaped = value.replace("\"", "\"\"")
