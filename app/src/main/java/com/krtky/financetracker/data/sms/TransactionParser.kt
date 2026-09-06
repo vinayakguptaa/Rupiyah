@@ -56,6 +56,8 @@ class TransactionParser @Inject constructor(
     private val nonMovement = Regex(
         """\b(
             bill\s+(is\s+)?(generated|ready|due)|
+            (your\s+)?(credit\s+card\s+)?bill\b|
+            bill\s+of\s+rs|
             payment\s+due|
             due\s+(on|by|date|amount)|
             outstanding(\s+amount)?|
@@ -71,7 +73,9 @@ class TransactionParser @Inject constructor(
             request\s+to\s+pay|
             collect\s+payment|
             unpaid|
-            overdue
+            overdue|
+            scheduled\s+(for|on)|
+            will\s+be\s+(debited|charged)
         )\b""".trimIndent().replace("\n", ""),
         RegexOption.IGNORE_CASE,
     )
@@ -96,13 +100,52 @@ class TransactionParser @Inject constructor(
 
     /** Same pipeline as SMS: deterministic + LLM merge. For pasted bank notes or free text. */
     suspend fun parsePastedText(body: String, receivedAt: Long = System.currentTimeMillis()): Transaction? {
+        return parsePastedMovement(body, receivedAt)?.transaction
+    }
+
+    /**
+     * Paste/share review path: one completed movement, plus optional self-transfer
+     * account pair from LLM hints or text heuristics.
+     */
+    suspend fun parsePastedMovement(
+        body: String,
+        receivedAt: Long = System.currentTimeMillis(),
+    ): ParsedMovement? {
         val trimmed = body.trim()
         if (trimmed.isBlank()) return null
-        return parseSource(
-            RawSms("paste-$receivedAt-${trimmed.hashCode()}", "paste", trimmed, receivedAt),
-            TransactionSource.PASTE,
+        val sms = RawSms("paste-$receivedAt-${trimmed.hashCode()}", "paste", trimmed, receivedAt)
+        val outcome = parseSourceDetailed(sms, TransactionSource.PASTE) ?: return null
+        val accounts = accountRepository.observeActive().first()
+        val heuristic = inferSelfTransfer(trimmed, accounts)
+        val llmPair = outcome.selfTransfer?.let { (fromName, toName) ->
+            val from = accounts.firstOrNull { it.name.equals(fromName, true) }
+                ?: accounts.firstOrNull {
+                    it.name.contains(fromName, true) || fromName.contains(it.name, true)
+                }
+            val to = accounts.firstOrNull { it.name.equals(toName, true) }
+                ?: accounts.firstOrNull {
+                    it.name.contains(toName, true) || toName.contains(it.name, true)
+                }
+            if (from != null && to != null && from.id != to.id) from.id to to.id else null
+        }
+        return ParsedMovement(
+            transaction = outcome.transaction,
+            transferFromAccountId = llmPair?.first ?: heuristic?.first,
+            transferToAccountId = llmPair?.second ?: heuristic?.second,
         )
     }
+
+    data class ParsedMovement(
+        val transaction: Transaction,
+        val transferFromAccountId: Long? = null,
+        val transferToAccountId: Long? = null,
+    )
+
+    private data class ParseOutcome(
+        val transaction: Transaction,
+        /** Source/destination account labels when LLM marks a self-transfer. */
+        val selfTransfer: Pair<String, String>? = null,
+    )
 
     /**
      * Self-transfer when the note names two of the user's accounts
@@ -140,8 +183,17 @@ class TransactionParser @Inject constructor(
         return ordered[0].id to ordered[1].id
     }
 
-    private suspend fun parseSource(sms: RawSms, source: TransactionSource): Transaction? {
+    private suspend fun parseSource(sms: RawSms, source: TransactionSource): Transaction? =
+        parseSourceDetailed(sms, source)?.transaction
+
+    private suspend fun parseSourceDetailed(
+        sms: RawSms,
+        source: TransactionSource,
+    ): ParseOutcome? {
         val text = SmsRedactor.stripHtml(sms.body)
+        // Bills / dues / reminders never become transactions — even if an amount is present.
+        if (looksLikeNonMovement(text)) return null
+
         val categories = categoryRepository.getAll()
         // Prefer live active accounts; fall back to prefs mirror.
         val banks = accountRepository.activeBankNames()
@@ -150,9 +202,6 @@ class TransactionParser @Inject constructor(
             .takeIf { name -> banks.any { it.equals(name, true) } || name.equals("Cash", true) }
             .orEmpty()
             .ifBlank { banks.firstOrNull().orEmpty() }
-        val deterministic = parseDeterministic(
-            text, sms, source, categories, banks, defaultDigital,
-        )
 
         val extracted = if (llmClient.isConfigured()) {
             val redacted = SmsRedactor.redact(text)
@@ -165,12 +214,38 @@ class TransactionParser @Inject constructor(
                     banks = banks,
                 )
             }.getOrNull()
-        } else null
+        } else {
+            null
+        }
 
+        // When AI explicitly refuses, do not fall back to deterministic amount scraping.
+        if (extracted != null && isRejectedExtract(extracted)) return null
+
+        val deterministic = parseDeterministic(
+            text, sms, source, categories, banks, defaultDigital,
+        )
         val fromLlm = extracted?.let {
             mapExtracted(it, sms, source, categories, banks, defaultDigital)
         }
-        return merge(deterministic, fromLlm, categories, banks, defaultDigital)
+        val merged = merge(deterministic, fromLlm, categories, banks, defaultDigital)
+            ?: return null
+
+        val selfTransfer = extracted?.takeIf { it.isSelfTransfer == true }?.let { e ->
+            val from = e.bank?.trim()?.takeIf { it.isNotBlank() }
+            val to = e.toBank?.trim()?.takeIf { it.isNotBlank() }
+            if (from != null && to != null && !from.equals(to, true)) from to to else null
+        }
+        return ParseOutcome(merged, selfTransfer)
+    }
+
+    private fun looksLikeNonMovement(text: String): Boolean =
+        nonMovement.containsMatchIn(text) && !movementConfirm.containsMatchIn(text)
+
+    private fun isRejectedExtract(e: ExtractedTransaction): Boolean {
+        val t = e.type?.trim()?.lowercase(Locale.US) ?: return false
+        return t in setOf(
+            "none", "null", "ignore", "bill", "reminder", "due", "statement", "request",
+        )
     }
 
     /**
@@ -305,9 +380,9 @@ class TransactionParser @Inject constructor(
         val conf = e.confidence ?: 0.5
         if (conf < 0.35) return null
         val money = Money.fromRupees(amount)
-        val type = when (e.type?.lowercase(Locale.US)) {
-            "received", "income", "credit", "credited" -> TransactionType.CREDIT
-            "sent", "expense", "debit", "debited", "paid" -> TransactionType.DEBIT
+        val type = when (e.type?.trim()?.lowercase(Locale.US)) {
+            "credit", "credited", "received", "income", "cr" -> TransactionType.CREDIT
+            "debit", "debited", "sent", "expense", "paid", "dr" -> TransactionType.DEBIT
             "none", "null", "ignore", "bill", "reminder" -> return null
             else -> return null
         }
@@ -482,16 +557,61 @@ class TransactionParser @Inject constructor(
 
     private fun parseTime(raw: String?): Long? {
         if (raw.isNullOrBlank()) return null
-        return try {
-            Instant.parse(raw).toEpochMilli()
-        } catch (_: Exception) {
-            try {
-                val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                LocalDateTime.parse(raw.trim().take(19).replace('T', ' '), fmt)
-                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-            } catch (_: Exception) {
-                null
+        val cleaned = raw.trim()
+            .removeSurrounding("\"")
+            .replace('\u00a0', ' ')
+            .trim()
+        // Instant / OffsetDateTime style
+        runCatching { Instant.parse(cleaned).toEpochMilli() }.getOrNull()?.let { return it }
+        runCatching {
+            java.time.OffsetDateTime.parse(cleaned).toInstant().toEpochMilli()
+        }.getOrNull()?.let { return it }
+        runCatching {
+            java.time.ZonedDateTime.parse(cleaned).toInstant().toEpochMilli()
+        }.getOrNull()?.let { return it }
+
+        val zone = ZoneId.of("Asia/Kolkata")
+        val withSpace = cleaned.replace('T', ' ').trim()
+        val slashToDash = withSpace.replace('/', '-')
+        val candidates = listOf(cleaned, withSpace, slashToDash).distinct()
+        val dateTimePatterns = listOf(
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "dd-MM-yyyy HH:mm:ss",
+            "dd-MM-yyyy HH:mm",
+            "dd-MM-yy HH:mm:ss",
+            "dd-MM-yy HH:mm",
+            "dd-MMM-yyyy HH:mm:ss",
+            "dd-MMM-yyyy HH:mm",
+            "dd-MMM-yy HH:mm",
+        )
+        for (value in candidates) {
+            for (pattern in dateTimePatterns) {
+                runCatching {
+                    val fmt = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)
+                    LocalDateTime.parse(value, fmt).atZone(zone).toInstant().toEpochMilli()
+                }.getOrNull()?.let { return it }
             }
         }
+        val dateOnlyPatterns = listOf(
+            "yyyy-MM-dd",
+            "dd-MM-yyyy",
+            "dd-MM-yy",
+            "dd-MMM-yyyy",
+            "dd-MMM-yy",
+        )
+        for (value in candidates) {
+            val datePart = value.takeWhile { it != ' ' }.trim()
+            for (pattern in dateOnlyPatterns) {
+                runCatching {
+                    val fmt = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)
+                    java.time.LocalDate.parse(datePart, fmt)
+                        .atStartOfDay(zone)
+                        .toInstant()
+                        .toEpochMilli()
+                }.getOrNull()?.let { return it }
+            }
+        }
+        return null
     }
 }

@@ -791,6 +791,10 @@ class TransactionRepository @Inject constructor(
     fun observeAccountUsage(): Flow<Map<Long, Long>> =
         txnDao.observeAccountUsage().map { rows -> rows.associate { it.id to it.useCount } }
 
+    /** tabId (fundId) -> use count (most used first from DAO). */
+    fun observeTabUsage(): Flow<Map<Long, Long>> =
+        txnDao.observeTabUsage().map { rows -> rows.associate { it.id to it.useCount } }
+
     /**
      * Open Tab balances (tab table).
      * balance = debits − credits  (+ they owe you / − you owe them).

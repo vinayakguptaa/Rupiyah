@@ -121,21 +121,20 @@ class TabDetailViewModel @Inject constructor(
         return true
     }
 
-    /**
-     * @param youOweThem true = they covered (CREDIT on tab); false = you covered off-books (DEBIT).
-     */
+    /** They covered — off-books CREDIT on the tab (you owe them more). */
     suspend fun recordOwe(
         amountText: String,
         note: String,
-        youOweThem: Boolean = true,
+        occurredAt: Long = System.currentTimeMillis(),
     ): Boolean {
         val id = tabIdFlow.value ?: return false
         val money = Money.fromRupeesString(amountText) ?: return false
         return transactionRepository.recordTabOwe(
             tabId = id,
             amountPaise = money.paise,
-            youOweThem = youOweThem,
+            youOweThem = true,
             note = note.ifBlank { null },
+            occurredAt = occurredAt,
         ) != null
     }
 }

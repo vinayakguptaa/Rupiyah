@@ -57,6 +57,8 @@ data class AddCashRoute(
     val type: String = "",
     val categoryName: String = "",
     val note: String = "",
+    /** When non-blank, Add opens in settle mode for this tab name. */
+    val settleTabName: String = "",
 )
 
 @Serializable

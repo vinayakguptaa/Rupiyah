@@ -51,6 +51,10 @@ import com.krtky.financetracker.ui.theme.M3EMotion
 import com.krtky.financetracker.ui.theme.RupiyahTheme
 import java.util.Calendar
 
+/**
+ * Direction / choice pill — same chrome as [FormCategoryChip] / [FormAccountChip]
+ * (not a full-width header tab bar).
+ */
 @Composable
 fun FormTypeSegment(
     label: String,
@@ -62,41 +66,65 @@ fun FormTypeSegment(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
+        targetValue = if (pressed) 0.96f else 1f,
         animationSpec = M3EMotion.spatialFast(),
         label = "formTypeScale",
     )
     Surface(
         onClick = onClick,
         modifier = modifier.scale(scale),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = if (selected) scheme.primaryContainer else Color.Transparent,
+        shape = RoundedCornerShape(22.dp),
+        color = if (selected) scheme.primaryContainer else scheme.surfaceContainerHigh,
+        contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
         interactionSource = interaction,
     ) {
         Text(
             label,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = if (selected) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
 
-@Preview(showBackground = true, name = "FormTypeSegment")
+/** Debit / Credit pair using uniform form chips. */
+@Composable
+fun FormDirectionChips(
+    debitSelected: Boolean,
+    onDebit: () -> Unit,
+    onCredit: () -> Unit,
+    modifier: Modifier = Modifier,
+    debitLabel: String = "Debit",
+    creditLabel: String = "Credit",
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FormTypeSegment(
+            label = debitLabel,
+            selected = debitSelected,
+            onClick = onDebit,
+        )
+        FormTypeSegment(
+            label = creditLabel,
+            selected = !debitSelected,
+            onClick = onCredit,
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "FormDirectionChips")
 @Composable
 private fun FormTypeSegmentPreview() {
     RupiyahTheme {
-        Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FormTypeSegment(label = "Debit", selected = true, onClick = {}, modifier = Modifier.weight(1f))
-            FormTypeSegment(label = "Credit", selected = false, onClick = {}, modifier = Modifier.weight(1f))
-        }
+        FormDirectionChips(
+            debitSelected = true,
+            onDebit = {},
+            onCredit = {},
+            modifier = Modifier.padding(16.dp),
+        )
     }
 }
 

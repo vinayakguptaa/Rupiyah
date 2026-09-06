@@ -35,6 +35,9 @@ class AccountsViewModel @Inject constructor(
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
+    val defaultPaymentMethod = userPreferences.defaultPaymentMethod
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Cash")
+
     val unassignedDigital = accountRepository.observeUnassignedDigital()
         .stateIn(
             viewModelScope,
@@ -63,6 +66,14 @@ class AccountsViewModel @Inject constructor(
             accountRepository.unarchive(id)
             mirrorBankPrefs()
         }
+    }
+
+    fun setDefaultPaymentMethod(method: String) {
+        viewModelScope.launch { userPreferences.setDefaultPaymentMethod(method) }
+    }
+
+    fun setDefaultDigitalAccount(account: String) {
+        viewModelScope.launch { userPreferences.setDefaultDigitalAccount(account) }
     }
 
     private suspend fun mirrorBankPrefs() {

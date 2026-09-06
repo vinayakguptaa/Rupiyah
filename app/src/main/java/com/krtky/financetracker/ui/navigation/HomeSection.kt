@@ -7,26 +7,32 @@ package com.krtky.financetracker.ui.navigation
  */
 enum class HomeSection(val id: String, val title: String) {
     HERO("hero", "Balance"),
-    CATEGORY_RING("category_ring", "Expenses"),
-    INCOME("income", "Income"),
+    CATEGORY_RING("category_ring", "Debits"),
+    INCOME("income", "Credits"),
     INVESTMENTS("investments", "Investments"),
     RECENT("recent", "Recent activity"),
     TABS_SUMMARY("funds_summary", "Open Tabs"),
     ;
 
-    /** Half-width is useful for compact tiles; hero + recent stay full for readability. */
+    /** Half-width is useful for compact tiles; hero stays full for readability. */
     val allowsHalfWidth: Boolean
         get() = this == CATEGORY_RING || this == INCOME || this == INVESTMENTS || this == TABS_SUMMARY
 
     companion object {
-        val DEFAULT_ORDER: List<HomeSection> = entries.toList()
+        /**
+         * Investments stay optional (only if already in a saved layout).
+         * Recent activity is removed from Home — use the Activity tab instead.
+         */
+        val DEFAULT_ORDER: List<HomeSection> = listOf(
+            HERO, CATEGORY_RING, INCOME, TABS_SUMMARY,
+        )
 
         val DEFAULT_LAYOUT: List<HomeSectionConfig> =
             DEFAULT_ORDER.map { HomeSectionConfig(it, span = 2) }
 
         /**
          * Parses `hero:2,overview:2,...` or legacy `hero,overview,...` (all span 2).
-         * Unknown ids (e.g. a removed monthly_trend token) are skipped.
+         * Unknown ids and retired [RECENT] are skipped.
          */
         fun parseLayout(raw: String?): List<HomeSectionConfig> {
             if (raw.isNullOrBlank()) return DEFAULT_LAYOUT
@@ -37,24 +43,16 @@ enum class HomeSection(val id: String, val title: String) {
                     val parts = token.split(':')
                     val id = parts[0].trim()
                     val section = entries.firstOrNull { it.id == id } ?: return@mapNotNull null
+                    if (section == RECENT) return@mapNotNull null
                     val span = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(1, 2) ?: 2
                     val effectiveSpan = if (section.allowsHalfWidth) span else 2
                     HomeSectionConfig(section, effectiveSpan)
                 }
             if (parsed.isEmpty()) return DEFAULT_LAYOUT
             val seen = parsed.map { it.section }.toSet()
-            val missing = entries.filter { it !in seen }.map { HomeSectionConfig(it, 2) }
+            val missing = DEFAULT_ORDER.filter { it !in seen }.map { HomeSectionConfig(it, 2) }
             if (missing.isEmpty()) return parsed
-            val out = parsed.toMutableList()
-            missing.forEach { extra ->
-                if (extra.section == INVESTMENTS) {
-                    val afterIncome = out.indexOfFirst { it.section == INCOME }
-                    if (afterIncome >= 0) out.add(afterIncome + 1, extra) else out.add(extra)
-                } else {
-                    out.add(extra)
-                }
-            }
-            return out
+            return parsed + missing
         }
 
         /** @deprecated Prefer [parseLayout]; kept for call sites that only need order. */

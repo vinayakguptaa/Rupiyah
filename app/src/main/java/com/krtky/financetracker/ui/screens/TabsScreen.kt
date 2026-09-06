@@ -72,6 +72,8 @@ fun TabsScreen(
     onOpenTab: (Long) -> Unit = {},
     /** Incremented by the floating nav FAB to open create sheet. */
     createRequestTick: Int = 0,
+    /** Must clear the parent tick so returning to this tab does not reopen the sheet. */
+    onCreateRequestConsumed: () -> Unit = {},
     vm: TabsViewModel = hiltViewModel(),
 ) {
     val tabs by vm.tabs.collectAsStateWithLifecycle()
@@ -89,10 +91,23 @@ fun TabsScreen(
         delay(40)
         ready = true
     }
+    // One-shot: open create, then clear the FAB tick in the parent. Leaving the tick
+    // set caused the sheet to auto-reopen after switching tabs (restoreState).
     LaunchedEffect(createRequestTick) {
         if (createRequestTick > 0) {
             showCreate = true
+            onCreateRequestConsumed()
         }
+    }
+    fun dismissCreate() {
+        showCreate = false
+        newName = ""
+    }
+    fun dismissAdjust() {
+        showAdjust = false
+        adjustTabId = null
+        adjustTabName = ""
+        editName = ""
     }
     val openTabs = remember(tabs) { tabs.filter { !it.isSettled() } }
     val settledTabs = remember(tabs) { tabs.filter { it.isSettled() } }
@@ -149,14 +164,17 @@ fun TabsScreen(
                 item {
                     EmptyState(
                         icon = Icons.Default.AccountBalanceWallet,
-                        title = stringResource(R.string.empty_funds_title),
+                        title = stringResource(R.string.empty_tabs_title),
                         body = when {
                             settledTabs.isNotEmpty() || archivedTabs.isNotEmpty() ->
                                 "No open balances — settled and archived tabs are below."
-                            else -> stringResource(R.string.empty_funds_body)
+                            else -> stringResource(R.string.empty_tabs_body)
                         },
-                        actionLabel = stringResource(R.string.empty_funds_action),
-                        onAction = { showCreate = true },
+                        actionLabel = stringResource(R.string.empty_tabs_action),
+                        onAction = {
+                            newName = ""
+                            showCreate = true
+                        },
                     )
                 }
             }
@@ -260,7 +278,7 @@ fun TabsScreen(
 
     if (showCreate) {
         ModalBottomSheet(
-            onDismissRequest = { showCreate = false },
+            onDismissRequest = { dismissCreate() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
@@ -285,8 +303,7 @@ fun TabsScreen(
                     onClick = {
                         scope.launch {
                             vm.create(newName)
-                            newName = ""
-                            showCreate = false
+                            dismissCreate()
                         }
                     },
                     enabled = newName.isNotBlank(),
@@ -294,7 +311,7 @@ fun TabsScreen(
                     shape = MaterialTheme.shapes.large,
                 ) { Text("Create") }
                 OutlinedButton(
-                    onClick = { showCreate = false },
+                    onClick = { dismissCreate() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
                 ) { Text("Cancel") }
@@ -304,7 +321,7 @@ fun TabsScreen(
 
     if (showAdjust && adjustTabId != null) {
         ModalBottomSheet(
-            onDismissRequest = { showAdjust = false },
+            onDismissRequest = { dismissAdjust() },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         ) {
@@ -329,8 +346,7 @@ fun TabsScreen(
                     onClick = {
                         scope.launch {
                             vm.rename(adjustTabId!!, editName)
-                            adjustTabName = editName.trim()
-                            showAdjust = false
+                            dismissAdjust()
                         }
                     },
                     enabled = editName.isNotBlank() && editName.trim() != adjustTabName,
@@ -346,14 +362,14 @@ fun TabsScreen(
                     onClick = {
                         scope.launch {
                             vm.delete(adjustTabId!!)
-                            showAdjust = false
+                            dismissAdjust()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
                 ) { Text("Archive tab", color = scheme.error) }
                 OutlinedButton(
-                    onClick = { showAdjust = false },
+                    onClick = { dismissAdjust() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.large,
                 ) { Text("Cancel") }

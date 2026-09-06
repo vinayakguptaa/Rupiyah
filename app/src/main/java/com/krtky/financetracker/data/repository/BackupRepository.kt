@@ -196,12 +196,58 @@ class BackupRepository @Inject constructor(
         }
     }
 
+    suspend fun importJsonBackup(context: Context, uri: Uri): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val content = readUriText(context, uri)
+                    ?: return@withContext Result.failure(IllegalStateException("Failed to read file"))
+                val trimmed = content.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+                if (ActivityCsvParser.looksLikeActivityCsv(trimmed)) {
+                    return@withContext Result.failure(
+                        IllegalStateException(
+                            "That's an Activity CSV. Use “Merge Activity CSV” instead of JSON restore.",
+                        ),
+                    )
+                }
+                if (!trimmed.startsWith("{")) {
+                    return@withContext Result.failure(
+                        IllegalStateException("Pick a Rupiyah JSON backup file."),
+                    )
+                }
+                importJsonContent(content)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun importActivityCsvFile(context: Context, uri: Uri): Result<String> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val content = readUriText(context, uri)
+                    ?: return@withContext Result.failure(IllegalStateException("Failed to read file"))
+                val trimmed = content.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
+                if (!ActivityCsvParser.looksLikeActivityCsv(trimmed)) {
+                    return@withContext Result.failure(
+                        IllegalStateException(
+                            "Pick an Activity CSV from Activity → Export activity CSV. " +
+                                "Bank statements go to Settings → Import bank statement.",
+                        ),
+                    )
+                }
+                importActivityCsv(trimmed)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    /** Auto-detect JSON vs Activity CSV. Used by onboarding. */
     suspend fun importData(context: Context, uri: Uri): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val content = context.contentResolver.openInputStream(uri)?.use { isStream ->
-                    isStream.readBytes().toString(Charsets.UTF_8)
-                } ?: return@withContext Result.failure(IllegalStateException("Failed to read file"))
+                val content = readUriText(context, uri)
+                    ?: return@withContext Result.failure(IllegalStateException("Failed to read file"))
 
                 val trimmed = content.trimStart('\uFEFF', ' ', '\t', '\r', '\n')
                 if (ActivityCsvParser.looksLikeActivityCsv(trimmed)) {
@@ -214,7 +260,20 @@ class BackupRepository @Inject constructor(
                         ),
                     )
                 }
+                importJsonContent(content)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
 
+    private fun readUriText(context: Context, uri: Uri): String? =
+        context.contentResolver.openInputStream(uri)?.use { isStream ->
+            isStream.readBytes().toString(Charsets.UTF_8)
+        }
+
+    private suspend fun importJsonContent(content: String): Result<String> {
+        return try {
                 val jsonObj = Json.parseToJsonElement(content).jsonObject
 
                 // 1. Secure Store
@@ -441,9 +500,8 @@ class BackupRepository @Inject constructor(
                     .map { it.name }
                 userPreferences.setBankAccounts(activeBanks.joinToString(","))
                 Result.success("Restored accounts, tabs, transactions & splits")
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

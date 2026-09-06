@@ -504,6 +504,12 @@ class SettingsViewModel @Inject constructor(
     suspend fun importData(context: Context, uri: Uri): Result<String> =
         backupRepository.importData(context, uri)
 
+    suspend fun importJsonBackup(context: Context, uri: Uri): Result<String> =
+        backupRepository.importJsonBackup(context, uri)
+
+    suspend fun importActivityCsvFile(context: Context, uri: Uri): Result<String> =
+        backupRepository.importActivityCsvFile(context, uri)
+
     companion object {
         private const val SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
     }

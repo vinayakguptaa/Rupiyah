@@ -26,6 +26,8 @@ object ActivityFilterKeys {
     const val CUSTOM_FROM = "activity_filter_custom_from"
     const val CUSTOM_TO = "activity_filter_custom_to"
     const val APPLY_RANGE = "activity_filter_apply_range"
+    /** Inbox: only rows that still need a category. */
+    const val NEEDS_CLASSIFY = "activity_filter_needs_classify"
 }
 
 data class ActivityFilterArgs(
@@ -36,6 +38,7 @@ data class ActivityFilterArgs(
     val customFromMillis: Long? = null,
     val customToMillis: Long? = null,
     val applyRange: Boolean = false,
+    val needsClassify: Boolean = false,
 )
 
 fun SavedStateHandle.setActivityFilters(args: ActivityFilterArgs) {
@@ -46,6 +49,7 @@ fun SavedStateHandle.setActivityFilters(args: ActivityFilterArgs) {
     set(ActivityFilterKeys.CATEGORY_ID, args.categoryId)
     set(ActivityFilterKeys.APPLY_CATEGORY, args.applyCategory)
     set(ActivityFilterKeys.APPLY_RANGE, args.applyRange)
+    set(ActivityFilterKeys.NEEDS_CLASSIFY, args.needsClassify)
     if (args.applyRange) {
         set(ActivityFilterKeys.CUSTOM_FROM, args.customFromMillis)
         set(ActivityFilterKeys.CUSTOM_TO, args.customToMillis)
@@ -70,6 +74,7 @@ fun SavedStateHandle.consumeActivityFilters(): ActivityFilterArgs? {
 
     val applyCategory = get<Boolean>(ActivityFilterKeys.APPLY_CATEGORY) == true
     val applyRange = get<Boolean>(ActivityFilterKeys.APPLY_RANGE) == true
+    val needsClassify = get<Boolean>(ActivityFilterKeys.NEEDS_CLASSIFY) == true
     val payment = get<String>(ActivityFilterKeys.PAYMENT)
     val typeName = get<String>(ActivityFilterKeys.TYPE)
     val categoryId = get<Long>(ActivityFilterKeys.CATEGORY_ID)
@@ -77,7 +82,7 @@ fun SavedStateHandle.consumeActivityFilters(): ActivityFilterArgs? {
     val customTo = get<Long>(ActivityFilterKeys.CUSTOM_TO)
     val type = typeName?.let { runCatching { TransactionType.valueOf(it) }.getOrNull() }
 
-    val hasShot = payment != null || type != null || applyCategory || applyRange
+    val hasShot = payment != null || type != null || applyCategory || applyRange || needsClassify
     if (!hasShot) return null
 
     remove<String>(ActivityFilterKeys.PAYMENT)
@@ -85,6 +90,7 @@ fun SavedStateHandle.consumeActivityFilters(): ActivityFilterArgs? {
     remove<Long>(ActivityFilterKeys.CATEGORY_ID)
     remove<Boolean>(ActivityFilterKeys.APPLY_CATEGORY)
     remove<Boolean>(ActivityFilterKeys.APPLY_RANGE)
+    remove<Boolean>(ActivityFilterKeys.NEEDS_CLASSIFY)
     remove<Long>(ActivityFilterKeys.CUSTOM_FROM)
     remove<Long>(ActivityFilterKeys.CUSTOM_TO)
 
@@ -96,6 +102,7 @@ fun SavedStateHandle.consumeActivityFilters(): ActivityFilterArgs? {
         customFromMillis = customFrom,
         customToMillis = customTo,
         applyRange = applyRange,
+        needsClassify = needsClassify,
     )
 }
 
@@ -109,6 +116,7 @@ fun SavedStateHandle.consumeClearActivityFilters(): Boolean {
     remove<Long>(ActivityFilterKeys.CATEGORY_ID)
     remove<Boolean>(ActivityFilterKeys.APPLY_CATEGORY)
     remove<Boolean>(ActivityFilterKeys.APPLY_RANGE)
+    remove<Boolean>(ActivityFilterKeys.NEEDS_CLASSIFY)
     remove<Long>(ActivityFilterKeys.CUSTOM_FROM)
     remove<Long>(ActivityFilterKeys.CUSTOM_TO)
     return true

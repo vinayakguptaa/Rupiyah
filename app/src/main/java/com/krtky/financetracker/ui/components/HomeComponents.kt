@@ -159,7 +159,7 @@ fun TabsWaveSummary(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    stringResource(com.krtky.financetracker.R.string.home_funds_remaining),
+                    stringResource(com.krtky.financetracker.R.string.home_tabs_remaining),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
@@ -170,7 +170,7 @@ fun TabsWaveSummary(
             }
             if (tabs.isEmpty()) {
                 Text(
-                    stringResource(com.krtky.financetracker.R.string.home_no_funds_hint),
+                    stringResource(com.krtky.financetracker.R.string.home_no_tabs_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = scheme.onSurfaceVariant,
                 )

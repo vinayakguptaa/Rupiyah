@@ -21,7 +21,6 @@ import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.location.LocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import java.util.UUID
 import javax.inject.Inject
@@ -40,44 +39,35 @@ class AddCashViewModel @Inject constructor(
 ) : ViewModel() {
     val categories = categoriesState(categoryRepository, transactionRepository)
     val tabs = tabsState(transactionRepository)
-    /** Active accounts only — archived banks hidden from Add. */
-    val accounts = accountRepository.observeActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Active accounts, most-used first — archived banks hidden from Add. */
+    val accounts = accountsSortedByUsageState(accountRepository, transactionRepository)
     val defaultPaymentMethod = userPreferences.defaultPaymentMethod
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "Cash")
     val defaultDigitalAccount = userPreferences.defaultDigitalAccount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
     val accountBalances = cashflowRepository.observeAccountBalances()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-    val lastUsedCategoryId = userPreferences.lastUsedCategoryId
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val lastUsedTabId = userPreferences.lastUsedTabId
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-    val lastUsedPaymentMethod = userPreferences.lastUsedPaymentMethod
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun isLlmReady(): Boolean = llmClient.isConfigured()
 
     suspend fun parsePastedText(text: String): Result<PasteParseResult> {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return Result.failure(IllegalArgumentException("Paste some text first"))
-        val parsed = transactionParser.parsePastedText(trimmed)
+        val movement = transactionParser.parsePastedMovement(trimmed)
             ?: return Result.failure(
                 IllegalArgumentException(
                     if (llmClient.isConfigured()) {
-                        "Could not find an amount or payment in that text"
+                        "No completed debit/credit found (bills, dues, and reminders are skipped). Paste one clear bank/UPI confirmation."
                     } else {
                         "Could not read that text. Set up AI helper in Settings for notes that are not bank-style SMS."
                     },
                 ),
             )
-        val liveAccounts = accountRepository.observeActive().first()
-        val pair = transactionParser.inferSelfTransfer(trimmed, liveAccounts)
         return Result.success(
             PasteParseResult(
-                transaction = parsed,
-                transferFromAccountId = pair?.first,
-                transferToAccountId = pair?.second,
+                transaction = movement.transaction,
+                transferFromAccountId = movement.transferFromAccountId,
+                transferToAccountId = movement.transferToAccountId,
             ),
         )
     }

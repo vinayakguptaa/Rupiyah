@@ -62,8 +62,8 @@ fun HomeScreen(
     onOpenCreditActivity: () -> Unit = onOpenHistory,
     onOpenCategories: () -> Unit = {},
     onOpenMonthFlow: (direction: String, group: MonthFlowGroup) -> Unit = { _, _ -> },
-    /** Open classify sheet for a pending transaction. */
-    onClassifyPending: (String) -> Unit = {},
+    /** Open Activity filtered to rows that still need a category. */
+    onOpenClassifyInbox: () -> Unit = {},
     /** Open Settings detail (e.g. email). */
     onOpenSettingsSection: (String) -> Unit = {},
     vm: HomeViewModel = hiltViewModel(),
@@ -77,7 +77,6 @@ fun HomeScreen(
     val initialLoaded by vm.initialLoaded.collectAsStateWithLifecycle()
     val isNetHidden by vm.hideBalances.collectAsStateWithLifecycle()
     val pendingCount by vm.pendingCount.collectAsStateWithLifecycle()
-    val firstPendingId by vm.firstPendingId.collectAsStateWithLifecycle()
     val setupChecklist by vm.setupChecklist.collectAsStateWithLifecycle()
     val sectionLayout by vm.homeSectionLayout.collectAsStateWithLifecycle()
     var layoutEditMode by remember { mutableStateOf(false) }
@@ -106,7 +105,7 @@ fun HomeScreen(
         else -> "Good late night"
     }
     val greeting = if (displayName.isNotBlank()) {
-        "$greetingBase ${displayName.trim().lowercase()}"
+        "$greetingBase ${displayName.trim()}"
     } else {
         greetingBase
     }
@@ -187,13 +186,13 @@ fun HomeScreen(
                 }
             }
 
-            if (pendingCount > 0 && firstPendingId != null) {
+            if (pendingCount > 0) {
                 item {
                     FilterChip(
                         selected = true,
                         onClick = {
                             haptics.select()
-                            firstPendingId?.let(onClassifyPending)
+                            onOpenClassifyInbox()
                         },
                         label = {
                             Text(stringResource(R.string.home_pending_classify, pendingCount))

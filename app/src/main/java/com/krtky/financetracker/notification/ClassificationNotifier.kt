@@ -63,7 +63,7 @@ class ClassificationNotifier @Inject constructor(
         val amount = Money(txn.amountPaise).formatInr()
         val party = txn.counterparty?.trim().orEmpty()
         val isIn = txn.type == TransactionType.CREDIT
-        val title = if (isIn) "Received $amount" else "Paid $amount"
+        val title = if (isIn) "Credit $amount" else "Debit $amount"
         val line = when {
             party.isNotBlank() && isIn -> "From $party"
             party.isNotBlank() -> "To $party"
@@ -101,7 +101,7 @@ class ClassificationNotifier @Inject constructor(
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(summary)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(big).setSummaryText(if (isIn) "Income" else "Expense"))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(big).setSummaryText(if (isIn) "Credit" else "Debit"))
             .setContentIntent(openPi)
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)

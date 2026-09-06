@@ -11,20 +11,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Handshake
-import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,14 +44,14 @@ import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.TransactionFilterBar
-import com.krtky.financetracker.ui.components.TransferContainer
-import com.krtky.financetracker.ui.components.TransferSheet
 import com.krtky.financetracker.ui.components.TabOweSheet
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
-import com.krtky.financetracker.ui.components.TransactionSortButton
+import com.krtky.financetracker.ui.components.sortOverflowChildren
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuButton
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuItem
+import com.krtky.financetracker.ui.components.chrome.StackTopBar
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.categoryColor
-import com.krtky.financetracker.ui.util.downloadTransactionsCsv
 import com.krtky.financetracker.ui.util.onCategoryColor
 import com.krtky.financetracker.ui.util.formatDateTime
 import com.krtky.financetracker.ui.util.inr
@@ -70,6 +65,8 @@ fun TabDetailScreen(
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit,
     onSettle: (tabId: Long, amountPaise: Long, type: TransactionType, tabName: String) -> Unit = { _, _, _, _ -> },
+    /** You paid from an account — opens Add with this tab preselected. */
+    onYouPaid: (tabId: Long) -> Unit = {},
     vm: TabDetailViewModel = hiltViewModel(),
 ) {
     val tab by vm.tab.collectAsStateWithLifecycle()
@@ -83,13 +80,10 @@ fun TabDetailScreen(
     val timeRange by vm.timeRange.collectAsStateWithLifecycle()
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
     val customTo by vm.customTo.collectAsStateWithLifecycle()
-    val allTabs by vm.allTabs.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
-    val context = LocalContext.current
     val haptics = rememberAppHaptics()
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
-    var showTransfer by remember { mutableStateOf(false) }
     var showOwe by remember { mutableStateOf(false) }
 
     LaunchedEffect(tabId) { vm.load(tabId) }
@@ -101,87 +95,39 @@ fun TabDetailScreen(
             .navigationBarsPadding()
             .padding(horizontal = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                tab?.tab?.name ?: "Tab",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            TransactionSortButton(
-                sort = sortOrder,
-                onSortChange = {
-                    haptics.select()
-                    vm.setSortOrder(it)
-                },
-            )
-            IconButton(
-                onClick = {
-                    haptics.select()
-                    val name = tab?.tab?.name ?: "tab"
-                    downloadTransactionsCsv(context, txns, "fund_$name")
-                },
-                enabled = txns.isNotEmpty(),
-            ) {
-                Icon(Icons.Default.FileDownload, contentDescription = "Download CSV")
-            }
-            val archived = tab?.tab?.archived == true
-            if (!archived) {
-                IconButton(
-                    onClick = {
-                        haptics.select()
-                        showOwe = true
+        val archived = tab?.tab?.archived == true
+        StackTopBar(
+            title = tab?.tab?.name ?: "Tab",
+            onBack = onBack,
+            actions = {
+                OverflowMenuButton(
+                    items = buildList {
+                        add(
+                            OverflowMenuItem(
+                                label = stringResource(R.string.overflow_sort),
+                                children = sortOverflowChildren(sortOrder) {
+                                    haptics.select()
+                                    vm.setSortOrder(it)
+                                },
+                            ),
+                        )
+                        if (archived) {
+                            add(
+                                OverflowMenuItem(stringResource(R.string.overflow_restore_tab)) {
+                                    scope.launch { vm.restoreTab() }
+                                },
+                            )
+                        } else {
+                            add(
+                                OverflowMenuItem(stringResource(R.string.overflow_archive_tab)) {
+                                    confirmDelete = true
+                                },
+                            )
+                        }
                     },
-                ) {
-                    Icon(
-                        Icons.Default.Handshake,
-                        contentDescription = stringResource(R.string.tab_owe_cd),
-                    )
-                }
-            }
-            if (!archived && allTabs.size > 1) {
-                IconButton(onClick = { showTransfer = true }) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer")
-                }
-            }
-            if (!archived && !(tab?.isSettled() ?: true)) {
-                IconButton(
-                    onClick = {
-                        val t = tab ?: return@IconButton
-                        val amount = kotlin.math.abs(t.balancePaise)
-                        if (amount <= 0L) return@IconButton
-                        val type = if (t.balancePaise > 0L) TransactionType.CREDIT else TransactionType.DEBIT
-                        onSettle(t.tab.id, amount, type, t.tab.name)
-                    },
-                ) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = "Mark settled",
-                        tint = scheme.primary,
-                    )
-                }
-            }
-            if (archived) {
-                IconButton(
-                    onClick = {
-                        scope.launch { vm.restoreTab() }
-                    },
-                ) {
-                    Icon(
-                        Icons.Default.Unarchive,
-                        contentDescription = stringResource(R.string.tabs_restore),
-                        tint = scheme.primary,
-                    )
-                }
-            } else {
-                IconButton(onClick = { confirmDelete = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Archive tab", tint = scheme.error)
-                }
-            }
-        }
+                )
+            },
+        )
         Spacer(Modifier.height(8.dp))
         if (tab == null) {
             Column(
@@ -217,10 +163,57 @@ fun TabDetailScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "In ${tab!!.creditedPaise.inr()} · Out ${tab!!.debitedPaise.inr()}",
+                        "Credits ${tab!!.creditedPaise.inr()} · Debits ${tab!!.debitedPaise.inr()}",
                         style = MaterialTheme.typography.bodySmall,
                         color = onC.copy(alpha = 0.7f),
                     )
+                }
+            }
+            if (!archived) {
+                Spacer(Modifier.height(12.dp))
+                if (!settled) {
+                    Button(
+                        onClick = {
+                            val t = tab ?: return@Button
+                            val amount = kotlin.math.abs(t.balancePaise)
+                            if (amount <= 0L) return@Button
+                            val settleType =
+                                if (t.balancePaise > 0L) TransactionType.CREDIT else TransactionType.DEBIT
+                            onSettle(t.tab.id, amount, settleType, t.tab.name)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Text(stringResource(R.string.tab_settle_action))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            haptics.select()
+                            onYouPaid(tabId)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Text(stringResource(R.string.tab_you_paid_action))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            haptics.select()
+                            showOwe = true
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Icon(Icons.Default.Handshake, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.tab_owe_action))
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -259,8 +252,21 @@ fun TabDetailScreen(
             if (txns.isEmpty()) {
                 EmptyState(
                     icon = Icons.AutoMirrored.Filled.ReceiptLong,
-                    title = stringResource(R.string.empty_fund_txns_title),
-                    body = stringResource(R.string.empty_fund_txns_body),
+                    title = stringResource(R.string.empty_tab_txns_title),
+                    body = stringResource(R.string.empty_tab_txns_body),
+                    actionLabel = if (!archived) {
+                        stringResource(R.string.empty_tab_txns_action)
+                    } else {
+                        null
+                    },
+                    onAction = if (!archived) {
+                        {
+                            haptics.select()
+                            onYouPaid(tabId)
+                        }
+                    } else {
+                        null
+                    },
                 )
             }
             LazyColumn(
@@ -302,28 +308,11 @@ fun TabDetailScreen(
         )
     }
 
-    if (showTransfer && tab != null) {
-        val sourceTab = tab!!.tab
-        val containers = allTabs
-            .filter { it.tab.id == sourceTab.id || !it.tab.archived }
-            .map { TransferContainer(it.tab.id, it.tab.name, it.balancePaise.inr()) }
-        TransferSheet(
-            containers = containers,
-            title = "Move money",
-            subtitle = "Moves money between tabs. Not a spend.",
-            fromLabel = "From tab",
-            toLabel = "To tab",
-            initialFromId = sourceTab.id,
-            onDismiss = { showTransfer = false },
-            onTransfer = vm::transferBetweenTabs,
-        )
-    }
-
     if (showOwe && tab != null) {
         TabOweSheet(
             onDismiss = { showOwe = false },
-            onSave = { amountText, note, youOweThem ->
-                val ok = vm.recordOwe(amountText, note, youOweThem)
+            onSave = { amountText, note, occurredAt ->
+                val ok = vm.recordOwe(amountText, note, occurredAt)
                 if (ok) haptics.click()
                 ok
             },

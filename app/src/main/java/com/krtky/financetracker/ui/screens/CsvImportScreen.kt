@@ -236,7 +236,7 @@ fun CsvImportScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     Text(
-                        "Export a CSV from your bank app or net banking. Typical columns: Date, Description, Debit, Credit (or Amount + Type), Ref.",
+                        "This is a bank or wallet statement — not the Activity CSV export. Typical columns: Date, Description, Debit, Credit (or Amount + Type), Ref.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant,
                     )

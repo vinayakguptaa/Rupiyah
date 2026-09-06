@@ -18,6 +18,7 @@ class TransactionFilterState(
     private val _payment = MutableStateFlow<String?>(null)
     private val _categoryId = MutableStateFlow<Long?>(null)
     private val _tabId = MutableStateFlow<Long?>(null)
+    private val _needsClassify = MutableStateFlow(false)
     private val _sort = MutableStateFlow(initialSort)
     private val _range = MutableStateFlow(initialRange)
     private val _customFrom = MutableStateFlow(startOfCurrentMonthMillis())
@@ -27,6 +28,7 @@ class TransactionFilterState(
     val payment: StateFlow<String?> = _payment
     val categoryId: StateFlow<Long?> = _categoryId
     val tabId: StateFlow<Long?> = _tabId
+    val needsClassify: StateFlow<Boolean> = _needsClassify
     val sort: StateFlow<TransactionSortOrder> = _sort
     val range: StateFlow<TimeRange> = _range
     val customFrom: StateFlow<Long> = _customFrom
@@ -37,6 +39,7 @@ class TransactionFilterState(
     val paymentFlow get() = _payment
     val categoryIdFlow get() = _categoryId
     val tabIdFlow get() = _tabId
+    val needsClassifyFlow get() = _needsClassify
     val sortFlow get() = _sort
     val rangeFlow get() = _range
     val customFromFlow get() = _customFrom
@@ -46,6 +49,7 @@ class TransactionFilterState(
     fun setPayment(p: String?) { _payment.value = p }
     fun setCategory(id: Long?) { _categoryId.value = id }
     fun setTab(id: Long?) { _tabId.value = id }
+    fun setNeedsClassify(on: Boolean) { _needsClassify.value = on }
     fun setSortOrder(order: TransactionSortOrder) { _sort.value = order }
     fun setTimeRange(r: TimeRange) { _range.value = r }
     fun setCustomRange(fromMillis: Long, toMillis: Long) {
@@ -64,6 +68,7 @@ class TransactionFilterState(
         _payment.value = null
         if (clearCategory) _categoryId.value = null
         if (clearTab) _tabId.value = null
+        _needsClassify.value = false
         _range.value = TimeRange.MONTH
         clearQuery?.invoke()
     }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
@@ -31,7 +32,8 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -47,8 +49,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.krtky.financetracker.BuildConfig
+import com.krtky.financetracker.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.ui.components.SettingsGroupRow
 import com.krtky.financetracker.ui.components.SettingsSectionLabel
@@ -65,8 +70,7 @@ import com.krtky.financetracker.ui.viewmodel.SettingsViewModel
 @Composable
 fun SettingsScreen(
     onOpenSection: (SettingsSection) -> Unit,
-    /** Incremented by floating nav search FAB. */
-    searchRequestTick: Int = 0,
+    onImportStatement: () -> Unit = {},
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -77,11 +81,6 @@ fun SettingsScreen(
     var searchQuery by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(searchRequestTick) {
-        if (searchRequestTick > 0) {
-            searchOpen = true
-        }
-    }
     LaunchedEffect(searchOpen) {
         if (searchOpen) {
             focusRequester.requestFocus()
@@ -94,20 +93,20 @@ fun SettingsScreen(
         return tokens.any { it.contains(q, ignoreCase = true) }
     }
 
-    val showYou = matches("profile", "name", "phone", "you", "account")
+    val showYou = matches("profile", "name", "phone", "you")
     val showMoney = matches(
         "categories", "accounts", "bank", "money", "wallet", "cash", "digital", "upi",
     )
-    val showImport = matches(
-        "sms", "bank", "import", "message", "text",
+    val showCapture = matches(
+        "sms", "bank", "import", "message", "text", "csv", "statement",
+        "llm", "ai", "intelligence", "openai", "groq", "model", "smart", "helper", "capture",
     )
     val showLook = matches("appearance", "theme", "color", "dark", "light", "look", "font")
-    val showSave = matches(
-        "backup", "restore", "export", "import", "sheet", "spreadsheet", "google", "save", "copy",
+    val showCopies = matches(
+        "backup", "restore", "export", "import", "sheet", "spreadsheet", "google", "save", "copy", "json", "csv",
     )
-    val showSmart = matches("llm", "ai", "intelligence", "openai", "groq", "model", "smart", "helper")
-    val showMore = matches(
-        "location", "place", "map", "google", "client", "oauth", "sign", "setup", "more",
+    val showOptional = matches(
+        "location", "place", "map", "optional",
     )
     val showDev = state.devUnlocked && matches(
         "developer", "dev", "prompt", "diagnostics", "paste", "test", "parser",
@@ -132,12 +131,23 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        ScreenHeader(title = "Settings")
-        Text(
-            "Tap any row to open it. You can change things later anytime.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 4.dp),
+        ScreenHeader(
+            title = "Settings",
+            actions = {
+                IconButton(
+                    onClick = {
+                        searchOpen = !searchOpen
+                        if (!searchOpen) searchQuery = ""
+                    },
+                ) {
+                    Icon(
+                        if (searchOpen) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = stringResource(
+                            if (searchOpen) R.string.cd_close_search else R.string.cd_search_settings,
+                        ),
+                    )
+                }
+            },
         )
         Spacer(Modifier.height(Dimens.SectionGap / 2))
 
@@ -181,9 +191,9 @@ fun SettingsScreen(
             }
         }
 
-        // ── Your money ───────────────────────────────────────────────────
+        // ── Money setup ──────────────────────────────────────────────────
         if (showMoney) {
-            SettingsSectionLabel("Your money")
+            SettingsSectionLabel("Money setup")
             GroupedCard {
                 if (matches("categories", "money", "food", "bills")) {
                     SettingsGroupRow(
@@ -203,11 +213,11 @@ fun SettingsScreen(
                     SettingsGroupRow(
                         title = "Bank accounts",
                         subtitle = when {
-                            bankCount == 0 -> "Add your banks and UPI apps (PhonePe, GPay…)"
+                            bankCount == 0 -> "Opens Accounts — add banks and UPI apps"
                             else -> {
                                 val def = state.defaultDigitalAccount.trim()
                                 buildString {
-                                    append("$bankCount account${if (bankCount == 1) "" else "s"}")
+                                    append("Opens Accounts · $bankCount")
                                     if (def.isNotBlank()) append(" · default $def")
                                 }
                             }
@@ -222,12 +232,31 @@ fun SettingsScreen(
             }
         }
 
-        // ── Automatic import ─────────────────────────────────────────────
-        if (showImport) {
-            SettingsSectionLabel("Import spends automatically")
+        // ── Capture ──────────────────────────────────────────────────────
+        if (showCapture) {
+            SettingsSectionLabel("Capture")
             GroupedCard {
-                // Email ingest removed — capture is SMS + CSV + manual only.
-                if (matches("sms", "text", "message", "import", "bank")) {
+                val showAi = matches(
+                    "llm", "ai", "intelligence", "openai", "groq", "model", "smart", "helper", "capture", "sms",
+                )
+                val showSms = matches("sms", "text", "message", "import", "bank", "capture")
+                val showCsv = matches("csv", "statement", "import", "bank", "capture")
+                if (showAi) {
+                    SettingsGroupRow(
+                        title = "AI helper",
+                        subtitle = when {
+                            state.llmReady -> "Ready · used for SMS and messy text"
+                            state.llmEnabled -> "Almost ready · add an API key"
+                            else -> "Needed to turn on SMS import"
+                        },
+                        icon = Icons.Default.Psychology,
+                        onClick = { onOpenSection(SettingsSection.LLM) },
+                        iconContainer = scheme.secondaryContainer,
+                        iconTint = scheme.onSecondaryContainer,
+                        showDivider = showSms || showCsv,
+                    )
+                }
+                if (showSms) {
                     SettingsGroupRow(
                         title = "Bank text messages (SMS)",
                         subtitle = when {
@@ -237,6 +266,17 @@ fun SettingsScreen(
                         },
                         icon = Icons.Default.Sms,
                         onClick = { onOpenSection(SettingsSection.SMS) },
+                        iconContainer = scheme.primaryContainer,
+                        iconTint = scheme.onPrimaryContainer,
+                        showDivider = showCsv,
+                    )
+                }
+                if (showCsv) {
+                    SettingsGroupRow(
+                        title = "Import bank statement",
+                        subtitle = "CSV from your bank or wallet into one account",
+                        icon = Icons.Default.UploadFile,
+                        onClick = onImportStatement,
                         iconContainer = scheme.primaryContainer,
                         iconTint = scheme.onPrimaryContainer,
                         showDivider = false,
@@ -260,21 +300,24 @@ fun SettingsScreen(
             }
         }
 
-        // ── Save a copy ──────────────────────────────────────────────────
-        if (showSave) {
-            SettingsSectionLabel("Save a copy")
+        // ── Copies ───────────────────────────────────────────────────────
+        if (showCopies) {
+            SettingsSectionLabel("Copies")
             GroupedCard {
-                if (matches("backup", "restore", "export", "import", "save", "copy")) {
+                val showBackup = matches("backup", "restore", "export", "import", "save", "copy", "json", "csv")
+                val showSheets = matches("sheet", "spreadsheet", "google", "save", "copy", "export")
+                if (showBackup) {
                     SettingsGroupRow(
                         title = "Backup & restore",
-                        subtitle = "Save everything to a file, or restore later",
+                        subtitle = "JSON safety copy, or merge an Activity CSV",
                         icon = Icons.Default.Backup,
                         onClick = { onOpenSection(SettingsSection.BACKUP) },
                         iconContainer = scheme.primaryContainer,
                         iconTint = scheme.onPrimaryContainer,
+                        showDivider = showSheets,
                     )
                 }
-                if (matches("sheet", "spreadsheet", "google", "save", "copy", "export")) {
+                if (showSheets) {
                     SettingsGroupRow(
                         title = "Google Spreadsheet",
                         subtitle = if (state.sheetsSync) {
@@ -288,67 +331,28 @@ fun SettingsScreen(
                         onClick = { onOpenSection(SettingsSection.SHEETS) },
                         iconContainer = scheme.primaryContainer,
                         iconTint = scheme.onPrimaryContainer,
-                        showDivider = matches("backup", "restore", "export", "import", "save", "copy"),
+                        showDivider = false,
                     )
                 }
             }
         }
 
-        // ── Smart helper ─────────────────────────────────────────────────
-        if (showSmart) {
-            SettingsSectionLabel("Smarter reading")
+        // ── Optional ─────────────────────────────────────────────────────
+        if (showOptional) {
+            SettingsSectionLabel("Optional")
             GroupedCard {
                 SettingsGroupRow(
-                    title = "AI helper",
-                    subtitle = when {
-                        state.llmReady ->
-                            "Ready · required for SMS import"
-                        state.llmEnabled ->
-                            "Almost ready · add an API key"
-                        else ->
-                            "Required to turn on SMS import"
+                    title = "Place tags",
+                    subtitle = if (state.location) {
+                        "On · remembers where you spent"
+                    } else {
+                        "Off · optional location on spends"
                     },
-                    icon = Icons.Default.Psychology,
-                    onClick = { onOpenSection(SettingsSection.LLM) },
-                    iconContainer = scheme.secondaryContainer,
-                    iconTint = scheme.onSecondaryContainer,
+                    icon = Icons.Default.LocationOn,
+                    onClick = { onOpenSection(SettingsSection.LOCATION) },
+                    iconContainer = scheme.primaryContainer,
+                    iconTint = scheme.onPrimaryContainer,
                 )
-            }
-        }
-
-        // ── More ─────────────────────────────────────────────────────────
-        if (showMore) {
-            SettingsSectionLabel("More options")
-            GroupedCard {
-                if (matches("location", "place", "map", "more")) {
-                    SettingsGroupRow(
-                        title = "Place tags",
-                        subtitle = if (state.location) {
-                            "On · remembers where you spent"
-                        } else {
-                            "Off · optional location on spends"
-                        },
-                        icon = Icons.Default.LocationOn,
-                        onClick = { onOpenSection(SettingsSection.LOCATION) },
-                        iconContainer = scheme.primaryContainer,
-                        iconTint = scheme.onPrimaryContainer,
-                    )
-                }
-                if (matches("google", "client", "oauth", "sign", "setup", "more")) {
-                    SettingsGroupRow(
-                        title = "Google sign-in setup",
-                        subtitle = if (state.sheetTokenSet) {
-                            "Connected · only change if sign-in fails"
-                        } else {
-                            "Only needed if “Connect with Google” fails"
-                        },
-                        icon = Icons.Default.VpnKey,
-                        onClick = { onOpenSection(SettingsSection.GOOGLE_AUTH) },
-                        iconContainer = scheme.surfaceContainerHighest,
-                        iconTint = scheme.onSurfaceVariant,
-                        showDivider = matches("location", "place", "map", "more"),
-                    )
-                }
             }
         }
 
@@ -379,7 +383,7 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(20.dp))
         Text(
-            "Rupiyah · v1.4.0",
+            "Rupiyah · v${BuildConfig.VERSION_NAME}",
             modifier = Modifier
                 .padding(bottom = 8.dp)
                 .combinedClickable(

@@ -16,7 +16,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuItem
 import com.krtky.financetracker.ui.util.TransactionSortOrder
+
+fun sortOverflowChildren(
+    current: TransactionSortOrder,
+    onSortChange: (TransactionSortOrder) -> Unit,
+): List<OverflowMenuItem> = TransactionSortOrder.entries.map { option ->
+    OverflowMenuItem(
+        label = if (option == current) "✓ ${option.label}" else option.label,
+        onClick = { onSortChange(option) },
+    )
+}
 
 @Composable
 fun TransactionSortButton(

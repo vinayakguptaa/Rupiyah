@@ -1,6 +1,5 @@
 package com.krtky.financetracker.ui.screens
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,12 +18,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +33,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,7 +45,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,13 +52,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.Category
-import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Money
 import com.krtky.financetracker.domain.model.SplitPart
 import com.krtky.financetracker.domain.model.SplitRules
+import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.TransactionType
-import com.krtky.financetracker.ui.components.FormTypeSegment
+import com.krtky.financetracker.ui.components.CategoryChipRow
+import com.krtky.financetracker.ui.components.FormDirectionChips
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
+import com.krtky.financetracker.ui.components.TabChipRow
+import com.krtky.financetracker.ui.components.formTextFieldColors
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.rememberAppHaptics
 import com.krtky.financetracker.ui.viewmodel.SplitTransactionViewModel
@@ -206,20 +206,7 @@ fun SplitEditorScreen(
     val remaining = SplitRules.remainingSignedPaise(parentType, parentAmountPaise, parts)
     val validation = SplitRules.validateParts(parentType, parentAmountPaise, parts)
 
-    val fieldBg = scheme.surfaceContainerHigh
-    val fieldColors = TextFieldDefaults.colors(
-        focusedContainerColor = fieldBg,
-        unfocusedContainerColor = fieldBg,
-        disabledContainerColor = fieldBg,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-        disabledIndicatorColor = Color.Transparent,
-        cursorColor = scheme.primary,
-        focusedTextColor = scheme.onSurface,
-        unfocusedTextColor = scheme.onSurface,
-        focusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-        unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-    )
+    val fieldColors = formTextFieldColors()
 
     Scaffold(
         containerColor = scheme.background,
@@ -343,7 +330,7 @@ fun SplitEditorScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "Parent ${if (parentType == TransactionType.CREDIT) "Credit" else "Debit"} ${parentAmountPaise.inr()} · Debit − Credit must equal parent",
+                "Parent ${if (parentType == TransactionType.CREDIT) "Credit" else "Debit"} ${parentAmountPaise.inr()} · lines must net to parent",
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
             )
@@ -412,29 +399,17 @@ fun SplitEditorScreen(
                                 }
                             }
                         }
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            FormTypeSegment(
-                                label = "Debit",
-                                selected = draft.type == TransactionType.DEBIT,
-                                onClick = {
-                                    haptics.select()
-                                    drafts[index] = draft.copy(type = TransactionType.DEBIT)
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
-                            FormTypeSegment(
-                                label = "Credit",
-                                selected = draft.type == TransactionType.CREDIT,
-                                onClick = {
-                                    haptics.select()
-                                    drafts[index] = draft.copy(type = TransactionType.CREDIT)
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+                        FormDirectionChips(
+                            debitSelected = draft.type == TransactionType.DEBIT,
+                            onDebit = {
+                                haptics.select()
+                                drafts[index] = draft.copy(type = TransactionType.DEBIT)
+                            },
+                            onCredit = {
+                                haptics.select()
+                                drafts[index] = draft.copy(type = TransactionType.CREDIT)
+                            },
+                        )
                         TextField(
                             value = draft.amountText,
                             onValueChange = { text ->
@@ -447,7 +422,7 @@ fun SplitEditorScreen(
                             placeholder = { Text("Amount") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(18.dp),
                             colors = fieldColors,
                             prefix = { Text("₹ ") },
                         )
@@ -457,60 +432,36 @@ fun SplitEditorScreen(
                             placeholder = { Text("Name") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(18.dp),
                             colors = fieldColors,
                         )
                         Text(
                             "Category",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = scheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            FilterChip(
-                                selected = draft.categoryId == null,
-                                onClick = { drafts[index] = draft.copy(categoryId = null) },
-                                label = { Text("None") },
-                            )
-                            categories.forEach { cat ->
-                                FilterChip(
-                                    selected = draft.categoryId == cat.id,
-                                    onClick = { drafts[index] = draft.copy(categoryId = cat.id) },
-                                    label = { Text(cat.name) },
-                                )
-                            }
-                        }
+                        CategoryChipRow(
+                            categories = categories,
+                            selectedCategoryId = draft.categoryId,
+                            onCategorySelected = { id ->
+                                drafts[index] = draft.copy(categoryId = id)
+                            },
+                            noneIcon = Icons.Default.Clear,
+                        )
                         if (tabs.isNotEmpty()) {
                             Text(
                                 "Tab",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = scheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
                             )
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                FilterChip(
-                                    selected = draft.tabId == null,
-                                    onClick = { drafts[index] = draft.copy(tabId = null) },
-                                    label = { Text("None") },
-                                )
-                                tabs.forEach { fb ->
-                                    FilterChip(
-                                        selected = draft.tabId == fb.tab.id,
-                                        onClick = {
-                                            drafts[index] = draft.copy(tabId = fb.tab.id)
-                                        },
-                                        label = { Text(fb.tab.name) },
-                                    )
-                                }
-                            }
+                            TabChipRow(
+                                tabs = tabs,
+                                selectedTabId = draft.tabId,
+                                onTabSelected = { id ->
+                                    drafts[index] = draft.copy(tabId = id)
+                                },
+                                noneIcon = Icons.Default.Clear,
+                            )
                         }
                         TextField(
                             value = draft.note,
@@ -518,7 +469,7 @@ fun SplitEditorScreen(
                             placeholder = { Text("Note (optional)") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(18.dp),
                             colors = fieldColors,
                         )
                     }

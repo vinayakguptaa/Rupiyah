@@ -33,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
@@ -188,6 +189,10 @@ fun TransactionFilterBar(
     showTabFilter: Boolean = true,
     /** When false, hides bank/cash/digital dropdown (rarely used). */
     showBankFilter: Boolean = true,
+    /** Activity inbox: only transactions still missing a category. */
+    needsClassify: Boolean = false,
+    onNeedsClassifyChange: (Boolean) -> Unit = {},
+    showNeedsClassifyFilter: Boolean = false,
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
     var showRangeSheet by remember { mutableStateOf(false) }
@@ -195,6 +200,7 @@ fun TransactionFilterBar(
     var draftPayment by remember { mutableStateOf<String?>(null) }
     var draftCategory by remember { mutableStateOf<Long?>(null) }
     var draftTab by remember { mutableStateOf<Long?>(null) }
+    var draftNeedsClassify by remember { mutableStateOf(false) }
     var draftRange by remember { mutableStateOf(TimeRange.MONTH) }
     var draftFromMillis by remember { mutableStateOf(customFromMillis) }
     var draftToMillis by remember { mutableStateOf(customToMillis) }
@@ -222,6 +228,7 @@ fun TransactionFilterBar(
     } else {
         null
     }
+    val classifyPill = if (showNeedsClassifyFilter && needsClassify) "Needs classify" else null
     val datePill = when (timeRange) {
         TimeRange.MONTH -> null
         TimeRange.TODAY -> "Today"
@@ -234,7 +241,8 @@ fun TransactionFilterBar(
             "Custom"
         }
     }
-    val activeCount = listOf(typePill, bankPill, fundPill, categoryPill, datePill).count { it != null }
+    val activeCount = listOf(typePill, bankPill, fundPill, categoryPill, classifyPill, datePill)
+        .count { it != null }
 
     Row(
         modifier = modifier
@@ -249,6 +257,7 @@ fun TransactionFilterBar(
                 draftPayment = paymentMethod
                 draftCategory = categoryId
                 draftTab = tabId
+                draftNeedsClassify = needsClassify
                 draftRange = timeRange
                 draftFromMillis = customFromMillis
                 draftToMillis = customToMillis
@@ -285,6 +294,7 @@ fun TransactionFilterBar(
         bankPill?.let { ActiveFilterPill(it) { onPaymentChange(null) } }
         fundPill?.let { ActiveFilterPill(it) { onTabChange(null) } }
         categoryPill?.let { ActiveFilterPill(it) { onCategoryChange(null) } }
+        classifyPill?.let { ActiveFilterPill(it) { onNeedsClassifyChange(false) } }
         datePill?.let { ActiveFilterPill(it) { onTimeRangeChange(TimeRange.MONTH) } }
     }
 
@@ -404,6 +414,40 @@ fun TransactionFilterBar(
                     )
                 }
 
+                if (showNeedsClassifyFilter) {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = scheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Needs classify",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    "Only rows still missing a category",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = draftNeedsClassify,
+                                onCheckedChange = { draftNeedsClassify = it },
+                            )
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
                 val dateOptions = listOf(
                     "Today",
@@ -465,6 +509,7 @@ fun TransactionFilterBar(
                         if (showBankFilter) onPaymentChange(draftPayment)
                         if (showCategoryFilter) onCategoryChange(draftCategory)
                         if (showTabFilter) onTabChange(draftTab)
+                        if (showNeedsClassifyFilter) onNeedsClassifyChange(draftNeedsClassify)
                         if (draftRange == TimeRange.CUSTOM) {
                             if (draftFromMillis != null && draftToMillis != null) {
                                 onCustomRange(draftFromMillis!!, draftToMillis!!)
@@ -493,6 +538,7 @@ fun TransactionFilterBar(
                         draftPayment = null
                         draftCategory = null
                         draftTab = null
+                        draftNeedsClassify = false
                         draftRange = TimeRange.MONTH
                         draftFromMillis = null
                         draftToMillis = null

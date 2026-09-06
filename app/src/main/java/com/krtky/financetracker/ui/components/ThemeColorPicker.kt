@@ -386,7 +386,7 @@ fun ThemePreviewCard(
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PreviewMetric("Spent", "₹7,420", tertiary, surfaceVariant, scheme.onSurface, Modifier.weight(1f))
+                PreviewMetric("Debits", "₹7,420", tertiary, surfaceVariant, scheme.onSurface, Modifier.weight(1f))
                 PreviewMetric("Saved", "₹10,780", secondary, surfaceVariant, scheme.onSurface, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

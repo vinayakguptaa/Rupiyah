@@ -68,10 +68,13 @@ class LlmClient @Inject constructor(
                 appendLine("ALLOWED DIGITAL ACCOUNTS (pick exactly one of these strings for \"bank\" / paymentMethod when digital, or null):")
                 appendLine(banks.joinToString(" | "))
                 appendLine("Match the closest account from this list only. Prefer the list label over synonyms.")
-                appendLine("If this is money moved between two of those accounts (self transfer), set isSelfTransfer=true, bank=source account, toBank=destination account.")
+                appendLine("If money moved between two of those accounts (not a spend), set isSelfTransfer=true, bank=source, toBank=destination, type=DEBIT for the source leg semantics.")
             } else {
                 appendLine("ALLOWED DIGITAL ACCOUNTS: (none configured — use paymentMethod Digital if not cash)")
             }
+            appendLine("Use type \"DEBIT\" or \"CREDIT\". Use \"none\" for bills/dues/reminders/non-completed — do not invent a txn.")
+            appendLine("Put the Name in \"counterparty\". For occurredAt prefer ISO-8601 with +05:30 when a date/time is in the message; else null.")
+            appendLine("Extract only one completed movement from this message.")
             appendLine()
             appendLine("Message body:")
             append(messageBody.take(6000))

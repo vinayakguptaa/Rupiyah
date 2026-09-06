@@ -102,6 +102,7 @@ import com.krtky.financetracker.ui.navigation.HomeRoute
 import com.krtky.financetracker.ui.navigation.MainTabs
 import com.krtky.financetracker.ui.navigation.OnboardingRoute
 import com.krtky.financetracker.ui.navigation.SettingsRoute
+import com.krtky.financetracker.ui.navigation.SettingsSection
 import com.krtky.financetracker.ui.navigation.SettingsSectionRoute
 import com.krtky.financetracker.ui.navigation.SplitRoute
 import com.krtky.financetracker.ui.navigation.TransactionsRoute
@@ -303,7 +304,6 @@ class MainActivity : ComponentActivity() {
 
                     // Tick signals so tab FABs can open create/search without Scaffold bottomBar
                     var tabsCreateTick by remember { mutableIntStateOf(0) }
-                    var settingsSearchTick by remember { mutableIntStateOf(0) }
                     // Activity deep-link filters live on the transactions SavedStateHandle
                     // (see ActivityFilterArgs) — not a pile of ticks here.
 
@@ -401,19 +401,23 @@ class MainActivity : ComponentActivity() {
                                             ),
                                         )
                                     },
-                                    onClassifyPending = { id ->
-                                        pendingClassifyId.value = id
-                                        classifyId = id
+                                    onOpenClassifyInbox = {
+                                        nav.openActivityWithFilters(
+                                            ActivityFilterArgs(needsClassify = true),
+                                        ) { dest -> tab(dest) }
                                     },
                                     onOpenSettingsSection = { section ->
-                                        nav.navigate(SettingsSectionRoute(section))
+                                        if (section == SettingsSection.BANKS.route) {
+                                            nav.navigate(AccountsRoute)
+                                        } else {
+                                            nav.navigate(SettingsSectionRoute(section))
+                                        }
                                     },
                                 )
                             }
                             composable<AccountsRoute> {
                                 AccountsScreen(
                                     onBack = { nav.popBackStack() },
-                                    onOpenSettings = { nav.navigate(SettingsSectionRoute("banks")) },
                                     onImportStatement = { accountId ->
                                         nav.navigate(
                                             CsvImportRoute(accountId = accountId ?: -1L),
@@ -552,6 +556,7 @@ class MainActivity : ComponentActivity() {
                                 TabsScreen(
                                     onOpenTab = { nav.navigate(TabRoute(it)) },
                                     createRequestTick = tabsCreateTick,
+                                    onCreateRequestConsumed = { tabsCreateTick = 0 },
                                 )
                             }
                             composable<TabRoute> { entry ->
@@ -570,25 +575,48 @@ class MainActivity : ComponentActivity() {
                                                 type = type.name,
                                                 categoryName = "Settlement",
                                                 note = "Settled · $tabName",
+                                                settleTabName = tabName,
                                             ),
                                         )
+                                    },
+                                    onYouPaid = { tabId ->
+                                        pendingReviewTxn.value = null
+                                        reviewTxn = null
+                                        nav.navigate(AddCashRoute(tabId = tabId))
                                     },
                                 )
                             }
                             composable<SettingsRoute> {
                                 SettingsScreen(
                                     onOpenSection = { section ->
-                                        nav.navigate(SettingsSectionRoute(section.route))
+                                        if (section == SettingsSection.BANKS) {
+                                            nav.navigate(AccountsRoute)
+                                        } else {
+                                            nav.navigate(SettingsSectionRoute(section.route))
+                                        }
                                     },
-                                    searchRequestTick = settingsSearchTick,
+                                    onImportStatement = {
+                                        nav.navigate(CsvImportRoute())
+                                    },
                                 )
                             }
                             composable<SettingsSectionRoute> { entry ->
                                 val args = entry.toRoute<SettingsSectionRoute>()
-                                SettingsDetailScreen(
-                                    section = args.section,
-                                    onBack = { nav.popBackStack() },
-                                )
+                                // Legacy / deep-link "banks" → single Accounts hub
+                                if (args.section == SettingsSection.BANKS.route) {
+                                    LaunchedEffect(Unit) {
+                                        nav.navigate(AccountsRoute) {
+                                            popUpTo(SettingsSectionRoute(args.section)) {
+                                                inclusive = true
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    SettingsDetailScreen(
+                                        section = args.section,
+                                        onBack = { nav.popBackStack() },
+                                    )
+                                }
                             }
                             composable<AddCashRoute> { entry ->
                                 val args = entry.toRoute<AddCashRoute>()
@@ -614,6 +642,7 @@ class MainActivity : ComponentActivity() {
                                     initialTabId = args.tabId.takeIf { it > 0L },
                                     initialCategoryName = args.categoryName,
                                     initialNote = args.note,
+                                    settleTabName = args.settleTabName.takeIf { it.isNotBlank() },
                                 )
                             }
                             composable<TxnRoute> { entry ->
@@ -657,7 +686,6 @@ class MainActivity : ComponentActivity() {
                             val usesAddMenu = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
                             val fab: Pair<ImageVector, () -> Unit> = when (tabRoute) {
                                 MainTabs.TABS -> Icons.Default.Add to { tabsCreateTick++ }
-                                MainTabs.SETTINGS -> Icons.Default.Search to { settingsSearchTick++ }
                                 else -> Icons.Default.Add to { addMenuOpen = !addMenuOpen }
                             }
                             FloatingBottomNav(
@@ -670,18 +698,17 @@ class MainActivity : ComponentActivity() {
                                     }
                                     nav.tab(dest)
                                 },
-                                showFab = true,
+                                showFab = tabRoute != MainTabs.SETTINGS,
                                 fabIcon = fab.first,
                                 fabContentDescription = when (tabRoute) {
                                     MainTabs.TABS -> "Add tab"
-                                    MainTabs.SETTINGS -> "Search settings"
                                     else -> stringResource(R.string.cd_fab_log)
                                 },
                                 onFabClick = fab.second,
                                 fabMenuExpanded = addMenuOpen && usesAddMenu,
                                 fabMenuItems = if (usesAddMenu) {
                                     listOf(
-                                        FabSpeedDialItem("Spend", Icons.Default.Payments) {
+                                        FabSpeedDialItem("Transact", Icons.Default.Payments) {
                                             addMenuOpen = false
                                             pendingReviewTxn.value = null
                                             reviewTxn = null

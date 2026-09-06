@@ -96,15 +96,15 @@ fun MonthFlowScreen(
     val title = when {
         investment && group == MonthFlowGroup.Category -> "Investments by category"
         investment && group == MonthFlowGroup.Source -> "Investments by source"
-        isExpense && group == MonthFlowGroup.Category -> "Expenses by category"
-        isExpense && group == MonthFlowGroup.Source -> "Expenses by source"
-        !isExpense && group == MonthFlowGroup.Category -> "Income by category"
-        else -> "Income by source"
+        isExpense && group == MonthFlowGroup.Category -> "Debits by category"
+        isExpense && group == MonthFlowGroup.Source -> "Debits by source"
+        !isExpense && group == MonthFlowGroup.Category -> "Credits by category"
+        else -> "Credits by source"
     }
     val totalLabel = when {
         investment -> monthLabel
-        isExpense -> "Total spent"
-        else -> "Total received"
+        isExpense -> "Total debits"
+        else -> "Total credits"
     }
     val noun = if (group == MonthFlowGroup.Category) {
         if (rows.size == 1) "category" else "categories"

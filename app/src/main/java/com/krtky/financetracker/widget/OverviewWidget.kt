@@ -130,7 +130,7 @@ private fun OverviewWidgetContent(snap: OverviewSnapshot) {
             verticalAlignment = Alignment.Top,
         ) {
             HeroMetricColumn(
-                label = "Income",
+                label = "Credits",
                 value = snap.income,
                 pctLabel = snap.incomePct,
                 isUp = snap.incomeIsUp,
@@ -144,7 +144,7 @@ private fun OverviewWidgetContent(snap: OverviewSnapshot) {
             )
             Spacer(modifier = GlanceModifier.width(12.dp))
             HeroMetricColumn(
-                label = "Expense",
+                label = "Debits",
                 value = snap.expense,
                 pctLabel = snap.expensePct,
                 isUp = snap.expenseIsUp,

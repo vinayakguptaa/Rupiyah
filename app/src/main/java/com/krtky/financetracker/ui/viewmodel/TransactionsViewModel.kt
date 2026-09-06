@@ -34,6 +34,7 @@ class TransactionsViewModel @Inject constructor(
     val paymentFilter: StateFlow<String?> = filters.payment
     val categoryFilter: StateFlow<Long?> = filters.categoryId
     val tabFilter: StateFlow<Long?> = filters.tabId
+    val needsClassify: StateFlow<Boolean> = filters.needsClassify
     val sortOrder: StateFlow<TransactionSortOrder> = filters.sort
     val timeRange: StateFlow<TimeRange> = filters.range
     val customFrom: StateFlow<Long> = filters.customFrom
@@ -50,6 +51,7 @@ class TransactionsViewModel @Inject constructor(
         val pay: String?,
         val cat: Long?,
         val tab: Long?,
+        val needsClassify: Boolean,
     )
     private data class Tail(
         val range: TimeRange,
@@ -67,18 +69,31 @@ class TransactionsViewModel @Inject constructor(
                 filters.paymentFlow,
                 filters.categoryIdFlow,
                 filters.tabIdFlow,
-            ) { q, t, pay, cat, tab -> Head(q, t, pay, cat, tab) },
+            ) { q, t, pay, cat, tab -> Head(q, t, pay, cat, tab, needsClassify = false) },
             combine(
                 filters.rangeFlow,
                 filters.customFromFlow,
                 filters.customToFlow,
                 filters.sortFlow,
-            ) { r, from, to, sort -> Tail(r, from, to, sort) },
-        ) { head, tail -> head to tail }
+                filters.needsClassifyFlow,
+            ) { r, from, to, sort, needs ->
+                Tail(r, from, to, sort) to needs
+            },
+        ) { head, tailNeeds ->
+            val (tail, needs) = tailNeeds
+            head.copy(needsClassify = needs) to tail
+        }
             .flatMapLatest { (head, tail) ->
                 val (from, to) = tail.range.toMillisRange(tail.from, tail.to)
                 transactionRepository.observeFiltered(head.q, head.t, head.cat, head.tab, from, to)
-                    .map { applyPaymentAndSort(it, head.pay, tail.sort) }
+                    .map { list ->
+                        val base = if (head.needsClassify) {
+                            list.filter { it.needsClassification() }
+                        } else {
+                            list
+                        }
+                        applyPaymentAndSort(base, head.pay, tail.sort)
+                    }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -87,6 +102,7 @@ class TransactionsViewModel @Inject constructor(
     fun setPayment(p: String?) = filters.setPayment(p)
     fun setCategory(id: Long?) = filters.setCategory(id)
     fun setTab(id: Long?) = filters.setTab(id)
+    fun setNeedsClassify(on: Boolean) = filters.setNeedsClassify(on)
     fun setSortOrder(order: TransactionSortOrder) = filters.setSortOrder(order)
     fun setTimeRange(r: TimeRange) = filters.setTimeRange(r)
     fun setCustomRange(fromMillis: Long, toMillis: Long) = filters.setCustomRange(fromMillis, toMillis)

@@ -2,15 +2,11 @@ package com.krtky.financetracker.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,12 +60,11 @@ import com.krtky.financetracker.ui.components.AmountRupeeField
 import com.krtky.financetracker.ui.components.CategoryChipRow
 import com.krtky.financetracker.ui.components.DateTimeField
 import com.krtky.financetracker.ui.components.DatePickerSheet
-import com.krtky.financetracker.ui.components.FormCategoryChip
-import com.krtky.financetracker.ui.components.FormExpandableHeader
+import com.krtky.financetracker.ui.components.FormDirectionChips
 import com.krtky.financetracker.ui.components.FormToggleRow
-import com.krtky.financetracker.ui.components.FormTypeSegment
 import com.krtky.financetracker.ui.components.M3LoadingIndicator
 import com.krtky.financetracker.ui.components.ReceiptAttachmentField
+import com.krtky.financetracker.ui.components.TabChipRow
 import com.krtky.financetracker.ui.components.TimePickerSheet
 import com.krtky.financetracker.ui.components.TransactionFormState
 import com.krtky.financetracker.ui.components.formTextFieldColors
@@ -91,8 +84,11 @@ fun AddCashScreen(
     initialTabId: Long? = null,
     initialCategoryName: String = "",
     initialNote: String = "",
+    /** When set, this is a tab settlement — banner + CTA change. */
+    settleTabName: String? = null,
     vm: AddCashViewModel = hiltViewModel(),
 ) {
+    val isSettle = !settleTabName.isNullOrBlank()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val accounts by vm.accounts.collectAsStateWithLifecycle()
@@ -111,10 +107,6 @@ fun AddCashScreen(
             }
         }
     }
-    val skipLastUsed = initialParsed != null ||
-        initialTabId != null ||
-        initialCategoryName.isNotBlank() ||
-        initialAmount.isNotBlank()
 
     var reviewFromAi by remember { mutableStateOf(initialParsed != null) }
     var parsedAccountHint by remember { mutableStateOf(initialParsed) }
@@ -123,13 +115,7 @@ fun AddCashScreen(
     }
     var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var recommendedTabId by remember { mutableStateOf<Long?>(null) }
-    var appliedLastUsed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-
-    val lastCategory by vm.lastUsedCategoryId.collectAsStateWithLifecycle()
-    val lastTab by vm.lastUsedTabId.collectAsStateWithLifecycle()
-    val lastPayment by vm.lastUsedPaymentMethod.collectAsStateWithLifecycle()
 
     fun resolveParsedAccount(parsed: Transaction): Long? {
         if (accounts.isEmpty()) return parsed.accountId
@@ -149,47 +135,12 @@ fun AddCashScreen(
             ?: accounts.firstOrNull { it.name.equals(defaultPay, true) }?.id
     }
 
-    LaunchedEffect(accounts, defaultPay, defaultDigital, lastPayment, reviewFromAi) {
-        if (reviewFromAi) {
-            parsedAccountHint?.let { parsed ->
-                formState.selectedAccountId = resolveParsedAccount(parsed)
-            }
-            return@LaunchedEffect
+    // Only hydrate account from AI/parse hints — never preselect last-used or defaults.
+    LaunchedEffect(accounts, defaultPay, defaultDigital, reviewFromAi) {
+        if (!reviewFromAi) return@LaunchedEffect
+        parsedAccountHint?.let { parsed ->
+            formState.selectedAccountId = resolveParsedAccount(parsed)
         }
-        if (formState.selectedAccountId != null) {
-            if (accounts.isNotEmpty() && accounts.none { it.id == formState.selectedAccountId }) {
-                formState.selectedAccountId = null
-            } else {
-                return@LaunchedEffect
-            }
-        }
-        if (accounts.isEmpty()) return@LaunchedEffect
-        fun match(name: String?) =
-            name?.takeIf { it.isNotBlank() }?.let { n ->
-                accounts.firstOrNull { it.name.equals(n, true) }?.id
-            }
-        formState.selectedAccountId = match(lastPayment)
-            ?: match(defaultPay)
-            ?: match(defaultDigital)
-            ?: accounts.firstOrNull { it.kind.name == "CASH" }?.id
-            ?: accounts.first().id
-    }
-
-    LaunchedEffect(formState.categoryId) {
-        val rec = formState.categoryId?.let { vm.recommendTabForCategory(it) }
-        recommendedTabId = rec
-    }
-
-    LaunchedEffect(lastCategory, lastTab, categories, tabs, reviewFromAi, skipLastUsed) {
-        if (appliedLastUsed || reviewFromAi || skipLastUsed) return@LaunchedEffect
-        if (lastCategory != null && categories.any { it.id == lastCategory }) {
-            formState.categoryId = lastCategory
-        }
-        if (lastTab != null && tabs.any { it.tab.id == lastTab }) {
-            formState.tabId = lastTab
-            formState.addToTab = true
-        }
-        appliedLastUsed = true
     }
 
     LaunchedEffect(categories, initialCategoryName) {
@@ -207,8 +158,11 @@ fun AddCashScreen(
         }
     }
 
-    val paymentLabel = accounts.firstOrNull { it.id == formState.selectedAccountId }?.name ?: "Select account"
-    val ctaLabel = if (formState.type == TransactionType.DEBIT) "Add debit" else "Add credit"
+    val ctaLabel = when {
+        isSettle -> "Record settlement"
+        formState.type == TransactionType.DEBIT -> "Add debit"
+        else -> "Add credit"
+    }
 
     LaunchedEffect(Unit) {
         contentVisible = true
@@ -238,7 +192,7 @@ fun AddCashScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Add",
+                        if (isSettle) "Settle" else "Add",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                     )
@@ -285,7 +239,7 @@ fun AddCashScreen(
                                     paymentMethod = method,
                                     accountId = formState.selectedAccountId,
                                     useLocation = formState.useLocation,
-                                    addToTab = formState.addToTab,
+                                    addToTab = formState.tabId != null,
                                     occurredAt = whenMs,
                                     receiptLocalUri = formState.receiptUri,
                                     source = saveSource,
@@ -342,293 +296,209 @@ fun AddCashScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (reviewFromAi) {
-                            Surface(
-                                shape = RoundedCornerShape(18.dp),
-                                color = scheme.secondaryContainer,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(
-                                    Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Text(
-                                        "Review before saving",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = scheme.onSecondaryContainer,
-                                    )
-                                    Text(
-                                        "Check the account — AI may guess the wrong bank.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSecondaryContainer,
-                                    )
-                                }
-                            }
-                        }
-
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(scheme.surfaceContainerHighest, RoundedCornerShape(28.dp))
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                if (isSettle) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = scheme.tertiaryContainer,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            FormTypeSegment(
-                                label = "Debit",
-                                selected = formState.type == TransactionType.DEBIT,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    formState.type = TransactionType.DEBIT
-                                    haptics.select()
-                                },
+                            Text(
+                                "Settle $settleTabName",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onTertiaryContainer,
                             )
-                            FormTypeSegment(
-                                label = "Credit",
-                                selected = formState.type == TransactionType.CREDIT,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    formState.type = TransactionType.CREDIT
-                                    haptics.select()
-                                },
+                            Text(
+                                "Records a real account debit or credit and closes the tab balance. Pick the account that money moved through.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onTertiaryContainer,
                             )
                         }
-
-                        AnimatedContent(
-                            targetState = formState.type,
-                            transitionSpec = {
-                                (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
-                                    .togetherWith(fadeOut(M3EMotion.effectsFast()))
-                            },
-                            label = "typeFields",
-                        ) { currentType ->
-                            TextField(
-                                value = formState.counterparty,
-                                onValueChange = { formState.counterparty = it },
-                                placeholder = {
-                                    Text(
-                                        if (currentType == TransactionType.DEBIT) {
-                                            "Name (merchant or person)"
-                                        } else {
-                                            "Name (source)"
-                                        },
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                shape = RoundedCornerShape(18.dp),
-                                colors = formTextFieldColors(),
+                    }
+                } else if (reviewFromAi) {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = scheme.secondaryContainer,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "Review before saving",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onSecondaryContainer,
+                            )
+                            Text(
+                                "Check the account — AI may guess the wrong bank.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSecondaryContainer,
                             )
                         }
+                    }
+                }
 
-                        AmountRupeeField(
-                            amount = formState.amount,
+                AmountRupeeField(
+                    amount = formState.amount,
+                    onClick = {
+                        haptics.select()
+                        formState.showAmountPad = true
+                    },
+                    shape = RoundedCornerShape(18.dp),
+                    containerColor = scheme.surfaceContainerHigh,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                ) {
+                    listOf("100", "500", "1000").forEach { chip ->
+                        Surface(
                             onClick = {
                                 haptics.select()
-                                formState.showAmountPad = true
-                            },
-                            shape = RoundedCornerShape(18.dp),
-                            containerColor = scheme.surfaceContainerHigh,
-                        )
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        ) {
-                            listOf("100", "500", "1000").forEach { chip ->
-                                Surface(
-                                    onClick = {
-                                        haptics.select()
-                                        val base = formState.amount.toDoubleOrNull() ?: 0.0
-                                        val add = chip.toDouble()
-                                        formState.amount = if (base == 0.0) chip else {
-                                            val sum = base + add
-                                            if (sum == sum.toLong().toDouble()) sum.toLong().toString()
-                                            else String.format(Locale.US, "%.2f", sum)
-                                        }
-                                    },
-                                    shape = MaterialTheme.shapes.extraLarge,
-                                    color = scheme.surfaceContainerHighest,
-                                ) {
-                                    Text(
-                                        "+$chip",
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = scheme.surfaceContainerHigh,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                Text(
-                                    if (formState.type == TransactionType.CREDIT) "Received in" else "Paid from",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Text(
-                                    paymentLabel,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                                if (accounts.isEmpty()) {
-                                    Text(
-                                        "No accounts yet. Add banks in Settings → Bank accounts.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSurfaceVariant,
-                                    )
+                                val base = formState.amount.toDoubleOrNull() ?: 0.0
+                                val add = chip.toDouble()
+                                formState.amount = if (base == 0.0) {
+                                    chip
                                 } else {
-                                    AccountChipRow(
-                                        accounts = accounts,
-                                        selectedAccountId = formState.selectedAccountId,
-                                        onAccountSelected = { formState.selectedAccountId = it },
-                                        accountBalances = accountBalances,
-                                        defaultDigital = defaultDigital,
-                                        defaultPay = defaultPay,
-                                        showArchivedSuffix = false,
-                                    )
+                                    val sum = base + add
+                                    if (sum == sum.toLong().toDouble()) {
+                                        sum.toLong().toString()
+                                    } else {
+                                        String.format(Locale.US, "%.2f", sum)
+                                    }
                                 }
-                            }
-                        }
-
-                        TextField(
-                            value = formState.note,
-                            onValueChange = { formState.note = it },
-                            placeholder = { Text("Description") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = formTextFieldColors(),
-                            minLines = 2,
-                        )
-
-                        ReceiptAttachmentField(
-                            localUri = formState.receiptUri,
-                            onUriChange = { formState.receiptUri = it },
-                        )
-
-                        DateTimeField(state = formState)
-
-                        FormExpandableHeader(
-                            title = "Category",
-                            subtitle = categories.firstOrNull { it.id == formState.categoryId }?.name ?: "Select category",
-                            icon = Icons.Default.Payments,
-                            expanded = formState.categoryExpanded,
-                            onToggle = {
-                                haptics.select()
-                                formState.categoryExpanded = !formState.categoryExpanded
                             },
-                        )
-                        AnimatedVisibility(
-                            visible = formState.categoryExpanded,
-                            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = scheme.surfaceContainerHighest,
                         ) {
-                            CategoryChipRow(
-                                categories = categories,
-                                selectedCategoryId = formState.categoryId,
-                                onCategorySelected = { formState.categoryId = it },
-                                noneIcon = Icons.Default.Clear,
+                            Text(
+                                "+$chip",
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
                             )
                         }
+                    }
+                }
 
-                        FormExpandableHeader(
-                            title = "More",
-                            subtitle = buildString {
-                                val bits = mutableListOf<String>()
-                                if (formState.tabId != null) {
-                                    bits += tabs.firstOrNull { it.tab.id == formState.tabId }?.tab?.name ?: "Tab"
-                                }
-                                if (formState.useLocation) bits += "Location"
-                                append(bits.joinToString(" · ").ifBlank { "Tab, location" })
-                            },
-                            icon = Icons.Default.KeyboardArrowDown,
-                            expanded = formState.moreExpanded,
-                            onToggle = {
-                                haptics.select()
-                                formState.moreExpanded = !formState.moreExpanded
-                            },
-                        )
-                        AnimatedVisibility(
-                            visible = formState.moreExpanded,
-                            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-                            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                if (tabs.isNotEmpty()) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        Text(
-                                            "Tab",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = scheme.onSurface,
-                                        )
-                                        val recTabName = recommendedTabId?.let { id ->
-                                            tabs.firstOrNull { it.tab.id == id }?.tab?.name
-                                        }
-                                        if (recTabName != null && formState.tabId == null) {
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = scheme.tertiaryContainer,
-                                            ) {
-                                                Text(
-                                                    "Spend from $recTabName",
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = scheme.onTertiaryContainer,
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        FormCategoryChip(
-                                            label = "None",
-                                            icon = Icons.Default.Clear,
-                                            selected = formState.tabId == null,
-                                            onClick = { formState.tabId = null },
-                                        )
-                                        tabs.forEach { f ->
-                                            FormCategoryChip(
-                                                label = f.tab.name,
-                                                icon = Icons.Default.Payments,
-                                                selected = formState.tabId == f.tab.id,
-                                                onClick = {
-                                                    formState.tabId = f.tab.id
-                                                    formState.addToTab = true
-                                                },
-                                            )
-                                        }
-                                    }
-                                    AnimatedVisibility(visible = formState.type == TransactionType.CREDIT && formState.tabId != null) {
-                                        FormToggleRow(
-                                            title = "Apply credit to tab balance",
-                                            checked = formState.addToTab,
-                                            onCheckedChange = { formState.addToTab = it },
-                                        )
-                                    }
-                                }
-                                FormToggleRow(
-                                    title = "Attach current location",
-                                    checked = formState.useLocation,
-                                    onCheckedChange = { formState.useLocation = it },
-                                )
-                            }
-                        }
+                FormDirectionChips(
+                    debitSelected = formState.type == TransactionType.DEBIT,
+                    onDebit = {
+                        formState.type = TransactionType.DEBIT
+                        haptics.select()
+                    },
+                    onCredit = {
+                        formState.type = TransactionType.CREDIT
+                        haptics.select()
+                    },
+                )
+
+                Text(
+                    "Account",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (accounts.isEmpty()) {
+                    Text(
+                        "No accounts yet. Add banks in Settings → Bank accounts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                } else {
+                    AccountChipRow(
+                        accounts = accounts,
+                        selectedAccountId = formState.selectedAccountId,
+                        onAccountSelected = { formState.selectedAccountId = it },
+                        accountBalances = accountBalances,
+                        defaultDigital = defaultDigital,
+                        defaultPay = defaultPay,
+                        showArchivedSuffix = false,
+                    )
+                }
+
+                Text(
+                    "Category",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                CategoryChipRow(
+                    categories = categories,
+                    selectedCategoryId = formState.categoryId,
+                    onCategorySelected = { formState.categoryId = it },
+                    noneIcon = Icons.Default.Clear,
+                )
+
+                AnimatedContent(
+                    targetState = formState.type,
+                    transitionSpec = {
+                        (fadeIn(M3EMotion.effectsFast()) + slideInVertically(M3EMotion.spatialFast()) { it / 8 })
+                            .togetherWith(fadeOut(M3EMotion.effectsFast()))
+                    },
+                    label = "typeFields",
+                ) { currentType ->
+                    TextField(
+                        value = formState.counterparty,
+                        onValueChange = { formState.counterparty = it },
+                        placeholder = {
+                            Text(
+                                if (currentType == TransactionType.DEBIT) {
+                                    "Name (merchant or person)"
+                                } else {
+                                    "Name (source)"
+                                },
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = formTextFieldColors(),
+                    )
+                }
+
+                TextField(
+                    value = formState.note,
+                    onValueChange = { formState.note = it },
+                    placeholder = { Text("Note") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = formTextFieldColors(),
+                    minLines = 2,
+                )
+
+                DateTimeField(state = formState)
+
+                if (tabs.isNotEmpty()) {
+                    Text(
+                        "Tab",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    TabChipRow(
+                        tabs = tabs,
+                        selectedTabId = formState.tabId,
+                        onTabSelected = { id ->
+                            formState.tabId = id
+                            formState.addToTab = id != null
+                        },
+                        noneIcon = Icons.Default.Clear,
+                    )
+                }
+
+                FormToggleRow(
+                    title = "Attach current location",
+                    checked = formState.useLocation,
+                    onCheckedChange = { formState.useLocation = it },
+                )
+                ReceiptAttachmentField(
+                    localUri = formState.receiptUri,
+                    onUriChange = { formState.receiptUri = it },
+                )
 
                 Spacer(Modifier.height(8.dp))
             }

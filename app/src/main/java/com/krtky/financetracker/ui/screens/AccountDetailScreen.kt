@@ -11,16 +11,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,21 +24,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.krtky.financetracker.R
 import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.CategoryFilterOption
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.TabFilterOption
 import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.TransactionFilterBar
-import com.krtky.financetracker.ui.components.TransactionSortButton
+import com.krtky.financetracker.ui.components.sortOverflowChildren
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuButton
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuItem
+import com.krtky.financetracker.ui.components.chrome.StackTopBar
 import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.categoryColor
-import com.krtky.financetracker.ui.util.downloadTransactionsCsv
 import com.krtky.financetracker.ui.util.formatDateTime
 import com.krtky.financetracker.ui.util.inr
 import com.krtky.financetracker.ui.util.onCategoryColor
@@ -82,7 +80,6 @@ fun AccountDetailScreen(
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
     val customTo by vm.customTo.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
-    val context = LocalContext.current
     val haptics = rememberAppHaptics()
     val dateFmt = timeRangeSubtitle(timeRange, customFrom, customTo)
 
@@ -93,53 +90,24 @@ fun AccountDetailScreen(
             .navigationBarsPadding()
             .padding(horizontal = 16.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-        ) {
-            Surface(
-                onClick = onBack,
-                shape = MaterialTheme.shapes.extraLarge,
-                color = scheme.surfaceContainerHigh,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title.ifBlank { accountName },
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
+        StackTopBar(
+            title = title.ifBlank { accountName },
+            subtitle = dateFmt,
+            onBack = onBack,
+            actions = {
+                OverflowMenuButton(
+                    items = listOf(
+                        OverflowMenuItem(
+                            label = stringResource(R.string.overflow_sort),
+                            children = sortOverflowChildren(sortOrder) {
+                                haptics.select()
+                                vm.setSortOrder(it)
+                            },
+                        ),
+                    ),
                 )
-                Text(
-                    dateFmt,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                )
-            }
-            TransactionSortButton(
-                sort = sortOrder,
-                onSortChange = {
-                    haptics.select()
-                    vm.setSortOrder(it)
-                },
-            )
-            IconButton(
-                onClick = {
-                    haptics.select()
-                    val name = title.ifBlank { accountName }.ifBlank { "account" }
-                    downloadTransactionsCsv(context, txns, "account_$name")
-                },
-                enabled = txns.isNotEmpty(),
-            ) {
-                Icon(Icons.Default.FileDownload, contentDescription = "Download CSV")
-            }
-        }
+            },
+        )
         Spacer(Modifier.height(12.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -149,8 +117,8 @@ fun AccountDetailScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     when (type) {
-                        TransactionType.DEBIT -> "Spent this period"
-                        TransactionType.CREDIT -> "Received this period"
+                        TransactionType.DEBIT -> "Debits this period"
+                        TransactionType.CREDIT -> "Credits this period"
                         else -> "Net this period"
                     },
                     style = MaterialTheme.typography.labelLarge,

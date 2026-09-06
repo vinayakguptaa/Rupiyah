@@ -221,6 +221,17 @@ interface TransactionDao {
 
     @Query(
         """
+        SELECT fundId AS id, COUNT(*) AS useCount
+        FROM transactions
+        WHERE deletedAt IS NULL AND fundId IS NOT NULL
+        GROUP BY fundId
+        ORDER BY useCount DESC
+        """
+    )
+    fun observeTabUsage(): Flow<List<UsageCountRow>>
+
+    @Query(
+        """
         SELECT strftime('%Y-%m', occurredAt / 1000, 'unixepoch', 'localtime') AS monthKey,
                COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amountPaise ELSE 0 END), 0) AS incomePaise,
                COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN amountPaise ELSE 0 END), 0) AS expensePaise

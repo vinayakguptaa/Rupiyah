@@ -84,7 +84,9 @@ fun AddFromTextContent(
         )
         Text(
             if (llmReady) {
-                "Paste a bank SMS, UPI note, or share text into Rupiyah. Spends open the review form. Transfers between your own accounts open the transfer sheet."
+                "Paste one completed bank/UPI confirmation. Bills, dues, and reminders are ignored. " +
+                    "A debit/credit opens the review form; a move between your own accounts opens Transfer. " +
+                    "If the paste has several payments, only the clearest one is used."
             } else {
                 "Turn on AI helper in Settings first. Without a key, only very clear bank-style text (amount + debited/credited) can be read."
             },

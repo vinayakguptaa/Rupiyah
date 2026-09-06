@@ -54,27 +54,36 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
             doExport(uri, false)
         }
     }
-    val importLauncher = rememberLauncherForActivityResult(
+    val jsonRestoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            vm.setStatus("Importing…")
-            val r = vm.importData(context, uri)
-            vm.setStatus(r.fold({ it }, { it.message ?: "Import failed" }))
+            vm.setStatus("Restoring JSON backup…")
+            val r = vm.importJsonBackup(context, uri)
+            vm.setStatus(r.fold({ it }, { it.message ?: "Restore failed" }))
+        }
+    }
+    val activityCsvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            vm.setStatus("Merging Activity CSV…")
+            val r = vm.importActivityCsvFile(context, uri)
+            vm.setStatus(r.fold({ it }, { it.message ?: "Merge failed" }))
         }
     }
 
     SettingsBlock(
-        title = "Save or restore your data",
-        helpTitle = "Backup & restore",
-        helpMessage = "JSON backup includes transactions, categories, tabs, and settings (and optionally API keys). " +
-            "Activity CSV from the Activity download button can also be restored here — it merges by Transaction ID " +
-            "and creates missing categories/tabs/accounts. JSON replace is full wipe-and-restore; CSV is a merge.",
+        title = "JSON backup",
+        helpTitle = "JSON backup",
+        helpMessage = "Full safety copy of transactions, categories, tabs, accounts, and settings. " +
+            "Restore replaces everything on this phone. Bank statement CSVs are a different file — " +
+            "use Settings → Import bank statement.",
     ) {
         Text(
-            "Save a JSON backup for a full safety copy. You can also restore an Activity CSV export " +
-                "(Downloads → activity_….csv) — that merges transactions without wiping settings.",
+            "Save a JSON file, then restore that same file later. Restore wipes local data first.",
             style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,
         )
@@ -86,12 +95,34 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = shapes.large,
-            ) { Text("Save backup file") }
+            ) { Text("Save JSON backup") }
             OutlinedButton(
                 onClick = {
-                    importLauncher.launch(
+                    jsonRestoreLauncher.launch(arrayOf("application/json", "*/*"))
+                },
+                modifier = Modifier.fillMaxWidth(),
+                shape = shapes.large,
+            ) { Text("Restore JSON backup") }
+        }
+    }
+
+    SettingsBlock(
+        title = "Merge Activity CSV",
+        helpTitle = "Activity CSV",
+        helpMessage = "This is the spreadsheet exported from Activity → ⋮ → Export activity CSV. " +
+            "It merges by Transaction ID and does not wipe settings. " +
+            "It is not a bank statement.",
+    ) {
+        Text(
+            "Use the CSV from Activity export (Downloads → activity_….csv), not a bank download.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant,
+        )
+        SettingsButtonStack {
+            OutlinedButton(
+                onClick = {
+                    activityCsvLauncher.launch(
                         arrayOf(
-                            "application/json",
                             "text/csv",
                             "text/comma-separated-values",
                             "text/*",
@@ -101,7 +132,7 @@ fun BackupSettingsContent(vm: SettingsViewModel) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = shapes.large,
-            ) { Text("Restore from backup / Activity CSV") }
+            ) { Text("Merge Activity CSV") }
         }
     }
 

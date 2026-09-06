@@ -2,11 +2,13 @@ package com.krtky.financetracker.ui.screens.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,5 +95,13 @@ fun SheetsSettingsContent(vm: SettingsViewModel) {
                 shape = shapes.large,
             ) { Text("Sync now") }
         }
+    }
+
+    var showSignInSetup by remember { mutableStateOf(false) }
+    TextButton(onClick = { showSignInSetup = !showSignInSetup }) {
+        Text(if (showSignInSetup) "Hide sign-in setup" else "Advanced: sign-in setup")
+    }
+    AnimatedVisibility(visible = showSignInSetup) {
+        GoogleAuthSettingsContent(vm)
     }
 }

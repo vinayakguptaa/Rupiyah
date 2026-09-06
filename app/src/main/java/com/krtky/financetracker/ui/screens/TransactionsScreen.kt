@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -60,7 +59,9 @@ import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.EmptyState
 import com.krtky.financetracker.ui.components.TransactionFilterBar
-import com.krtky.financetracker.ui.components.TransactionSortButton
+import com.krtky.financetracker.ui.components.sortOverflowChildren
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuButton
+import com.krtky.financetracker.ui.components.chrome.OverflowMenuItem
 import com.krtky.financetracker.ui.components.chrome.ScreenHeader
 import com.krtky.financetracker.ui.navigation.ActivityFilterKeys
 import com.krtky.financetracker.ui.navigation.consumeActivityFilters
@@ -93,6 +94,7 @@ fun TransactionsScreen(
     val payment by vm.paymentFilter.collectAsStateWithLifecycle()
     val categoryId by vm.categoryFilter.collectAsStateWithLifecycle()
     val tabId by vm.tabFilter.collectAsStateWithLifecycle()
+    val needsClassify by vm.needsClassify.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val bankAccounts by vm.bankAccounts.collectAsStateWithLifecycle()
@@ -128,12 +130,22 @@ fun TransactionsScreen(
         savedStateHandle?.getStateFlow(ActivityFilterKeys.APPLY_RANGE, false)
             ?: kotlinx.coroutines.flow.MutableStateFlow(false)
     }.collectAsStateWithLifecycle()
+    val needsClassifyFlag by remember(savedStateHandle) {
+        savedStateHandle?.getStateFlow(ActivityFilterKeys.NEEDS_CLASSIFY, false)
+            ?: kotlinx.coroutines.flow.MutableStateFlow(false)
+    }.collectAsStateWithLifecycle()
     val clearFlag by remember(savedStateHandle) {
         savedStateHandle?.getStateFlow(ActivityFilterKeys.CLEAR, false)
             ?: kotlinx.coroutines.flow.MutableStateFlow(false)
     }.collectAsStateWithLifecycle()
 
-    LaunchedEffect(applyCategoryFlag, filterTypeName, filterPayment, applyRangeFlag) {
+    LaunchedEffect(
+        applyCategoryFlag,
+        filterTypeName,
+        filterPayment,
+        applyRangeFlag,
+        needsClassifyFlag,
+    ) {
         val handle = savedStateHandle ?: return@LaunchedEffect
         val shot = handle.consumeActivityFilters() ?: return@LaunchedEffect
         vm.setPayment(shot.payment)
@@ -144,6 +156,10 @@ fun TransactionsScreen(
         if (shot.applyRange && shot.customFromMillis != null && shot.customToMillis != null) {
             vm.setCustomRange(shot.customFromMillis, shot.customToMillis)
         }
+        vm.setNeedsClassify(shot.needsClassify)
+        if (shot.needsClassify) {
+            vm.setTimeRange(TimeRange.ALL)
+        }
     }
 
     LaunchedEffect(clearFlag) {
@@ -152,6 +168,7 @@ fun TransactionsScreen(
         vm.setType(null)
         vm.setPayment(null)
         vm.setCategory(null)
+        vm.setNeedsClassify(false)
         vm.setTimeRange(TimeRange.MONTH)
     }
 
@@ -177,13 +194,6 @@ fun TransactionsScreen(
                 title = if (selectedIds.isEmpty()) "Activity" else "${selectedIds.size} selected",
                 actions = {
                     if (selectedIds.isEmpty()) {
-                        TransactionSortButton(
-                            sort = sortOrder,
-                            onSortChange = {
-                                haptics.select()
-                                vm.setSortOrder(it)
-                            },
-                        )
                         IconButton(
                             onClick = {
                                 haptics.select()
@@ -199,19 +209,25 @@ fun TransactionsScreen(
                                 tint = scheme.onSurface,
                             )
                         }
-                        IconButton(
-                            onClick = {
-                                haptics.select()
-                                downloadTransactionsCsv(context, items, "activity")
-                            },
-                            enabled = items.isNotEmpty(),
-                        ) {
-                            Icon(
-                                Icons.Default.FileDownload,
-                                contentDescription = stringResource(R.string.cd_download_csv),
-                                tint = scheme.onSurface,
-                            )
-                        }
+                        OverflowMenuButton(
+                            items = listOf(
+                                OverflowMenuItem(
+                                    label = stringResource(R.string.overflow_sort),
+                                    children = sortOverflowChildren(sortOrder) {
+                                        haptics.select()
+                                        vm.setSortOrder(it)
+                                    },
+                                ),
+                                OverflowMenuItem(
+                                    label = stringResource(R.string.overflow_export_activity_csv),
+                                    enabled = items.isNotEmpty(),
+                                    onClick = {
+                                        haptics.select()
+                                        downloadTransactionsCsv(context, items, "activity")
+                                    },
+                                ),
+                            ),
+                        )
                     } else {
                         TextButton(onClick = { selectedIds = emptySet() }) { Text("Cancel") }
                     }
@@ -281,6 +297,13 @@ fun TransactionsScreen(
                 },
                 onCustomRange = vm::setCustomRange,
                 onClearAll = vm::clearFilters,
+                needsClassify = needsClassify,
+                onNeedsClassifyChange = {
+                    haptics.select()
+                    vm.setNeedsClassify(it)
+                    if (it) vm.setTimeRange(TimeRange.ALL)
+                },
+                showNeedsClassifyFilter = true,
             )
 
             // Filtered summary strip: count · −expense · +income
@@ -319,14 +342,34 @@ fun TransactionsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (items.isEmpty()) {
+                val filtersActive = query.isNotBlank() ||
+                    type != null ||
+                    payment != null ||
+                    categoryId != null ||
+                    tabId != null ||
+                    timeRange != TimeRange.MONTH
                 item {
-                    EmptyState(
-                        icon = Icons.Default.ReceiptLong,
-                        title = stringResource(R.string.empty_activity_title),
-                        body = stringResource(R.string.empty_activity_body),
-                        actionLabel = stringResource(R.string.empty_activity_action),
-                        onAction = onAddTransaction,
-                    )
+                    if (filtersActive) {
+                        EmptyState(
+                            icon = Icons.Default.ReceiptLong,
+                            title = stringResource(R.string.empty_activity_filtered_title),
+                            body = stringResource(R.string.empty_activity_filtered_body),
+                            actionLabel = stringResource(R.string.empty_activity_filtered_action),
+                            onAction = {
+                                vm.setQuery("")
+                                searchOpen = false
+                                vm.clearFilters()
+                            },
+                        )
+                    } else {
+                        EmptyState(
+                            icon = Icons.Default.ReceiptLong,
+                            title = stringResource(R.string.empty_activity_title),
+                            body = stringResource(R.string.empty_activity_body),
+                            actionLabel = stringResource(R.string.empty_activity_action),
+                            onAction = onAddTransaction,
+                        )
+                    }
                 }
             } else {
                 grouped.forEach { (monthKey, monthItems) ->

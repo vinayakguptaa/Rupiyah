@@ -87,6 +87,35 @@ fun observeCategoriesSortedByUsage(
     )
 }
 
+/** Active accounts only, most-used first (Add / Transfer pickers). */
+fun observeAccountsSortedByUsage(
+    accountRepository: AccountRepository,
+    transactionRepository: TransactionRepository,
+): Flow<List<com.krtky.financetracker.domain.model.Account>> = combine(
+    accountRepository.observeActive(),
+    transactionRepository.observeAccountUsage(),
+) { accounts, usage ->
+    accounts.sortedWith(
+        compareByDescending<com.krtky.financetracker.domain.model.Account> { usage[it.id] ?: 0L }
+            .thenBy { it.sortOrder }
+            .thenBy { it.name },
+    )
+}
+
+/** Open tabs, most-used first (Add / Split pickers). */
+fun observeTabsSortedByUsage(
+    transactionRepository: TransactionRepository,
+): Flow<List<com.krtky.financetracker.domain.model.TabBalance>> = combine(
+    transactionRepository.observeTabs(),
+    transactionRepository.observeTabUsage(),
+) { tabs, usage ->
+    tabs.sortedWith(
+        compareByDescending<com.krtky.financetracker.domain.model.TabBalance> {
+            usage[it.tab.id] ?: 0L
+        }.thenBy { it.tab.name },
+    )
+}
+
 /**
  * Account names for Activity filters: active + archived (non-Cash).
  * Archived stay filterable so history on old banks is still findable.
@@ -136,8 +165,14 @@ fun ViewModel.activeBankNamesState(accountRepository: AccountRepository): StateF
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
 fun ViewModel.tabsState(transactionRepository: TransactionRepository) =
-    transactionRepository.observeTabs()
+    observeTabsSortedByUsage(transactionRepository)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+fun ViewModel.accountsSortedByUsageState(
+    accountRepository: AccountRepository,
+    transactionRepository: TransactionRepository,
+) = observeAccountsSortedByUsage(accountRepository, transactionRepository)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
 suspend fun ViewModel.recommendTabForCategory(
     transactionRepository: TransactionRepository,

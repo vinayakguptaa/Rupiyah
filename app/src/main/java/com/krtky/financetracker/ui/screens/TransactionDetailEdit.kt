@@ -4,46 +4,29 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.krtky.financetracker.domain.model.Account
@@ -51,23 +34,24 @@ import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.ui.components.AccountChipRow
 import com.krtky.financetracker.ui.components.AmountRupeeField
-import com.krtky.financetracker.ui.components.FormAccountChip
-import com.krtky.financetracker.ui.components.FormCategoryChip
-import com.krtky.financetracker.ui.components.FormExpandableHeader
-import com.krtky.financetracker.ui.components.FormTypeSegment
+import com.krtky.financetracker.ui.components.CategoryChipRow
+import com.krtky.financetracker.ui.components.FormDirectionChips
+import com.krtky.financetracker.ui.components.FormToggleRow
 import com.krtky.financetracker.ui.components.ReceiptAttachmentField
+import com.krtky.financetracker.ui.components.TabChipRow
+import com.krtky.financetracker.ui.components.formFieldContainerColor
+import com.krtky.financetracker.ui.components.formTextFieldColors
 import com.krtky.financetracker.ui.theme.M3EMotion
-import com.krtky.financetracker.ui.util.CategoryIcons
 import com.krtky.financetracker.ui.util.mapsUri
 import java.text.SimpleDateFormat
 import java.util.Date
 
 /**
- * Full editor for a loaded transaction. Hosted by [TransactionDetailScreen] when
- * the user taps Edit; dirty-tracking and save stay on the screen / ViewModel.
+ * Full editor for a loaded transaction — same field order and chip chrome as [AddCashScreen].
+ * Edit-only extras: existing place / maps / external ref.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TransactionDetailEdit(
     t: Transaction,
@@ -84,8 +68,6 @@ internal fun TransactionDetailEdit(
     onCategoryId: (Long?) -> Unit,
     tabId: Long?,
     onTabId: (Long?) -> Unit,
-    addToTab: Boolean,
-    onAddToTab: (Boolean) -> Unit,
     amount: String,
     type: TransactionType,
     onType: (TransactionType) -> Unit,
@@ -95,12 +77,7 @@ internal fun TransactionDetailEdit(
     onUseCurrentLocation: (Boolean) -> Unit,
     displayReceiptUri: Uri?,
     onReceiptChange: (Uri?) -> Unit,
-    recommendedTabId: Long?,
     displayWhen: Long,
-    paymentExpanded: Boolean,
-    onPaymentExpanded: (Boolean) -> Unit,
-    categoryExpanded: Boolean,
-    onCategoryExpanded: (Boolean) -> Unit,
     dateFmt: SimpleDateFormat,
     timeFmt: SimpleDateFormat,
     context: Context,
@@ -112,23 +89,8 @@ internal fun TransactionDetailEdit(
 ) {
     val scheme = MaterialTheme.colorScheme
     val fieldShape = RoundedCornerShape(18.dp)
-    val fieldBg = scheme.surfaceContainerHigh
-    val fieldColors = TextFieldDefaults.colors(
-        focusedContainerColor = fieldBg,
-        unfocusedContainerColor = fieldBg,
-        disabledContainerColor = fieldBg,
-        focusedIndicatorColor = Color.Transparent,
-        unfocusedIndicatorColor = Color.Transparent,
-        disabledIndicatorColor = Color.Transparent,
-        cursorColor = scheme.primary,
-        focusedTextColor = scheme.onSurface,
-        unfocusedTextColor = scheme.onSurface,
-        focusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-        unfocusedPlaceholderColor = scheme.onSurfaceVariant.copy(alpha = 0.55f),
-    )
-    val paymentLabel = pickerAccounts.firstOrNull { it.id == selectedAccountId }?.let { acc ->
-        if (acc.archived) "${acc.name} (archived)" else acc.name
-    } ?: "Select account"
+    val fieldBg = formFieldContainerColor()
+    val fieldColors = formTextFieldColors()
 
     Column(
         modifier
@@ -137,32 +99,61 @@ internal fun TransactionDetailEdit(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(scheme.surfaceContainerHighest, RoundedCornerShape(28.dp))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            FormTypeSegment(
-                label = "Debit",
-                selected = type == TransactionType.DEBIT,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onType(TransactionType.DEBIT)
-                    onHapticSelect()
-                },
+        AmountRupeeField(
+            amount = amount,
+            onClick = {
+                onHapticSelect()
+                onShowAmountPad()
+            },
+            shape = fieldShape,
+            containerColor = fieldBg,
+        )
+
+        FormDirectionChips(
+            debitSelected = type == TransactionType.DEBIT,
+            onDebit = {
+                onType(TransactionType.DEBIT)
+                onHapticSelect()
+            },
+            onCredit = {
+                onType(TransactionType.CREDIT)
+                onHapticSelect()
+            },
+        )
+
+        Text(
+            "Account",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (pickerAccounts.isEmpty()) {
+            Text(
+                "No accounts yet. Add banks in Settings → Bank accounts.",
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
             )
-            FormTypeSegment(
-                label = "Credit",
-                selected = type == TransactionType.CREDIT,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    onType(TransactionType.CREDIT)
-                    onHapticSelect()
-                },
+        } else {
+            AccountChipRow(
+                accounts = pickerAccounts,
+                selectedAccountId = selectedAccountId,
+                onAccountSelected = onAccountId,
+                defaultDigital = defaultDigital,
+                defaultPay = defaultPay,
+                showArchivedSuffix = true,
             )
         }
+
+        Text(
+            "Category",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        CategoryChipRow(
+            categories = categories,
+            selectedCategoryId = categoryId,
+            onCategorySelected = onCategoryId,
+            noneIcon = Icons.Default.Clear,
+        )
 
         AnimatedContent(
             targetState = type,
@@ -177,8 +168,11 @@ internal fun TransactionDetailEdit(
                 onValueChange = onCounterparty,
                 placeholder = {
                     Text(
-                        if (currentType == TransactionType.DEBIT) "Name (merchant or person)"
-                        else "Name (source)",
+                        if (currentType == TransactionType.DEBIT) {
+                            "Name (merchant or person)"
+                        } else {
+                            "Name (source)"
+                        },
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -188,43 +182,21 @@ internal fun TransactionDetailEdit(
             )
         }
 
-        AmountRupeeField(
-            amount = amount,
-            onClick = {
-                onHapticSelect()
-                onShowAmountPad()
-            },
-            shape = fieldShape,
-            containerColor = fieldBg,
-            amountStyle = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.SemiBold,
-            ),
-            symbolStyle = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-            ),
-        )
-
         TextField(
             value = note,
             onValueChange = onNote,
-            placeholder = { Text("Description") },
+            placeholder = { Text("Note") },
             modifier = Modifier.fillMaxWidth(),
             shape = fieldShape,
             colors = fieldColors,
             minLines = 2,
         )
 
-        ReceiptAttachmentField(
-            localUri = displayReceiptUri,
-            onUriChange = onReceiptChange,
-            enabled = true,
-        )
-
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Surface(
+            androidx.compose.material3.Surface(
                 onClick = {
                     onHapticSelect()
                     onShowDatePicker()
@@ -234,19 +206,11 @@ internal fun TransactionDetailEdit(
                 color = fieldBg,
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Default.CalendarMonth,
-                            null,
-                            tint = scheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text("Date", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Date",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
                     Text(
                         dateFmt.format(Date(displayWhen)),
                         style = MaterialTheme.typography.titleMedium,
@@ -254,7 +218,7 @@ internal fun TransactionDetailEdit(
                     )
                 }
             }
-            Surface(
+            androidx.compose.material3.Surface(
                 onClick = {
                     onHapticSelect()
                     onShowTimePicker()
@@ -264,19 +228,11 @@ internal fun TransactionDetailEdit(
                 color = fieldBg,
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Default.Schedule,
-                            null,
-                            tint = scheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text("Time", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                    }
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Time",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.onSurfaceVariant,
+                    )
                     Text(
                         timeFmt.format(Date(displayWhen)),
                         style = MaterialTheme.typography.titleMedium,
@@ -286,180 +242,31 @@ internal fun TransactionDetailEdit(
             }
         }
 
-        FormExpandableHeader(
-            title = "Payment",
-            subtitle = paymentLabel,
-            icon = Icons.Default.Payments,
-            expanded = paymentExpanded,
-            onToggle = {
-                onHapticSelect()
-                onPaymentExpanded(!paymentExpanded)
-            },
-        )
-        AnimatedVisibility(
-            visible = paymentExpanded,
-            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "Same list as Settings → Bank accounts (+ Cash). Archived only if this txn already uses one.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = scheme.onSurfaceVariant,
-                )
-                if (pickerAccounts.isEmpty()) {
-                    Text(
-                        "No accounts yet. Add banks in Settings → Bank accounts.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    pickerAccounts.forEach { acc ->
-                        FormAccountChip(
-                            label = if (acc.archived) "${acc.name} (archived)" else acc.name,
-                            icon = if (acc.kind.name == "CASH") {
-                                Icons.Default.Payments
-                            } else {
-                                Icons.Default.AccountBalance
-                            },
-                            selected = selectedAccountId == acc.id,
-                            isDefault = defaultDigital.equals(acc.name, true) ||
-                                defaultPay.equals(acc.name, true),
-                            onClick = {
-                                onAccountId(acc.id)
-                                onHapticSelect()
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        FormExpandableHeader(
-            title = "Category",
-            subtitle = categories.firstOrNull { it.id == categoryId }?.name ?: "Select category",
-            icon = Icons.Default.Payments,
-            expanded = categoryExpanded,
-            onToggle = {
-                onHapticSelect()
-                onCategoryExpanded(!categoryExpanded)
-            },
-        )
-        AnimatedVisibility(
-            visible = categoryExpanded,
-            enter = expandVertically(M3EMotion.spatialDefault()) + fadeIn(M3EMotion.effectsDefault()),
-            exit = shrinkVertically(M3EMotion.spatialDefault()) + fadeOut(M3EMotion.effectsDefault()),
-        ) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                FormCategoryChip(
-                    label = "None",
-                    icon = Icons.Default.Delete,
-                    selected = categoryId == null,
-                    onClick = {
-                        onCategoryId(null)
-                        onHapticSelect()
-                    },
-                )
-                categories.forEach { c ->
-                    FormCategoryChip(
-                        label = c.name,
-                        icon = CategoryIcons.iconFor(c.icon, c.name),
-                        selected = categoryId == c.id,
-                        onClick = {
-                            onCategoryId(c.id)
-                            onHapticSelect()
-                        },
-                    )
-                }
-            }
-        }
-
         if (tabs.isNotEmpty()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "Tab",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                val recTabName = recommendedTabId?.let { id ->
-                    tabs.firstOrNull { it.tab.id == id }?.tab?.name
-                }
-                if (recTabName != null && tabId == null) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = scheme.tertiaryContainer,
-                    ) {
-                        Text(
-                            "Spend from $recTabName",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onTertiaryContainer,
-                        )
-                    }
-                }
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FormCategoryChip(
-                    label = "None",
-                    icon = Icons.Default.Delete,
-                    selected = tabId == null,
-                    onClick = { onTabId(null) },
-                )
-                tabs.forEach { f ->
-                    FormCategoryChip(
-                        label = f.tab.name,
-                        icon = Icons.Default.Payments,
-                        selected = tabId == f.tab.id,
-                        onClick = {
-                            onTabId(f.tab.id)
-                            onAddToTab(true)
-                        },
-                    )
-                }
-            }
-            AnimatedVisibility(visible = type == TransactionType.CREDIT && tabId != null) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = fieldBg,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Add to tab balance",
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Switch(
-                            checked = addToTab,
-                            onCheckedChange = onAddToTab,
-                        )
-                    }
-                }
-            }
+            Text(
+                "Tab",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TabChipRow(
+                tabs = tabs,
+                selectedTabId = tabId,
+                onTabSelected = onTabId,
+                noneIcon = Icons.Default.Clear,
+            )
         }
+
+        FormToggleRow(
+            title = "Update with current location",
+            checked = useCurrentLocation,
+            onCheckedChange = onUseCurrentLocation,
+        )
+
+        ReceiptAttachmentField(
+            localUri = displayReceiptUri,
+            onUriChange = onReceiptChange,
+            enabled = true,
+        )
 
         if (!t.externalRefId.isNullOrBlank()) {
             Text(
@@ -483,23 +290,6 @@ internal fun TransactionDetailEdit(
                     },
                     shape = RoundedCornerShape(18.dp),
                 ) { Text("Open in Maps") }
-            }
-        }
-
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = fieldBg,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Update with current location", style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = useCurrentLocation, onCheckedChange = onUseCurrentLocation)
             }
         }
 

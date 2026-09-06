@@ -106,11 +106,8 @@ fun TransactionDetailScreen(
     var receiptCleared by remember { mutableStateOf(false) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var paymentExpanded by remember { mutableStateOf(true) }
-    var categoryExpanded by remember { mutableStateOf(true) }
     var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var recommendedTabId by remember { mutableStateOf<Long?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showAmountPad by remember { mutableStateOf(false) }
@@ -152,11 +149,6 @@ fun TransactionDetailScreen(
     }
 
     LaunchedEffect(Unit) { contentVisible = true }
-
-    LaunchedEffect(categoryId) {
-        val rec = categoryId?.let { vm.recommendTabForCategory(it) }
-        recommendedTabId = rec
-    }
 
     LaunchedEffect(txn, accounts, archivedCurrent, defaultDigital, defaultPay) {
         txn?.let {
@@ -432,9 +424,10 @@ fun TransactionDetailScreen(
                     categoryId = categoryId,
                     onCategoryId = { categoryId = it },
                     tabId = tabId,
-                    onTabId = { tabId = it },
-                    addToTab = addToTab,
-                    onAddToTab = { addToTab = it },
+                    onTabId = {
+                        tabId = it
+                        addToTab = it != null
+                    },
                     amount = amount,
                     type = type,
                     onType = { type = it },
@@ -452,12 +445,7 @@ fun TransactionDetailScreen(
                             receiptCleared = false
                         }
                     },
-                    recommendedTabId = recommendedTabId,
                     displayWhen = displayWhen,
-                    paymentExpanded = paymentExpanded,
-                    onPaymentExpanded = { paymentExpanded = it },
-                    categoryExpanded = categoryExpanded,
-                    onCategoryExpanded = { categoryExpanded = it },
                     dateFmt = dateFmt,
                     timeFmt = timeFmt,
                     context = context,
