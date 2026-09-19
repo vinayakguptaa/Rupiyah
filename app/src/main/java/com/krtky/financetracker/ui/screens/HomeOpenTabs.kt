@@ -11,16 +11,17 @@ import com.krtky.financetracker.ui.components.TabsWaveSummary
 @Composable
 internal fun HomeOpenTabsSection(
     data: HomeDashboardData,
-    compact: Boolean,
     modifier: Modifier = Modifier,
     onOpenTabs: () -> Unit,
+    onOpenTabDetail: ((tabId: Long) -> Unit)? = null,
 ) {
     Column(modifier) {
         TabsWaveSummary(
             tabs = data.tabs,
             hidden = data.isNetHidden,
             onOpenTabs = onOpenTabs,
+            onOpenTab = onOpenTabDetail,
         )
-        if (!compact) Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }

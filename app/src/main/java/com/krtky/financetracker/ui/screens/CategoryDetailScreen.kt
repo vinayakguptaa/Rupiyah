@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -59,7 +60,7 @@ fun CategoryDetailScreen(
     onOpenTxn: (String) -> Unit,
     initialFromMillis: Long = 0L,
     initialToMillis: Long = 0L,
-    initialType: TransactionType = TransactionType.DEBIT,
+    initialType: TransactionType? = null,
     vm: CategoryDetailViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(categoryId, categoryName, initialFromMillis, initialToMillis, initialType) {
@@ -83,6 +84,10 @@ fun CategoryDetailScreen(
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
     val dateFmt = timeRangeSubtitle(timeRange, customFrom, customTo)
+
+    val debits = remember(txns) { txns.filter { it.type == TransactionType.DEBIT }.sumOf { it.amountPaise } }
+    val credits = remember(txns) { txns.filter { it.type == TransactionType.CREDIT }.sumOf { it.amountPaise } }
+    val net = credits - debits
 
     Column(
         Modifier
@@ -119,19 +124,30 @@ fun CategoryDetailScreen(
                 Text(
                     when (type) {
                         TransactionType.CREDIT -> "Total received"
-                        else -> "Total spent"
+                        TransactionType.DEBIT -> "Total spent"
+                        else -> "Net flow"
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
                 )
                 Text(
-                    total.inr(),
+                    when (type) {
+                        TransactionType.CREDIT -> credits.inr()
+                        TransactionType.DEBIT -> debits.inr()
+                        else -> if (net < 0L) "-${kotlin.math.abs(net).inr()}" else if (net > 0L) "+${net.inr()}" else net.inr()
+                    },
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = scheme.onPrimaryContainer,
                 )
+                val summarySubtitle = when {
+                    type == null && debits > 0 && credits > 0 ->
+                        "Spent ${debits.inr()} · Received ${credits.inr()} · ${txns.size} txn${if (txns.size == 1) "" else "s"}"
+                    else ->
+                        "${txns.size} transaction${if (txns.size == 1) "" else "s"}"
+                }
                 Text(
-                    "${txns.size} transaction${if (txns.size == 1) "" else "s"}",
+                    summarySubtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = scheme.onPrimaryContainer.copy(alpha = 0.75f),
                 )

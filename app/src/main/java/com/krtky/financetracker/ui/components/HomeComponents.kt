@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -80,7 +81,7 @@ fun BalanceHeroCard(
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(28.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = cardBg,
     ) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 22.dp)) {
@@ -97,7 +98,7 @@ fun BalanceHeroCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    if (hidden) "\u20b9  \u2022\u2022\u2022\u2022" else balance,
+                    if (hidden) "\u20b9  ••••" else balance,
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = onCard,
@@ -131,20 +132,20 @@ fun BalanceHeroCard(
     }
 }
 
-/** Tabs summary using M3 Expressive LinearWavyProgressIndicator. */
+/** Tabs summary card. */
 @Composable
 fun TabsWaveSummary(
     tabs: List<TabBalance>,
     hidden: Boolean,
     onOpenTabs: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenTab: ((tabId: Long) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val netOpen = tabs.sumOf { it.balancePaise }
     val openCount = tabs.count { it.balancePaise != 0L }
 
     Surface(
-        onClick = onOpenTabs,
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         color = scheme.surfaceContainerHigh,
@@ -154,19 +155,41 @@ fun TabsWaveSummary(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenTabs),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    stringResource(com.krtky.financetracker.R.string.home_tabs_remaining),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    if (hidden) "\u2022\u2022\u2022\u2022" else netOpen.inr(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (netOpen != 0L) scheme.primary else scheme.onSurfaceVariant,
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(com.krtky.financetracker.R.string.home_tabs_remaining),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (openCount == 1) "1 open tab" else "$openCount open tabs",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        if (hidden) "••••" else netOpen.let { if (it < 0) -it else it }.inr(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (netOpen < 0L) scheme.error else if (netOpen > 0L) scheme.primary else scheme.onSurfaceVariant,
+                    )
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             if (tabs.isEmpty()) {
                 Text(
@@ -175,35 +198,47 @@ fun TabsWaveSummary(
                     color = scheme.onSurfaceVariant,
                 )
             } else {
-                tabs.take(5).forEach { fb ->
+                tabs.take(4).forEach { fb ->
                     val youOweThem = fb.youOweThem()
                     val settled = fb.isSettled()
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(
-                                fb.tab.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                if (hidden) {
-                                    "\u2022\u2022\u2022\u2022"
-                                } else {
-                                    when {
-                                        youOweThem -> "you owe ${(-fb.balancePaise).inr()}"
-                                        settled -> "settled"
-                                        else -> "they owe ${fb.balancePaise.inr()}"
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = if (youOweThem) scheme.error else scheme.onSurfaceVariant,
-                            )
-                        }
+                    val rowModifier = if (onOpenTab != null) {
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.medium)
+                            .clickable { onOpenTab(fb.tab.id) }
+                            .padding(vertical = 4.dp)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    }
+                    Row(
+                        modifier = rowModifier,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            fb.tab.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            if (hidden) {
+                                "••••"
+                            } else {
+                                when {
+                                    youOweThem -> "you owe ${(-fb.balancePaise).inr()}"
+                                    settled -> "settled"
+                                    else -> "they owe ${fb.balancePaise.inr()}"
+                                }
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (youOweThem) scheme.error else if (!settled) scheme.primary else scheme.onSurfaceVariant,
+                        )
                     }
                 }
                 if (openCount == 0 && tabs.isNotEmpty()) {

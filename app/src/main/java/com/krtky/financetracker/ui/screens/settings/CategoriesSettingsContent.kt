@@ -224,10 +224,11 @@ fun CategoriesSettingsContent(vm: SettingsViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     val categoryColors = listOf(
-                        0xFFE74C3CL, 0xFFE67E22L, 0xFFF1C40FL, 0xFF2ECC71L,
-                        0xFF1ABC9CL, 0xFF3498DBL, 0xFF9B59B6L, 0xFFE91E63L,
-                        0xFF795548L, 0xFF607D8BL, 0xFF34495EL, 0xFF7F8C8DL,
-                        0xFF0B6E4FL,
+                        0xFFF44336L, 0xFFD32F2FL, 0xFFFF5722L, 0xFFEF6C00L, 0xFFFF9800L,
+                        0xFFFFC107L, 0xFF8BC34AL, 0xFF4CAF50L, 0xFF2E7D32L, 0xFF1B5E20L,
+                        0xFF009688L, 0xFF00BCD4L, 0xFF0288D1L, 0xFF3F51B5L, 0xFF673AB7L,
+                        0xFF7C4DFFL, 0xFF9C27B0L, 0xFFE040FBL, 0xFFE91E63L, 0xFF795548L,
+                        0xFF607D8BL, 0xFF455A64L, 0xFF9E9E9EL,
                     )
                     categoryColors.forEach { colorLong ->
                         val color = categoryColor(colorLong) ?: Color(colorLong)

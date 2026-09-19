@@ -21,6 +21,7 @@ import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.domain.model.TransactionKind
 import com.krtky.financetracker.domain.model.TransactionSource
 import com.krtky.financetracker.domain.model.TransactionType
+import com.krtky.financetracker.domain.model.isExcludedFromCashflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -62,15 +63,9 @@ class TransactionRepository @Inject constructor(
     private fun needsClassify(e: TransactionEntity): Boolean {
         if (e.isSkipped || e.classificationStatus == ClassificationStatus.SKIPPED.name) return false
         if (e.classificationStatus == ClassificationStatus.CLASSIFIED.name) return false
-        if (isExcludedFromCashflowKind(e.kind)) return false
+        if (isExcludedFromCashflow(e.kind)) return false
         if (e.categoryId != null) return false
         return true
-    }
-
-    /** Self-transfer and tab-transfer rows never enter lifestyle/credit reports. */
-    private fun isExcludedFromCashflowKind(kind: String?): Boolean {
-        val k = kind?.uppercase()
-        return k == TransactionKind.SELF_TRANSFER.name || k == TransactionKind.TAB_TRANSFER.name
     }
 
     fun observeTransactions(): Flow<List<Transaction>> =
@@ -214,7 +209,7 @@ class TransactionRepository @Inject constructor(
         val parentId = target.splitGroupId ?: target.id
         val parent = txnDao.getById(parentId)
             ?: return Result.failure(IllegalArgumentException("Split parent not found"))
-        if (isExcludedFromCashflowKind(parent.kind)) {
+        if (isExcludedFromCashflow(parent.kind)) {
             return Result.failure(IllegalArgumentException("Self/tab transfers cannot be split"))
         }
         if (parts.size < 2) {
@@ -353,7 +348,7 @@ class TransactionRepository @Inject constructor(
         if (unique.size < 2) return null
         val loaded = unique.mapNotNull { txnDao.getById(it) }.filter { it.deletedAt == null }
         if (loaded.size < 2) return null
-        if (loaded.any { isExcludedFromCashflowKind(it.kind) }) return null
+        if (loaded.any { isExcludedFromCashflow(it.kind) }) return null
         if (loaded.any { it.transferGroupId != null || it.splitGroupId != null }) return null
         val type = parseTransactionType(loaded.first().type)
         if (loaded.any { parseTransactionType(it.type) != type }) return null

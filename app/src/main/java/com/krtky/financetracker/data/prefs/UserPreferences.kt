@@ -56,8 +56,7 @@ class UserPreferences @Inject constructor(
         val contrastLevel = stringPreferencesKey("contrast_level")
         val typographyMode = stringPreferencesKey("typography_mode")
         val oledMode = booleanPreferencesKey("oled_mode")
-        /** Comma-separated [com.krtky.financetracker.ui.navigation.HomeSection] ids. */
-        val homeSectionOrder = stringPreferencesKey("home_section_order")
+        val categoriesDefaultsMigrated = booleanPreferencesKey("categories_defaults_migrated_v2")
     }
 
     val locationEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.locationEnabled] ?: false }
@@ -120,9 +119,6 @@ class UserPreferences @Inject constructor(
             .getOrDefault(TypographyMode.EXPRESSIVE)
     }
     val oledMode: Flow<Boolean> = context.dataStore.data.map { it[Keys.oledMode] ?: false }
-    val homeSectionOrder: Flow<String> = context.dataStore.data.map {
-        it[Keys.homeSectionOrder].orEmpty()
-    }
 
     suspend fun setLocationEnabled(v: Boolean) {
         context.dataStore.edit { it[Keys.locationEnabled] = v }
@@ -219,8 +215,15 @@ class UserPreferences @Inject constructor(
         context.dataStore.edit { it[Keys.oledMode] = enabled }
     }
 
-    suspend fun setHomeSectionOrder(serialized: String) {
-        context.dataStore.edit { it[Keys.homeSectionOrder] = serialized }
+    val categoriesDefaultsMigrated: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.categoriesDefaultsMigrated] ?: false
+    }
+
+    suspend fun isCategoriesDefaultsMigrated(): Boolean =
+        categoriesDefaultsMigrated.first()
+
+    suspend fun setCategoriesDefaultsMigrated(migrated: Boolean) {
+        context.dataStore.edit { it[Keys.categoriesDefaultsMigrated] = migrated }
     }
 
     suspend fun setLastUsedDefaults(

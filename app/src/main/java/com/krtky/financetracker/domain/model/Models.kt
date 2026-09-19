@@ -9,7 +9,7 @@ enum class ClassificationStatus { PENDING, CLASSIFIED, SKIPPED }
 
 /**
  * NORMAL — ordinary cashflow.
- * SELF_TRANSFER — linked legs between owned accounts (excluded from lifestyle/credit metrics).
+ * SELF_TRANSFER — linked legs between owned accounts (excluded from Home debit/credit).
  * TAB_TRANSFER — tab-only bookkeeping (move IOU between tabs, openings, future “they paid”).
  *   Affects tab balances only; excluded from cashflow and from Digital / owned-account totals.
  */
@@ -18,6 +18,12 @@ enum class TransactionKind { NORMAL, SELF_TRANSFER, TAB_TRANSFER }
 /** Tab-only bookkeeping must not move owned-account or Digital (no bank) aggregates. */
 fun isTabOnlyBookkeeping(kind: String?): Boolean =
     kind?.uppercase() == TransactionKind.TAB_TRANSFER.name
+
+/** Self-transfer and tab-transfer never enter Home debit/credit totals. */
+fun isExcludedFromCashflow(kind: String?): Boolean {
+    val k = kind?.uppercase()
+    return k == TransactionKind.SELF_TRANSFER.name || k == TransactionKind.TAB_TRANSFER.name
+}
 
 enum class AccountKind { BANK, CARD, CASH, WALLET }
 
@@ -98,17 +104,6 @@ data class TabBalance(
     fun theyOweYou(): Boolean = balancePaise > 0L
     fun youOweThem(): Boolean = balancePaise < 0L
     fun isSettled(): Boolean = balancePaise == 0L
-}
-
-/** Lifestyle / investment home metrics for a period. */
-data class CashflowMetrics(
-    val lifestyleSpendPaise: Long,
-    val creditPaise: Long,
-    val investedPaise: Long,
-    val redeemedPaise: Long,
-    val lifestyleByCategory: List<CategorySpend> = emptyList(),
-) {
-    val netInvestedPaise: Long get() = investedPaise - redeemedPaise
 }
 
 /** Validation helpers for split editor (pure; unit-testable). */
@@ -256,11 +251,33 @@ data class CategorySpend(
     val color: Long? = null,
 )
 
+/** Net cashflow for a category: credits - debits. */
+data class CategoryNetSpend(
+    val categoryId: Long?,
+    val categoryName: String,
+    val debitPaise: Long,
+    val creditPaise: Long,
+    /** Net amount: creditPaise - debitPaise (positive = surplus/inflow, negative = net spend/outflow). */
+    val netPaise: Long = creditPaise - debitPaise,
+    /** ARGB from the category row; null if unknown / uncategorized. */
+    val color: Long? = null,
+)
+
 /** This-month flow grouped by account (source). */
 data class SourceSpend(
     val accountId: Long?,
     val accountName: String,
     val totalPaise: Long,
+)
+
+/** Net cashflow for an account/source: credits - debits. */
+data class SourceNetSpend(
+    val accountId: Long?,
+    val accountName: String,
+    val debitPaise: Long,
+    val creditPaise: Long,
+    /** Net delta for the account: creditPaise - debitPaise. */
+    val netPaise: Long = creditPaise - debitPaise,
 )
 
 data class MonthlyTrend(

@@ -34,7 +34,7 @@ class FinanceApp : Application(), Configuration.Provider {
         classificationNotifier.ensureChannel()
         WorkScheduler.scheduleAll(this)
         CoroutineScope(Dispatchers.IO).launch {
-            categoryRepository.seedDefaultsIfEmpty()
+            categoryRepository.ensureDefaults()
             val banks = userPreferences.parseBankList(userPreferences.bankAccounts.first())
             // Cash + Settings bank list. Empty prefs do not archive migration-seeded accounts.
             accountRepository.syncFromBankList(banks)

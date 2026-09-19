@@ -75,6 +75,7 @@ import com.krtky.financetracker.ui.screens.AccountDetailScreen
 import com.krtky.financetracker.ui.screens.CategoriesScreen
 import com.krtky.financetracker.ui.screens.CategoryDetailScreen
 import com.krtky.financetracker.ui.screens.MonthFlowGroup
+import com.krtky.financetracker.ui.screens.MonthFlowMode
 import com.krtky.financetracker.ui.screens.MonthFlowScreen
 import com.krtky.financetracker.ui.screens.CsvImportScreen
 import com.krtky.financetracker.ui.screens.TabDetailScreen
@@ -363,32 +364,9 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<HomeRoute> {
                                 HomeScreen(
-                                    onOpenTxn = { nav.navigate(TxnRoute(it)) },
                                     onAddCash = { nav.navigate(AddCashRoute()) },
-                                    onOpenHistory = { nav.tab(MainTabs.TRANSACTIONS) },
                                     onOpenTabs = { nav.tab(MainTabs.TABS) },
                                     onOpenAccounts = { nav.navigate(AccountsRoute) },
-                                    onOpenExpenseActivity = {
-                                        nav.openActivityWithFilters(
-                                            ActivityFilterArgs(
-                                                type = TransactionType.DEBIT,
-                                                payment = null,
-                                                categoryId = null,
-                                                applyCategory = true,
-                                            ),
-                                        ) { dest -> tab(dest) }
-                                    },
-                                    onOpenCreditActivity = {
-                                        nav.openActivityWithFilters(
-                                            ActivityFilterArgs(
-                                                type = TransactionType.CREDIT,
-                                                payment = null,
-                                                categoryId = null,
-                                                applyCategory = true,
-                                            ),
-                                        ) { dest -> tab(dest) }
-                                    },
-                                    onOpenCategories = { nav.navigate(CategoriesRoute) },
                                     onOpenMonthFlow = { direction, group ->
                                         nav.navigate(
                                             MonthFlowRoute(
@@ -412,6 +390,9 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             nav.navigate(SettingsSectionRoute(section))
                                         }
+                                    },
+                                    onOpenTabDetail = { tabId ->
+                                        nav.navigate(TabRoute(tabId))
                                     },
                                 )
                             }
@@ -453,71 +434,57 @@ class MainActivity : ComponentActivity() {
                             }
                             composable<CategoriesRoute> {
                                 MonthFlowScreen(
-                                    direction = TransactionType.DEBIT,
-                                    group = MonthFlowGroup.Category,
+                                    initialMode = MonthFlowMode.NET,
+                                    initialGroup = MonthFlowGroup.Category,
                                     onBack = { nav.popBackStack() },
-                                    onOpenCategory = { id, name, from, to ->
+                                    onOpenCategory = { id, name, type, from, to ->
                                         nav.navigate(
                                             CategoryRoute(
                                                 id = id?.toString() ?: "none",
                                                 name = name.ifBlank { "Category" },
-                                                type = TransactionType.DEBIT.name,
+                                                type = type?.name ?: "",
                                                 fromMillis = from,
                                                 toMillis = to,
                                             ),
                                         )
                                     },
-                                    onOpenSource = { _, _, _, _ -> },
+                                    onOpenSource = { _, _, _, _, _ -> },
                                     onAddTransaction = { nav.navigate(AddCashRoute()) },
                                 )
                             }
                             composable<MonthFlowRoute> { entry ->
                                 val args = entry.toRoute<MonthFlowRoute>()
-                                val investment = args.direction.equals("INVESTMENT", ignoreCase = true)
-                                val direction = if (investment) {
-                                    TransactionType.DEBIT
-                                } else {
-                                    runCatching {
-                                        TransactionType.valueOf(args.direction)
-                                    }.getOrDefault(TransactionType.DEBIT)
+                                val initialMode = when (args.direction.uppercase()) {
+                                    "DEBIT" -> MonthFlowMode.DEBIT
+                                    "CREDIT" -> MonthFlowMode.CREDIT
+                                    else -> MonthFlowMode.NET
                                 }
-                                val group = if (args.group.equals("source", true)) {
+                                val initialGroup = if (args.group.equals("source", true)) {
                                     MonthFlowGroup.Source
                                 } else {
                                     MonthFlowGroup.Category
                                 }
                                 MonthFlowScreen(
-                                    direction = direction,
-                                    group = group,
-                                    investment = investment,
+                                    initialMode = initialMode,
+                                    initialGroup = initialGroup,
                                     onBack = { nav.popBackStack() },
-                                    onOpenCategory = { id, name, from, to ->
-                                        val type = when {
-                                            investment && name.equals("Redeemed", true) ->
-                                                TransactionType.CREDIT.name
-                                            investment -> TransactionType.DEBIT.name
-                                            else -> direction.name
-                                        }
+                                    onOpenCategory = { id, name, type, from, to ->
                                         nav.navigate(
                                             CategoryRoute(
                                                 id = id?.toString() ?: "none",
-                                                name = if (name.equals("Redeemed", true)) {
-                                                    "Investment"
-                                                } else {
-                                                    name.ifBlank { "Category" }
-                                                },
-                                                type = type,
+                                                name = name.ifBlank { "Category" },
+                                                type = type?.name ?: "",
                                                 fromMillis = from,
                                                 toMillis = to,
                                             ),
                                         )
                                     },
-                                    onOpenSource = { id, name, from, to ->
+                                    onOpenSource = { id, name, type, from, to ->
                                         nav.navigate(
                                             AccountRoute(
                                                 id = id ?: UNASSIGNED_DIGITAL_ACCOUNT_ID,
                                                 name = name.ifBlank { "Digital" },
-                                                type = if (investment) "" else direction.name,
+                                                type = type?.name ?: "",
                                                 fromMillis = from,
                                                 toMillis = to,
                                             ),
@@ -534,7 +501,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 val initialType = args.type.takeIf { it.isNotBlank() }?.let {
                                     runCatching { TransactionType.valueOf(it) }.getOrNull()
-                                } ?: TransactionType.DEBIT
+                                }
                                 CategoryDetailScreen(
                                     categoryId = categoryId,
                                     categoryName = name,

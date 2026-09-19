@@ -24,7 +24,7 @@ class CategoryDetailViewModel @Inject constructor(
     accountRepository: AccountRepository,
 ) : ViewModel() {
     private val scopeKey = MutableStateFlow<Pair<Long?, String>>(null to "")
-    private val filters = TransactionFilterState(initialType = TransactionType.DEBIT)
+    private val filters = TransactionFilterState(initialType = null)
 
     val title: StateFlow<String> = scopeKey.map { it.second }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
@@ -111,7 +111,7 @@ class CategoryDetailViewModel @Inject constructor(
     fun load(
         categoryId: Long?,
         categoryName: String,
-        type: TransactionType = TransactionType.DEBIT,
+        type: TransactionType? = null,
     ) {
         filters.setType(type)
         scopeKey.value = categoryId to categoryName

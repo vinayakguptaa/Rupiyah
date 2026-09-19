@@ -8,13 +8,9 @@ import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.HomeCashflowSnapshot
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.domain.model.CashflowMetrics
 import com.krtky.financetracker.domain.model.TabBalance
 import com.krtky.financetracker.domain.model.MonthlySummary
-import com.krtky.financetracker.domain.model.Transaction
 import com.krtky.financetracker.ui.UiMessenger
-import com.krtky.financetracker.ui.navigation.HomeSection
-import com.krtky.financetracker.ui.navigation.HomeSectionConfig
 import com.krtky.financetracker.widget.WidgetUpdater
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,9 +48,8 @@ class HomeViewModel @Inject constructor(
     val initialLoaded: StateFlow<Boolean> = _initialLoaded
 
     /**
-     * One cashflow snapshot for the current month: summary + lifestyle/investment
-     * metrics + debit-by-category, derived from a single scan (see
-     * [CashflowRepository.homeCashflowSnapshot]).
+     * One cashflow snapshot for the current month: summary + debit/credit
+     * breakdowns by category and source.
      */
     val homeCashflow: StateFlow<HomeCashflowSnapshot> = refresh.map {
         cashflowRepository.homeCashflowSnapshot()
@@ -63,9 +58,8 @@ class HomeViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5_000),
         HomeCashflowSnapshot(
             MonthlySummary(0, 0),
-            CashflowMetrics(0, 0, 0, 0),
             emptyList(),
-            emptyList()
+            emptyList(),
         ),
     )
 
@@ -75,10 +69,6 @@ class HomeViewModel @Inject constructor(
     /** Open tabs only (non-zero balance), for Home strip. */
     val openTabs: StateFlow<List<TabBalance>> = tabs
         .map { list -> list.filter { it.balancePaise != 0L } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    val recent: StateFlow<List<Transaction>> = transactionRepository.observeTransactions()
-        .map { it.take(15) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Net balance per account label (Cash, Digital, HDFC, …). */
@@ -100,6 +90,9 @@ class HomeViewModel @Inject constructor(
         transactionRepository.observeFirstPendingClassificationId()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val activeAccounts = accountRepository.observeActive()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val setupChecklist: StateFlow<SetupChecklistState> = combine(
         userPreferences.setupChecklistDismissed,
         transactionRepository.observeTransactions(),
@@ -109,7 +102,6 @@ class HomeViewModel @Inject constructor(
         val aiReady = secureStore.isLlmReady()
         val banksDone = accounts.any { !it.name.equals("Cash", true) }
         val firstTxnDone = txns.isNotEmpty()
-        // Lightweight onboarding: AI (for SMS) + a bank + first txn (or SMS on is enough progress)
         val allDone = (aiReady || smsOn || firstTxnDone) && banksDone && firstTxnDone
         SetupChecklistState(
             visible = !dismissed && !allDone,
@@ -119,15 +111,6 @@ class HomeViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SetupChecklistState())
 
-    val homeSectionLayout: StateFlow<List<HomeSectionConfig>> = userPreferences.homeSectionOrder
-        .map { HomeSection.parseLayout(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSection.DEFAULT_LAYOUT)
-
-    /** Section order only (derived). */
-    val homeSectionOrder: StateFlow<List<HomeSection>> = homeSectionLayout
-        .map { list -> list.map { it.section } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSection.DEFAULT_ORDER)
-
     init {
         viewModelScope.launch {
             transactionRepository.observeTransactions().collect {
@@ -135,9 +118,8 @@ class HomeViewModel @Inject constructor(
                 if (!_initialLoaded.value) _initialLoaded.value = true
             }
         }
-        // Refresh widgets when home data changes (and once on open).
         viewModelScope.launch {
-            combine(homeCashflow, recent, tabs) { _, _, _ -> }
+            combine(homeCashflow, tabs) { _, _ -> }
                 .collect {
                     WidgetUpdater.refreshAll(context)
                 }
@@ -156,41 +138,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun setHomeSectionLayout(layout: List<HomeSectionConfig>) {
-        viewModelScope.launch {
-            userPreferences.setHomeSectionOrder(HomeSection.serializeLayout(layout))
-        }
-    }
-
-    fun setHomeSectionOrder(order: List<HomeSection>) {
-        val spans = homeSectionLayout.value.associate { it.section to it.span }
-        setHomeSectionLayout(
-            order.map { section ->
-                HomeSectionConfig(section, spans[section] ?: 2)
-            },
-        )
-    }
-
-    fun moveHomeSection(fromIndex: Int, toIndex: Int) {
-        val current = homeSectionLayout.value.toMutableList()
-        if (fromIndex !in current.indices || toIndex !in current.indices) return
-        val item = current.removeAt(fromIndex)
-        current.add(toIndex, item)
-        setHomeSectionLayout(current)
-    }
-
-    /** Toggle section width between full (2) and half (1). No-op if half-width is not allowed. */
-    fun toggleHomeSectionSpan(section: HomeSection) {
-        if (!section.allowsHalfWidth) return
-        val current = homeSectionLayout.value.toMutableList()
-        val idx = current.indexOfFirst { it.section == section }
-        if (idx < 0) return
-        val cfg = current[idx]
-        val next = if (cfg.effectiveSpan == 2) 1 else 2
-        current[idx] = cfg.copy(span = next)
-        setHomeSectionLayout(current)
-    }
-
     fun refreshNow() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
@@ -204,4 +151,3 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
-

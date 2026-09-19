@@ -1,25 +1,24 @@
 package com.krtky.financetracker.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.krtky.financetracker.R
 import com.krtky.financetracker.ui.components.HomeShimmerSkeleton
+import com.krtky.financetracker.ui.components.chrome.ScreenHeader
 import com.krtky.financetracker.ui.theme.Dimens
 import com.krtky.financetracker.ui.theme.NavContentInsets
 import com.krtky.financetracker.ui.util.rememberAppHaptics
@@ -52,34 +53,27 @@ import java.util.Calendar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onOpenTxn: (String) -> Unit,
     onAddCash: () -> Unit = {},
-    onOpenHistory: () -> Unit = {},
     onOpenTabs: () -> Unit = {},
     onOpenAccounts: () -> Unit = {},
-    /** Open Activity with Expense type filter. */
-    onOpenExpenseActivity: () -> Unit = onOpenHistory,
-    onOpenCreditActivity: () -> Unit = onOpenHistory,
-    onOpenCategories: () -> Unit = {},
     onOpenMonthFlow: (direction: String, group: MonthFlowGroup) -> Unit = { _, _ -> },
     /** Open Activity filtered to rows that still need a category. */
     onOpenClassifyInbox: () -> Unit = {},
-    /** Open Settings detail (e.g. email). */
+    /** Open Settings detail (e.g. LLM / banks). */
     onOpenSettingsSection: (String) -> Unit = {},
+    onOpenTabDetail: (tabId: Long) -> Unit = {},
     vm: HomeViewModel = hiltViewModel(),
 ) {
     val homeCashflow by vm.homeCashflow.collectAsStateWithLifecycle()
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val openTabs by vm.openTabs.collectAsStateWithLifecycle()
     val paymentBalances by vm.paymentBalances.collectAsStateWithLifecycle()
-    val recent by vm.recent.collectAsStateWithLifecycle()
     val isRefreshing by vm.isRefreshing.collectAsStateWithLifecycle()
     val initialLoaded by vm.initialLoaded.collectAsStateWithLifecycle()
     val isNetHidden by vm.hideBalances.collectAsStateWithLifecycle()
     val pendingCount by vm.pendingCount.collectAsStateWithLifecycle()
     val setupChecklist by vm.setupChecklist.collectAsStateWithLifecycle()
-    val sectionLayout by vm.homeSectionLayout.collectAsStateWithLifecycle()
-    var layoutEditMode by remember { mutableStateOf(false) }
+    val activeAccounts by vm.activeAccounts.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
     val haptics = rememberAppHaptics()
 
@@ -87,7 +81,6 @@ fun HomeScreen(
     val income = homeCashflow.summary.incomePaise
     val spent = homeCashflow.summary.expensePaise
     val fundBalance = openTabs.sumOf { it.balancePaise }
-    // Cash mode vs everything else (named banks/wallets + unlabelled Digital)
     val cashBal = paymentBalances.entries
         .firstOrNull { it.key.equals("Cash", ignoreCase = true) }
         ?.value ?: 0L
@@ -105,7 +98,7 @@ fun HomeScreen(
         else -> "Good late night"
     }
     val greeting = if (displayName.isNotBlank()) {
-        "$greetingBase ${displayName.trim()}"
+        "$greetingBase, ${displayName.trim()}"
     } else {
         greetingBase
     }
@@ -116,8 +109,6 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         heroVisible = true
     }
-
-    val filtered = remember(recent) { recent.take(6) }
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -132,79 +123,57 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(Dimens.SectionGap),
         ) {
             item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            greeting,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = scheme.onBackground,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            monthLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = scheme.onSurfaceVariant,
-                        )
-                    }
-                    if (initialLoaded) {
-                        IconButton(
-                            onClick = {
-                                haptics.select()
-                                layoutEditMode = !layoutEditMode
-                            },
-                        ) {
-                            Icon(
-                                if (layoutEditMode) Icons.Default.Check else Icons.Default.DashboardCustomize,
-                                contentDescription = stringResource(
-                                    if (layoutEditMode) R.string.cd_done_home_layout
-                                    else R.string.cd_edit_home_layout,
-                                ),
-                                tint = if (layoutEditMode) {
-                                    scheme.primary
-                                } else {
-                                    scheme.onSurfaceVariant.copy(alpha = 0.55f)
-                                },
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (layoutEditMode) {
-                item {
-                    Text(
-                        stringResource(R.string.home_reorder_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
+                ScreenHeader(
+                    title = greeting,
+                    subtitle = monthLabel,
+                )
             }
 
             if (pendingCount > 0) {
                 item {
-                    FilterChip(
-                        selected = true,
+                    Surface(
                         onClick = {
                             haptics.select()
                             onOpenClassifyInbox()
                         },
-                        label = {
-                            Text(stringResource(R.string.home_pending_classify, pendingCount))
-                        },
-                        leadingIcon = {
+                        shape = MaterialTheme.shapes.large,
+                        color = scheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(scheme.primary.copy(alpha = 0.18f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ReceiptLong,
+                                    contentDescription = null,
+                                    tint = scheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Text(
+                                stringResource(R.string.home_pending_classify, pendingCount),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = scheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
                             Icon(
-                                Icons.AutoMirrored.Filled.ReceiptLong,
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = null,
+                                tint = scheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 modifier = Modifier.size(18.dp),
                             )
-                        },
-                    )
+                        }
+                    }
                 }
             }
 
@@ -213,7 +182,7 @@ fun HomeScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.extraLarge,
-                        color = scheme.secondaryContainer,
+                        color = scheme.surfaceContainerHigh,
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
@@ -224,7 +193,7 @@ fun HomeScreen(
                                     stringResource(R.string.home_setup_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = scheme.onSecondaryContainer,
+                                    color = scheme.onSurface,
                                     modifier = Modifier.weight(1f),
                                 )
                                 IconButton(onClick = {
@@ -234,7 +203,7 @@ fun HomeScreen(
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = stringResource(R.string.home_setup_dismiss),
-                                        tint = scheme.onSecondaryContainer,
+                                        tint = scheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -262,8 +231,6 @@ fun HomeScreen(
                 item(key = "shimmer") { HomeShimmerSkeleton() }
             } else {
                 homeDashboardSections(
-                    layout = sectionLayout,
-                    editMode = layoutEditMode,
                     data = HomeDashboardData(
                         heroVisible = heroVisible,
                         availableBalance = accountsTotal,
@@ -275,35 +242,20 @@ fun HomeScreen(
                         fundBalance = fundBalance,
                         cashBal = cashBal,
                         digitalBal = digitalBal,
+                        categoryNetSpend = homeCashflow.categoryNetSpend,
+                        sourceNetSpend = homeCashflow.sourceNetSpend,
                         expenseByCategory = homeCashflow.categorySpend,
                         expenseBySource = homeCashflow.expenseBySource,
                         incomeByCategory = homeCashflow.incomeByCategory,
                         incomeBySource = homeCashflow.incomeBySource,
-                        invested = homeCashflow.investedPaise,
-                        redeemed = homeCashflow.redeemedPaise,
-                        investmentByCategory = homeCashflow.investmentByCategory,
-                        investmentBySource = homeCashflow.investmentBySource,
-                        filtered = filtered,
+                        activeAccountIds = activeAccounts.map { it.id }.toSet(),
                     ),
-                    onMoveSection = { from, to ->
-                        haptics.select()
-                        vm.moveHomeSection(from, to)
-                    },
-                    onToggleSpan = { section ->
-                        haptics.select()
-                        vm.toggleHomeSectionSpan(section)
-                    },
                     onToggleHidden = { vm.setHideBalances(!isNetHidden) },
                     onOpenTabs = onOpenTabs,
                     onOpenAccounts = onOpenAccounts,
-                    onOpenExpenseActivity = onOpenExpenseActivity,
-                    onOpenCreditActivity = onOpenCreditActivity,
-                    onOpenCategories = onOpenCategories,
                     onOpenMonthFlow = onOpenMonthFlow,
-                    onOpenTxn = onOpenTxn,
-                    onAddCash = onAddCash,
-                    onOpenHistory = onOpenHistory,
                     onSelectHaptic = { haptics.select() },
+                    onOpenTabDetail = onOpenTabDetail,
                 )
             }
         }
@@ -332,13 +284,13 @@ private fun SetupCheckRow(
             Icon(
                 if (done) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                 contentDescription = null,
-                tint = if (done) scheme.primary else scheme.onSecondaryContainer.copy(alpha = 0.7f),
+                tint = if (done) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.size(22.dp),
             )
             Text(
                 label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSecondaryContainer,
+                color = scheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             if (!done) {
@@ -347,5 +299,3 @@ private fun SetupCheckRow(
         }
     }
 }
-
-

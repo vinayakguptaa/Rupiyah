@@ -1,13 +1,12 @@
 package com.krtky.financetracker.ui.screens
 
+import com.krtky.financetracker.domain.model.CategoryNetSpend
 import com.krtky.financetracker.domain.model.CategorySpend
-import com.krtky.financetracker.domain.model.TabBalance
+import com.krtky.financetracker.domain.model.SourceNetSpend
 import com.krtky.financetracker.domain.model.SourceSpend
-import com.krtky.financetracker.domain.model.Transaction
+import com.krtky.financetracker.domain.model.TabBalance
 
-/**
- * Shared data model for the Home dashboard sections.
- */
+/** Shared data for the fixed Home dashboard sections. */
 internal data class HomeDashboardData(
     val heroVisible: Boolean,
     val availableBalance: Long,
@@ -19,13 +18,11 @@ internal data class HomeDashboardData(
     val fundBalance: Long,
     val cashBal: Long,
     val digitalBal: Long,
-    val expenseByCategory: List<CategorySpend>,
-    val expenseBySource: List<SourceSpend>,
-    val incomeByCategory: List<CategorySpend>,
-    val incomeBySource: List<SourceSpend>,
-    val invested: Long,
-    val redeemed: Long,
-    val investmentByCategory: List<CategorySpend>,
-    val investmentBySource: List<SourceSpend>,
-    val filtered: List<Transaction>,
+    val categoryNetSpend: List<CategoryNetSpend> = emptyList(),
+    val sourceNetSpend: List<SourceNetSpend> = emptyList(),
+    val expenseByCategory: List<CategorySpend> = emptyList(),
+    val expenseBySource: List<SourceSpend> = emptyList(),
+    val incomeByCategory: List<CategorySpend> = emptyList(),
+    val incomeBySource: List<SourceSpend> = emptyList(),
+    val activeAccountIds: Set<Long> = emptySet(),
 )

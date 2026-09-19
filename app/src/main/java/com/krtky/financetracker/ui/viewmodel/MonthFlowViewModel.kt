@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.krtky.financetracker.data.repository.CashflowRepository
 import com.krtky.financetracker.data.repository.HomeCashflowSnapshot
 import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.domain.model.CashflowMetrics
 import com.krtky.financetracker.domain.model.MonthlySummary
 import com.krtky.financetracker.ui.util.startOfMonthMillis
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,7 +48,6 @@ class MonthFlowViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5_000),
         HomeCashflowSnapshot(
             MonthlySummary(0, 0),
-            CashflowMetrics(0, 0, 0, 0),
             emptyList(),
             emptyList(),
         ),

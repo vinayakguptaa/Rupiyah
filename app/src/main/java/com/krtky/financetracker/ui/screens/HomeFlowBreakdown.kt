@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,8 +52,6 @@ internal fun HomeFlowBreakdownSection(
     byCategory: List<CategorySpend>,
     bySource: List<SourceSpend>,
     emptyLabel: String,
-    compact: Boolean,
-    halfWidth: Boolean,
     onOpenCategoryList: () -> Unit,
     onOpenSourceList: () -> Unit,
     modifier: Modifier = Modifier,
@@ -108,16 +105,13 @@ internal fun HomeFlowBreakdownSection(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
-        color = if (compact) scheme.surfaceContainerLowest else scheme.surfaceContainerHigh,
+        color = scheme.surfaceContainerHigh,
     ) {
         Column(
             Modifier
-                .padding(
-                    horizontal = if (halfWidth) 10.dp else 14.dp,
-                    vertical = if (halfWidth) 10.dp else 14.dp,
-                )
+                .padding(horizontal = 14.dp, vertical = 14.dp)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(if (halfWidth) 6.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 Modifier
@@ -128,85 +122,54 @@ internal fun HomeFlowBreakdownSection(
                 Column(Modifier.weight(1f)) {
                     Text(
                         title,
-                        style = if (halfWidth) {
-                            MaterialTheme.typography.titleSmall
-                        } else {
-                            MaterialTheme.typography.titleMedium
-                        },
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (!halfWidth) {
-                        Text(
-                            if (hidden) "••••" else "${totalPaise.inr()} · $monthLabel",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    Text(
+                        if (hidden) "••••" else "${totalPaise.inr()} · $monthLabel",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
                     tint = scheme.onSurfaceVariant,
-                    modifier = Modifier.size(if (halfWidth) 18.dp else 24.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
-            if (halfWidth) {
-                FlowCutTabs(
-                    cut = cut,
-                    onCut = { cut = it },
-                    compact = true,
-                )
+            FlowCutTabs(
+                cut = cut,
+                onCut = { cut = it },
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 CategoryInteractivePieChart(
                     categorySpends = pieSlices,
                     totalExpense = totalPaise,
                     incomePaise = 0L,
                     goalLabel = monthLabel,
-                    compact = true,
-                    exactProportions = true,
+                    size = 136.dp,
                     centerTitle = title,
                     hidden = hidden,
-                    interactive = true,
-                    onCenterClick = onOpenList,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f),
+                    interactive = false,
+                    exactProportions = true,
                 )
-            } else {
-                FlowCutTabs(
-                    cut = cut,
-                    onCut = { cut = it },
-                    compact = false,
+                FlowSliceList(
+                    slices = collapsed,
+                    colors = legendColors,
+                    totalPaise = totalPaise,
+                    hidden = hidden,
+                    emptyLabel = emptyLabel,
+                    modifier = Modifier.weight(1f),
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    CategoryInteractivePieChart(
-                        categorySpends = pieSlices,
-                        totalExpense = totalPaise,
-                        incomePaise = 0L,
-                        goalLabel = monthLabel,
-                        size = 136.dp,
-                        centerTitle = title,
-                        hidden = hidden,
-                        interactive = false,
-                        exactProportions = true,
-                    )
-                    FlowSliceList(
-                        slices = collapsed,
-                        colors = legendColors,
-                        totalPaise = totalPaise,
-                        hidden = hidden,
-                        emptyLabel = emptyLabel,
-                        compact = false,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
             }
         }
     }
@@ -216,49 +179,18 @@ internal fun HomeFlowBreakdownSection(
 private fun FlowCutTabs(
     cut: FlowCut,
     onCut: (FlowCut) -> Unit,
-    compact: Boolean,
 ) {
-    if (compact) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FlowCut.entries.forEach { option ->
-                val selected = cut == option
-                val label = if (option == FlowCut.Category) {
-                    stringResource(R.string.home_cut_category)
-                } else {
-                    stringResource(R.string.home_cut_source)
-                }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { onCut(option) },
-                )
-            }
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = cut == FlowCut.Category,
-                onClick = { onCut(FlowCut.Category) },
-                label = { Text(stringResource(R.string.home_cut_category)) },
-            )
-            FilterChip(
-                selected = cut == FlowCut.Source,
-                onClick = { onCut(FlowCut.Source) },
-                label = { Text(stringResource(R.string.home_cut_source)) },
-            )
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = cut == FlowCut.Category,
+            onClick = { onCut(FlowCut.Category) },
+            label = { Text(stringResource(R.string.home_cut_category)) },
+        )
+        FilterChip(
+            selected = cut == FlowCut.Source,
+            onClick = { onCut(FlowCut.Source) },
+            label = { Text(stringResource(R.string.home_cut_source)) },
+        )
     }
 }
 
@@ -269,13 +201,12 @@ private fun FlowSliceList(
     totalPaise: Long,
     hidden: Boolean,
     emptyLabel: String,
-    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (slices.isEmpty()) {
             Text(
@@ -297,30 +228,20 @@ private fun FlowSliceList(
                 ) {
                     Box(
                         Modifier
-                            .size(if (compact) 7.dp else 8.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
                             .background(colors.getOrElse(index) { scheme.primary }),
                     )
                     Text(
                         slice.name,
-                        style = if (compact) {
-                            MaterialTheme.typography.labelMedium
-                        } else {
-                            MaterialTheme.typography.bodySmall
-                        },
+                        style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = if (slice.isRest) scheme.onSurfaceVariant else scheme.onSurface,
                     )
                     Text(
-                        if (hidden) {
-                            "••••"
-                        } else if (compact) {
-                            slice.totalPaise.inr()
-                        } else {
-                            "$pct%"
-                        },
+                        if (hidden) "••••" else "$pct%",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = scheme.onSurfaceVariant,

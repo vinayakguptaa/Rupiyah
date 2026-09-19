@@ -2,6 +2,7 @@ package com.krtky.financetracker.ui.util
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -10,26 +11,35 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Checkroom
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.Commute
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.LocalGroceryStore
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.LocalPharmacy
-import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -54,7 +64,9 @@ object CategoryIcons {
         Entry("restaurant", "Food", Icons.Default.Restaurant),
         Entry("coffee", "Cafe", Icons.Default.Coffee),
         Entry("shopping_bag", "Shopping", Icons.Default.ShoppingBag),
+        Entry("shopping_cart", "Groceries", Icons.Default.ShoppingCart),
         Entry("grocery", "Grocery", Icons.Default.LocalGroceryStore),
+        Entry("commute", "Travel", Icons.Default.Commute),
         Entry("directions_bus", "Transit", Icons.Default.DirectionsBus),
         Entry("directions_car", "Car", Icons.Default.DirectionsCar),
         Entry("flight", "Flight", Icons.Default.Flight),
@@ -64,21 +76,29 @@ object CategoryIcons {
         Entry("movie", "Movies", Icons.Default.Movie),
         Entry("sports_esports", "Games", Icons.Default.SportsEsports),
         Entry("fitness_center", "Fitness", Icons.Default.FitnessCenter),
-        Entry("local_hospital", "Health", Icons.Default.LocalHospital),
+        Entry("medical_services", "Health", Icons.Default.MedicalServices),
+        Entry("local_hospital", "Hospital", Icons.Default.LocalHospital),
         Entry("local_pharmacy", "Pharmacy", Icons.Default.LocalPharmacy),
+        Entry("devices", "Devices", Icons.Default.Devices),
         Entry("phone_android", "Mobile", Icons.Default.PhoneAndroid),
         Entry("subscriptions", "Subs", Icons.Default.Subscriptions),
         Entry("payments", "Income", Icons.Default.Payments),
         Entry("salary", "Salary", Icons.Default.Payments),
         Entry("income", "Income", Icons.Default.ArrowDownward),
+        Entry("handshake", "Settlement", Icons.Default.Handshake),
         Entry("swap_horiz", "Transfer", Icons.Default.SwapHoriz),
         Entry("account_balance", "Bank", Icons.Default.AccountBalance),
         Entry("account_balance_wallet", "Wallet", Icons.Default.AccountBalanceWallet),
+        Entry("percent", "Interest", Icons.Default.Percent),
         Entry("work", "Work", Icons.Default.Work),
         Entry("trending_up", "Invest", Icons.AutoMirrored.Filled.TrendingUp),
         Entry("checkroom", "Clothes", Icons.Default.Checkroom),
+        Entry("family_restroom", "Family", Icons.Default.FamilyRestroom),
         Entry("pets", "Pets", Icons.Default.Pets),
+        Entry("lightbulb", "Utilities", Icons.Default.Lightbulb),
         Entry("build", "Utilities", Icons.Default.Build),
+        Entry("receipt_long", "Fees", Icons.AutoMirrored.Filled.ReceiptLong),
+        Entry("volunteer_activism", "Donation", Icons.Default.VolunteerActivism),
         Entry("more_horiz", "Other", Icons.Default.MoreHoriz),
         Entry("help_outline", "Misc", Icons.AutoMirrored.Filled.HelpOutline),
     )
@@ -92,17 +112,26 @@ object CategoryIcons {
             all.firstOrNull { it.id.equals(key, true) }?.icon?.let { return it }
         }
         return when {
-            "salary" in blob || "income" in blob || "payroll" in blob || "credit salary" in blob -> Icons.Default.Payments
+            "salary" in blob || "income" in blob || "payroll" in blob || "credit salary" in blob -> Icons.Default.AccountBalanceWallet
+            "donation" in blob || "charity" in blob || "volunteer" in blob -> Icons.Default.VolunteerActivism
+            "family" in blob -> Icons.Default.FamilyRestroom
+            "settlement" in blob || "handshake" in blob -> Icons.Default.Handshake
+            "interest" in blob || "percent" in blob -> Icons.Default.Percent
+            "fee" in blob || "charge" in blob || "receipt" in blob -> Icons.AutoMirrored.Filled.ReceiptLong
+            "electronic" in blob || "device" in blob -> Icons.Default.Devices
+            "utilit" in blob || "lightbulb" in blob || "electric" in blob -> Icons.Default.Lightbulb
+            "health" in blob || "medical" in blob || "hospital" in blob -> Icons.Default.MedicalServices
+            "grocery" in blob || "shopping_cart" in blob -> Icons.Default.ShoppingCart
             "pay" in key || key == "payments" -> Icons.Default.Payments
             "food" in blob || "restaurant" in blob || "cafe" in blob -> Icons.Default.Restaurant
             "shop" in blob || "bag" in blob -> Icons.Default.ShoppingBag
-            "travel" in blob || "bus" in blob || "transit" in blob -> Icons.Default.DirectionsBus
+            "travel" in blob || "commute" in blob || "bus" in blob || "transit" in blob -> Icons.Default.Commute
             "school" in blob || "educat" in blob || "coach" in blob -> Icons.Default.School
             "movie" in blob || "entertain" in blob -> Icons.Default.Movie
             "transfer" in blob || "swap" in blob -> Icons.Default.SwapHoriz
             "wallet" in blob -> Icons.Default.AccountBalanceWallet
-            "bank" in blob -> Icons.Default.AccountBalance
-            "work" in blob || "job" in blob -> Icons.Default.Work
+            "bank" in blob || "tax" in blob -> Icons.Default.AccountBalance
+            "work" in blob || "job" in blob || "professional" in blob -> Icons.Default.Work
             "other" in blob || "more" in blob -> Icons.Default.MoreHoriz
             else -> Icons.Default.Category
         }
