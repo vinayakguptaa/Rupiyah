@@ -101,16 +101,6 @@ fun TransactionCard(
     iconTint: Color? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val alpha by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec = M3EMotion.effectsDefault(),
-        label = "cardAlpha",
-    )
-    val offsetY by animateFloatAsState(
-        targetValue = if (visible) 0f else 28f,
-        animationSpec = M3EMotion.spatialDefault(),
-        label = "cardOffset",
-    )
     val container = iconContainerColor ?: scheme.surfaceContainerHighest
     val tint = iconTint ?: if (iconContainerColor != null) {
         if (container.luminance() > 0.55f) Color.Black else Color.White
@@ -123,11 +113,7 @@ fun TransactionCard(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
-            )
-            .graphicsLayer {
-                this.alpha = alpha
-                translationY = offsetY
-            },
+            ),
         shape = MaterialTheme.shapes.extraLarge,
         color = if (selected) scheme.primaryContainer
         else scheme.surfaceContainerHigh,

@@ -113,7 +113,6 @@ fun AddCashScreen(
     var saveSource by remember {
         mutableStateOf(if (initialParsed != null) TransactionSource.PASTE else TransactionSource.MANUAL)
     }
-    var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -164,10 +163,6 @@ fun AddCashScreen(
         else -> "Add credit"
     }
 
-    LaunchedEffect(Unit) {
-        contentVisible = true
-    }
-
     fun applyParsed(parsed: Transaction) {
         formState.hydrateFrom(parsed) { name, isCash ->
             parsed.accountId?.takeIf { id -> accounts.any { it.id == id } }
@@ -210,18 +205,13 @@ fun AddCashScreen(
             )
         },
         bottomBar = {
-            AnimatedVisibility(
-                visible = contentVisible,
-                enter = fadeIn(M3EMotion.effectsDefault()) +
-                    slideInVertically(M3EMotion.spatialDefault()) { it / 2 },
+            Surface(
+                color = scheme.background,
+                tonalElevation = 0.dp,
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .imePadding(),
             ) {
-                Surface(
-                    color = scheme.background,
-                    tonalElevation = 0.dp,
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .imePadding(),
-                ) {
                     Button(
                         onClick = {
                             scope.launch {
@@ -277,25 +267,16 @@ fun AddCashScreen(
                         }
                     }
                 }
-            }
         },
     ) { padding ->
-        AnimatedVisibility(
-            visible = contentVisible,
-            enter = fadeIn(M3EMotion.effectsDefault()) +
-                slideInVertically(M3EMotion.spatialDefault()) { it / 12 } +
-                scaleIn(M3EMotion.spatialDefault(), initialScale = 0.98f),
-            modifier = Modifier
+        Column(
+            Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
                 if (isSettle) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),
@@ -502,7 +483,6 @@ fun AddCashScreen(
 
                 Spacer(Modifier.height(8.dp))
             }
-        }
     }
 
     if (formState.showDatePicker) {

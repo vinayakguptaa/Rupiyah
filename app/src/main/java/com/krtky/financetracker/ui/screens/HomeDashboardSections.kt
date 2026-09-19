@@ -58,26 +58,19 @@ private fun HomeHeroSection(
     onOpenAccounts: () -> Unit,
     onSelectHaptic: () -> Unit,
 ) {
-    AnimatedVisibility(
-        visible = data.heroVisible,
-        enter = fadeIn(M3EMotion.effectsDefault()) +
-            slideInVertically(M3EMotion.spatialDefault()) { it / 10 },
-        exit = fadeOut(),
-    ) {
-        BalanceHeroCard(
-            title = stringResource(R.string.home_available_balance),
-            balance = data.availableBalance.inr(),
-            subtitle = if (data.isNetHidden) {
-                "Cash · Digital"
-            } else {
-                "Cash ${data.cashBal.inr()} · Digital ${data.digitalBal.inr()}"
-            },
-            hidden = data.isNetHidden,
-            onClick = onOpenAccounts,
-            onToggleHidden = {
-                onSelectHaptic()
-                onToggleHidden()
-            },
-        )
-    }
+    BalanceHeroCard(
+        title = stringResource(R.string.home_available_balance),
+        balance = data.availableBalance.inr(),
+        subtitle = if (data.isNetHidden) {
+            "Cash · Digital"
+        } else {
+            "Cash ${data.cashBal.inr()} · Digital ${data.digitalBal.inr()}"
+        },
+        hidden = data.isNetHidden,
+        onClick = onOpenAccounts,
+        onToggleHidden = {
+            onSelectHaptic()
+            onToggleHidden()
+        },
+    )
 }

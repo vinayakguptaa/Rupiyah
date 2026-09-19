@@ -99,13 +99,13 @@ fun FloatingBottomNav(
     val itemPillShape = CircleShape
     val fabSize = 56.dp
     val selectedIndex = items.indexOfFirst { it.first == selected }.coerceAtLeast(0)
-    val selectedWeightTarget = 1.4f
-    val unselectedWeightTarget = 0.85f
+    val selectedWeightTarget = 1.55f
+    val unselectedWeightTarget = 1.0f
     val totalWeight = selectedWeightTarget + unselectedWeightTarget * (items.size - 1)
 
     Box(
         modifier = modifier
-            .fillMaxWidth(0.85f)
+            .fillMaxWidth(0.92f)
             .navigationBarsPadding()
             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
     ) {
@@ -142,17 +142,23 @@ fun FloatingBottomNav(
                 val targetOffset = maxWidth * (selectedIndex.toFloat() * unselectedWeightTarget / totalWeight)
                 val pillWidth by animateDpAsState(
                     targetValue = targetPillWidth,
-                    animationSpec = M3EMotion.spatialDefault(),
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                        stiffness = 600f,
+                    ),
                     label = "pillWidth",
                 )
                 val indicatorOffset by animateDpAsState(
                     targetValue = targetOffset,
-                    animationSpec = M3EMotion.spatialDefault(),
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                        stiffness = 600f,
+                    ),
                     label = "navIndicatorX",
                 )
                 Box(
                     Modifier
-                        .offset(x = indicatorOffset)
+                        .offset { androidx.compose.ui.unit.IntOffset(indicatorOffset.roundToPx(), 0) }
                         .width(pillWidth)
                         .fillMaxSize()
                         .clip(itemPillShape)
@@ -180,7 +186,10 @@ fun FloatingBottomNav(
                         )
                         val animatedItemWeight by animateFloatAsState(
                             targetValue = if (isSelected) selectedWeightTarget else unselectedWeightTarget,
-                            animationSpec = M3EMotion.spatialDefault(),
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                                stiffness = 600f,
+                            ),
                             label = "navWeight$route",
                         )
                         Column(

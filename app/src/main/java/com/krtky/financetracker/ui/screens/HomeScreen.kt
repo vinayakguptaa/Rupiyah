@@ -105,11 +105,6 @@ fun HomeScreen(
     val monthLabel = Calendar.getInstance()
         .getDisplayName(Calendar.MONTH, Calendar.LONG, java.util.Locale.getDefault()) ?: "This month"
 
-    var heroVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        heroVisible = true
-    }
-
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { vm.refreshNow() },
@@ -232,7 +227,7 @@ fun HomeScreen(
             } else {
                 homeDashboardSections(
                     data = HomeDashboardData(
-                        heroVisible = heroVisible,
+                        heroVisible = true,
                         availableBalance = accountsTotal,
                         income = income,
                         spent = spent,

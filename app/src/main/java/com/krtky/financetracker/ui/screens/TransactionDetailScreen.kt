@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -106,7 +107,6 @@ fun TransactionDetailScreen(
     var receiptCleared by remember { mutableStateOf(false) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var contentVisible by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -147,8 +147,6 @@ fun TransactionDetailScreen(
             if (extra != null && none { it.id == extra.id }) add(extra)
         }
     }
-
-    LaunchedEffect(Unit) { contentVisible = true }
 
     LaunchedEffect(txn, accounts, archivedCurrent, defaultDigital, defaultPay) {
         txn?.let {
@@ -313,7 +311,7 @@ fun TransactionDetailScreen(
             )
         },
         floatingActionButton = {
-            if (!editing && contentVisible) {
+            if (!editing) {
                 FloatingActionButton(
                     onClick = {
                         haptics.select()
@@ -336,7 +334,7 @@ fun TransactionDetailScreen(
         },
         bottomBar = {
             AnimatedVisibility(
-                visible = contentVisible && editing,
+                visible = editing,
                 enter = fadeIn(M3EMotion.effectsDefault()) +
                     slideInVertically(M3EMotion.spatialDefault()) { it / 2 },
             ) {
@@ -388,11 +386,7 @@ fun TransactionDetailScreen(
             }
         },
     ) { padding ->
-        AnimatedVisibility(
-            visible = contentVisible,
-            enter = fadeIn(M3EMotion.effectsDefault()) +
-                slideInVertically(M3EMotion.spatialDefault()) { it / 12 } +
-                scaleIn(M3EMotion.spatialDefault(), initialScale = 0.98f),
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),

@@ -11,8 +11,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.navigation.NavDestination
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -308,6 +317,20 @@ class MainActivity : ComponentActivity() {
                     // Activity deep-link filters live on the transactions SavedStateHandle
                     // (see ActivityFilterArgs) — not a pile of ticks here.
 
+                    val screenSpatial = tween<IntOffset>(durationMillis = 280, easing = FastOutSlowInEasing)
+                    val screenFadeIn = tween<Float>(durationMillis = 200, easing = LinearOutSlowInEasing)
+                    val screenFadeOut = tween<Float>(durationMillis = 180, easing = FastOutLinearInEasing)
+                    val tabFadeIn = tween<Float>(durationMillis = 160, easing = LinearEasing)
+                    val tabFadeOut = tween<Float>(durationMillis = 120, easing = LinearEasing)
+
+                    fun NavDestination?.isTopLevelTab(): Boolean =
+                        this != null && (
+                            hasRoute<HomeRoute>() ||
+                            hasRoute<TransactionsRoute>() ||
+                            hasRoute<TabsRoute>() ||
+                            hasRoute<SettingsRoute>()
+                        )
+
                     // Content fills the screen; floating bottom nav overlays on top (no bottomBar slot)
                     Scaffold(
                         containerColor = MaterialTheme.colorScheme.background,
@@ -329,28 +352,44 @@ class MainActivity : ComponentActivity() {
                             startDestination = startDestination,
                             modifier = Modifier.fillMaxSize(),
                             enterTransition = {
-                                fadeIn(effects) + slideIntoContainer(
-                                    AnimatedContentTransitionScope.SlideDirection.Start,
-                                    animationSpec = spatial,
-                                )
+                                if (initialState.destination.isTopLevelTab() && targetState.destination.isTopLevelTab()) {
+                                    fadeIn(tabFadeIn)
+                                } else {
+                                    fadeIn(screenFadeIn) + slideIntoContainer(
+                                        AnimatedContentTransitionScope.SlideDirection.Start,
+                                        animationSpec = screenSpatial,
+                                    )
+                                }
                             },
                             exitTransition = {
-                                fadeOut(effects) + slideOutOfContainer(
-                                    AnimatedContentTransitionScope.SlideDirection.Start,
-                                    animationSpec = spatial,
-                                )
+                                if (initialState.destination.isTopLevelTab() && targetState.destination.isTopLevelTab()) {
+                                    fadeOut(tabFadeOut)
+                                } else {
+                                    fadeOut(screenFadeOut) + slideOutOfContainer(
+                                        AnimatedContentTransitionScope.SlideDirection.Start,
+                                        animationSpec = screenSpatial,
+                                    )
+                                }
                             },
                             popEnterTransition = {
-                                fadeIn(effects) + slideIntoContainer(
-                                    AnimatedContentTransitionScope.SlideDirection.End,
-                                    animationSpec = spatial,
-                                )
+                                if (initialState.destination.isTopLevelTab() && targetState.destination.isTopLevelTab()) {
+                                    fadeIn(tabFadeIn)
+                                } else {
+                                    fadeIn(screenFadeIn) + slideIntoContainer(
+                                        AnimatedContentTransitionScope.SlideDirection.End,
+                                        animationSpec = screenSpatial,
+                                    )
+                                }
                             },
                             popExitTransition = {
-                                fadeOut(effects) + slideOutOfContainer(
-                                    AnimatedContentTransitionScope.SlideDirection.End,
-                                    animationSpec = spatial,
-                                )
+                                if (initialState.destination.isTopLevelTab() && targetState.destination.isTopLevelTab()) {
+                                    fadeOut(tabFadeOut)
+                                } else {
+                                    fadeOut(screenFadeOut) + slideOutOfContainer(
+                                        AnimatedContentTransitionScope.SlideDirection.End,
+                                        animationSpec = screenSpatial,
+                                    )
+                                }
                             },
                         ) {
                             composable<OnboardingRoute> {
@@ -634,7 +673,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        val addMenuTabs = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
+                        val addMenuTabs = tabRoute != null && tabRoute != MainTabs.TABS
                         if (addMenuOpen && addMenuTabs) {
                             BackHandler { addMenuOpen = false }
                             Box(
@@ -648,15 +687,26 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // Floating bottom nav dock — always has a side FAB on main tabs
+                        // Floating bottom nav dock — smoothly transitions in and out
+                        var lastActiveTab by remember { mutableStateOf(MainTabs.HOME) }
                         if (tabRoute != null) {
-                            val usesAddMenu = tabRoute == MainTabs.HOME || tabRoute == MainTabs.TRANSACTIONS
-                            val fab: Pair<ImageVector, () -> Unit> = when (tabRoute) {
+                            lastActiveTab = tabRoute
+                        }
+                        val activeTab = tabRoute ?: lastActiveTab
+
+                        AnimatedVisibility(
+                            visible = tabRoute != null,
+                            enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
+                            exit = fadeOut(tween(140)) + slideOutVertically(tween(180)) { it / 2 },
+                            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                        ) {
+                            val usesAddMenu = activeTab != MainTabs.TABS
+                            val fab: Pair<ImageVector, () -> Unit> = when (activeTab) {
                                 MainTabs.TABS -> Icons.Default.Add to { tabsCreateTick++ }
                                 else -> Icons.Default.Add to { addMenuOpen = !addMenuOpen }
                             }
                             FloatingBottomNav(
-                                selected = tabRoute,
+                                selected = activeTab,
                                 onSelect = { dest ->
                                     addMenuOpen = false
                                     // Drop home-tile deep-link filters when leaving Activity
@@ -665,9 +715,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                     nav.tab(dest)
                                 },
-                                showFab = tabRoute != MainTabs.SETTINGS,
+                                showFab = true,
                                 fabIcon = fab.first,
-                                fabContentDescription = when (tabRoute) {
+                                fabContentDescription = when (activeTab) {
                                     MainTabs.TABS -> "Add tab"
                                     else -> stringResource(R.string.cd_fab_log)
                                 },
@@ -698,7 +748,6 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     emptyList()
                                 },
-                                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
                             )
                         }
 

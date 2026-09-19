@@ -86,11 +86,6 @@ fun TabsScreen(
     var editName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
-    var ready by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(40)
-        ready = true
-    }
     // One-shot: open create, then clear the FAB tick in the parent. Leaving the tick
     // set caused the sheet to auto-reopen after switching tabs (restoreState).
     LaunchedEffect(createRequestTick) {
@@ -180,31 +175,25 @@ fun TabsScreen(
             }
 
             itemsIndexed(openTabs, key = { _, f -> f.tab.id }) { index, f ->
-                AnimatedVisibility(
-                    visible = ready,
-                    enter = fadeIn(M3EMotion.effectsDefault()) +
-                        slideInVertically(M3EMotion.spatialDefault()) { it / 8 },
-                ) {
-                    val colors = listOf(
-                        scheme.primary to scheme.onPrimary,
-                        scheme.tertiary to scheme.onTertiary,
-                        scheme.secondary to scheme.onSecondary,
-                        scheme.primaryContainer to scheme.onPrimaryContainer,
-                        scheme.tertiaryContainer to scheme.onTertiaryContainer,
-                    )[index % 5]
-                    SimpleTabCard(
-                        tab = f,
-                        headerColor = colors.first,
-                        onHeaderColor = colors.second,
-                        onOpen = { onOpenTab(f.tab.id) },
-                        onAdjust = {
-                            adjustTabId = f.tab.id
-                            adjustTabName = f.tab.name
-                            editName = f.tab.name
-                            showAdjust = true
-                        },
-                    )
-                }
+                val colors = listOf(
+                    scheme.primary to scheme.onPrimary,
+                    scheme.tertiary to scheme.onTertiary,
+                    scheme.secondary to scheme.onSecondary,
+                    scheme.primaryContainer to scheme.onPrimaryContainer,
+                    scheme.tertiaryContainer to scheme.onTertiaryContainer,
+                )[index % 5]
+                SimpleTabCard(
+                    tab = f,
+                    headerColor = colors.first,
+                    onHeaderColor = colors.second,
+                    onOpen = { onOpenTab(f.tab.id) },
+                    onAdjust = {
+                        adjustTabId = f.tab.id
+                        adjustTabName = f.tab.name
+                        editName = f.tab.name
+                        showAdjust = true
+                    },
+                )
             }
 
             if (settledTabs.isNotEmpty()) {
