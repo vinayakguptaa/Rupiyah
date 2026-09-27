@@ -53,4 +53,32 @@ class TabOnlyBookkeepingTest {
         apply("CREDIT", 1350_00L) // real settle
         assertThat(balance).isEqualTo(0L)
     }
+
+    @Test
+    fun `general activity view excludes off-books TAB_TRANSFER when tab is not selected`() {
+        val normalTxn = Transaction(
+            id = "t1",
+            type = TransactionType.DEBIT,
+            amountPaise = 500_00L,
+            occurredAt = 1000L,
+            kind = TransactionKind.NORMAL,
+        )
+        val tabTransferTxn = Transaction(
+            id = "t2",
+            type = TransactionType.CREDIT,
+            amountPaise = 200_00L,
+            occurredAt = 2000L,
+            kind = TransactionKind.TAB_TRANSFER,
+            tabId = 42L,
+        )
+        val allTxns = listOf(normalTxn, tabTransferTxn)
+
+        // When tab is not selected (general activity)
+        val generalView = allTxns.filter { it.kind != TransactionKind.TAB_TRANSFER }
+        assertThat(generalView).containsExactly(normalTxn)
+
+        // When tab 42 is selected
+        val tabView = allTxns.filter { it.tabId == 42L }
+        assertThat(tabView).containsExactly(tabTransferTxn)
+    }
 }

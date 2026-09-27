@@ -102,7 +102,7 @@ class TransactionFormState(
         addToTab = t.tabId != null || t.type == TransactionType.CREDIT
         amount = "%.2f".format(Locale.US, t.amountPaise / 100.0)
         type = t.type
-        selectedAccountId = t.accountId ?: resolveAccountId(t.accountName, t.isCash)
+        selectedAccountId = if (t.isTabTransfer()) null else (t.accountId ?: resolveAccountId(t.accountName, t.isCash))
         val cal = Calendar.getInstance().apply { timeInMillis = t.occurredAt }
         selectedYear = cal.get(Calendar.YEAR)
         selectedMonth = cal.get(Calendar.MONTH)

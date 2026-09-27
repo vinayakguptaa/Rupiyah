@@ -121,39 +121,41 @@ internal fun TransactionDetailEdit(
             },
         )
 
-        Text(
-            "Account",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        if (pickerAccounts.isEmpty()) {
+        if (!t.isTabTransfer()) {
             Text(
-                "No accounts yet. Add banks in Settings → Bank accounts.",
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
+                "Account",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
             )
-        } else {
-            AccountChipRow(
-                accounts = pickerAccounts,
-                selectedAccountId = selectedAccountId,
-                onAccountSelected = onAccountId,
-                defaultDigital = defaultDigital,
-                defaultPay = defaultPay,
-                showArchivedSuffix = true,
+            if (pickerAccounts.isEmpty()) {
+                Text(
+                    "No accounts yet. Add banks in Settings → Bank accounts.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            } else {
+                AccountChipRow(
+                    accounts = pickerAccounts,
+                    selectedAccountId = selectedAccountId,
+                    onAccountSelected = onAccountId,
+                    defaultDigital = defaultDigital,
+                    defaultPay = defaultPay,
+                    showArchivedSuffix = true,
+                )
+            }
+
+            Text(
+                "Category",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            CategoryChipRow(
+                categories = categories,
+                selectedCategoryId = categoryId,
+                onCategorySelected = onCategoryId,
+                noneIcon = Icons.Default.Clear,
             )
         }
-
-        Text(
-            "Category",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        CategoryChipRow(
-            categories = categories,
-            selectedCategoryId = categoryId,
-            onCategorySelected = onCategoryId,
-            noneIcon = Icons.Default.Clear,
-        )
 
         AnimatedContent(
             targetState = type,
@@ -242,7 +244,7 @@ internal fun TransactionDetailEdit(
             }
         }
 
-        if (tabs.isNotEmpty()) {
+        if (!t.isTabTransfer() && tabs.isNotEmpty()) {
             Text(
                 "Tab",
                 style = MaterialTheme.typography.titleSmall,

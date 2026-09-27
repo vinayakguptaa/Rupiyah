@@ -92,7 +92,12 @@ class TransactionsViewModel @Inject constructor(
                         } else {
                             list
                         }
-                        applyPaymentAndSort(base, head.pay, tail.sort)
+                        val visible = if (head.tab == null) {
+                            base.filter { !it.isTabTransfer() }
+                        } else {
+                            base
+                        }
+                        applyPaymentAndSort(visible, head.pay, tail.sort)
                     }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

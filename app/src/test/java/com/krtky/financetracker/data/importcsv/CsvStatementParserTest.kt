@@ -198,4 +198,33 @@ class CsvStatementParserTest {
         assertThat(result.rows[0].type).isEqualTo(TransactionType.DEBIT)
         assertThat(result.rows[0].categoryHint).isEqualTo("Transfer")
     }
+
+    @Test
+    fun `parses bank statement with prelude metadata and disclaimer footer without errors`() {
+        val csv = """
+            "","","Account Statement"
+            "VINAYAK GUPTA"
+            "B-207, KHUSHBOO APARTMENTS","","","","Cust. Reln. No.","65227098"
+            "PLOT NO. 11, SECTOR PIE-1","","","","Account No.","7011303793"
+            "NEAR AICHHAR MARKET, GAUTAM","","","","Period","From 24/08/2026 To 23/09/2026"
+
+            "Sl. No.","Transaction Date","Value Date","Description","Chq /Ref No.","Debit","Credit","Balance","Dr / Cr"
+            "1","19-09-2026 13:39:06","19-09-2026","UPI/Kartikey Gupta/IDFB/626254266072/UPI","UPI-626288035152","3,000.00","","12,708.56","CR"
+            "2","18-09-2026 13:29:48","18-09-2026","UPI/AKSHAY VASHISH/HDFC/662786956593/UPI","UPI-626119604032","175.00","","15,708.56","CR"
+            "3","07-09-2026 20:51:48","07-09-2026","UPI/Kartikey Gupta/PPIW/625053138320/Paid securel","UPI-625071375084","","690.00","23,056.56","CR"
+            "Closing Balance","as on 23/09/2026 INR 12,708.56"
+
+            "Important Note:"
+            "The transaction date refers to the date & time when the transactions have been posted in the system."
+            "CSV statement with value date is recommended to be used for reconciliation purposes."
+        """.trimIndent()
+
+        val result = CsvStatementParser.parse(csv)
+        assertThat(result.rows).hasSize(3)
+        assertThat(result.errors).isEmpty()
+        assertThat(result.rows[0].amountPaise).isEqualTo(300_000L)
+        assertThat(result.rows[0].type).isEqualTo(TransactionType.DEBIT)
+        assertThat(result.rows[2].amountPaise).isEqualTo(69_000L)
+        assertThat(result.rows[2].type).isEqualTo(TransactionType.CREDIT)
+    }
 }

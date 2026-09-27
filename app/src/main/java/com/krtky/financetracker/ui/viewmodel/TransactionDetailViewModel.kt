@@ -127,13 +127,12 @@ class TransactionDetailViewModel @Inject constructor(
         val t = _txn.value ?: return false
         val amount = Money.fromRupeesString(amountText) ?: return false
         val location = if (useCurrentLocation) locationRepository.captureCurrent() else null
-        val account = accountId?.let { accountRepository.getById(it) }
-        val methodLabel = account?.name
-            ?: t.accountName
-            ?: "Cash"
-        val isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH"
-        val catName = categories.value.firstOrNull { it.id == categoryId }?.name
-        val resolvedTabId = effectiveTabId(type, tabId, addToTab)
+        val isOffBooks = t.isTabTransfer()
+        val account = if (isOffBooks) null else accountId?.let { accountRepository.getById(it) }
+        val methodLabel = if (isOffBooks) null else (account?.name ?: t.accountName ?: "Cash")
+        val isCash = if (isOffBooks) false else (methodLabel.equals("Cash", true) || account?.kind?.name == "CASH")
+        val catName = if (isOffBooks) null else categories.value.firstOrNull { it.id == categoryId }?.name
+        val resolvedTabId = if (isOffBooks) t.tabId else effectiveTabId(type, tabId, addToTab)
         val newReceipt = when {
             clearReceipt -> {
                 receiptStore.delete(t.receiptUri)
@@ -150,9 +149,9 @@ class TransactionDetailViewModel @Inject constructor(
             amountPaise = amountPaise,
             type = type,
             occurredAt = occurredAt,
-            accountId = account?.id ?: accountId,
+            accountId = if (isOffBooks) null else (account?.id ?: accountId),
             isCash = isCash,
-            categoryId = categoryId,
+            categoryId = if (isOffBooks) null else categoryId,
             categoryName = catName,
             tabId = resolvedTabId,
             note = note.ifBlank { null },

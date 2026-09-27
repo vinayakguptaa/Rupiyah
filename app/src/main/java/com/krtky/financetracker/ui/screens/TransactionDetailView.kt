@@ -71,6 +71,7 @@ internal fun TransactionDetailView(
     val partyTitle = t.counterparty ?: t.accountName ?: "Transaction"
     val amountSign = if (t.type == TransactionType.DEBIT) "-" else "+"
     val infoPayment = when {
+        t.isTabTransfer() -> "Off-books (Tab)"
         t.isCash || t.accountName.equals("Cash", true) -> "Cash"
         !t.accountName.isNullOrBlank() -> t.accountName!!
         else -> "Digital"
@@ -124,11 +125,13 @@ internal fun TransactionDetailView(
             label = "Payment",
             value = infoPayment,
         )
-        InfoRow(
-            icon = Icons.Default.Category,
-            label = "Category",
-            value = categoryName ?: "Uncategorized",
-        )
+        if (!t.isTabTransfer()) {
+            InfoRow(
+                icon = Icons.Default.Category,
+                label = "Category",
+                value = categoryName ?: "Uncategorized",
+            )
+        }
         ReceiptPreview(
             receiptUri = existingReceiptUri,
             context = context,

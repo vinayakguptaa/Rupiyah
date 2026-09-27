@@ -211,7 +211,10 @@ data class Transaction(
 ) {
     /** Display name for party / merchant. */
     fun displayName(): String? =
-        counterparty?.takeIf { it.isNotBlank() }
+        counterparty?.takeIf {
+            val lower = it.trim().lowercase(java.util.Locale.US)
+            it.isNotBlank() && lower !in setOf("dr", "cr", "debit", "credit", "d", "c")
+        } ?: rawDescription?.takeIf { it.isNotBlank() }
 
     /**
      * True when the parent still needs a category.

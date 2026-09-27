@@ -76,7 +76,7 @@ class TransactionRepository @Inject constructor(
             // All accounts (incl. archived) so history rows keep their account name.
             accountDao.observeAll(),
         ) { txns, cats, tabs, accounts ->
-            mapTxns(txns, cats, tabs, accounts)
+            mapTxns(txns, cats, tabs, accounts).filter { it.kind != TransactionKind.TAB_TRANSFER }
         }
 
     /** Count of transactions awaiting category assignment. */
@@ -490,21 +490,24 @@ class TransactionRepository @Inject constructor(
     suspend fun insertManual(txn: Transaction, addToTab: Boolean = false): String {
         val id = txn.id.ifBlank { UUID.randomUUID().toString() }
         val now = System.currentTimeMillis()
+        val isOffBooks = txn.kind == TransactionKind.TAB_TRANSFER
         val hash = contentHash(txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, "manual-$id")
         val entity = txn.copy(
             id = id,
             contentHash = hash,
             updatedAt = now,
-            sheetsSynced = false,
-            classificationStatus = if (txn.categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
+            sheetsSynced = isOffBooks,
+            classificationStatus = if (isOffBooks || txn.categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
         ).toEntity()
         val rowId = txnDao.insert(entity)
         if (rowId == -1L) return id
         handleTabOnInsert(entity.id, entity.tabId, entity.type, entity.amountPaise, addToTab, entity.note)
-        if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
-            scheduleClassification(entity.id)
+        if (!isOffBooks) {
+            if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
+                scheduleClassification(entity.id)
+            }
+            enqueueSync(entity.id)
         }
-        enqueueSync(entity.id)
         return id
     }
 
@@ -609,11 +612,12 @@ class TransactionRepository @Inject constructor(
     suspend fun update(txn: Transaction) {
         val existing = txnDao.getById(txn.id) ?: return
         val oldTab = existing.tabId
+        val isOffBooks = txn.kind == TransactionKind.TAB_TRANSFER
         val updated = txn.copy(
             updatedAt = System.currentTimeMillis(),
             version = existing.version + 1,
-            sheetsSynced = false,
-            classificationStatus = if (txn.categoryId != null) ClassificationStatus.CLASSIFIED else txn.classificationStatus,
+            sheetsSynced = isOffBooks,
+            classificationStatus = if (isOffBooks || txn.categoryId != null) ClassificationStatus.CLASSIFIED else txn.classificationStatus,
         )
         txnDao.update(updated.toEntity())
         val tabsToRebuild = mutableSetOf<Long>()
@@ -626,7 +630,9 @@ class TransactionRepository @Inject constructor(
             tabsToRebuild.forEach { recalculateTabLedger(it) }
         }
         pendingDao.delete(txn.id)
-        enqueueSync(txn.id)
+        if (!isOffBooks) {
+            enqueueSync(txn.id)
+        }
     }
 
     suspend fun classify(
@@ -685,14 +691,16 @@ class TransactionRepository @Inject constructor(
                 }
             }
             tabsToRebuild.forEach { recalculateTabLedger(it) }
-            legs.forEach { enqueueSync(it.id) }
+            legs.forEach { if (it.kind != TransactionKind.TAB_TRANSFER.name) enqueueSync(it.id) }
             return
         }
         ledgerDao.deleteForTransaction(id)
         txnDao.softDelete(id)
         existing.tabId?.let { recalculateTabLedger(it) }
         pendingDao.delete(id)
-        enqueueSync(id)
+        if (existing.kind != TransactionKind.TAB_TRANSFER.name) {
+            enqueueSync(id)
+        }
     }
 
     /**
@@ -846,8 +854,11 @@ class TransactionRepository @Inject constructor(
         return id
     }
 
-    /** Rebuild every active tab ledger from linked transactions. */
+    /** Rebuild every active tab ledger from linked transactions and clean legacy off-books state. */
     suspend fun repairAllTabLedgers() {
+        txnDao.cleanupLegacyTabTransfers()
+        pendingDao.deleteForTabTransfers()
+        db.syncOutboxDao().deleteForTabTransfers()
         tabDao.getAll().filter { !it.archived }.forEach { recalculateTabLedger(it.id) }
     }
 

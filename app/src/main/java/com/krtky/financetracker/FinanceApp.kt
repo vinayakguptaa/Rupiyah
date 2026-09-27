@@ -31,6 +31,7 @@ class FinanceApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        runCatching { com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(this) }
         classificationNotifier.ensureChannel()
         WorkScheduler.scheduleAll(this)
         CoroutineScope(Dispatchers.IO).launch {

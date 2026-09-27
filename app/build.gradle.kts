@@ -180,6 +180,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

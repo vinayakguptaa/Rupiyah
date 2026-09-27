@@ -36,6 +36,10 @@ data class CsvImportUiState(
     val loading: Boolean = false,
     val error: String? = null,
     val result: ImportCommitResult? = null,
+    val requiresPassword: Boolean = false,
+    val passwordError: String? = null,
+    val pendingFileUri: Uri? = null,
+    val pendingDisplayName: String? = null,
 )
 
 @HiltViewModel
@@ -84,23 +88,33 @@ class CsvImportViewModel @Inject constructor(
         }
     }
 
-    fun loadFile(uri: Uri, displayName: String?) {
+    fun loadFile(uri: Uri, displayName: String?, password: String? = null) {
         val accountId = _state.value.selectedAccountId ?: return
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                statementImportRepository.buildPreview(
+            _state.update {
+                it.copy(
+                    loading = true,
+                    error = null,
+                    passwordError = null,
+                    pendingFileUri = uri,
+                    pendingDisplayName = displayName
+                )
+            }
+            try {
+                val preview = statementImportRepository.buildPreview(
                     accountId = accountId,
                     uri = uri,
-                    fileName = displayName ?: "statement.csv",
+                    fileName = displayName ?: "statement",
+                    password = password,
                 )
-            }.onSuccess { preview ->
                 _state.update {
                     it.copy(
                         loading = false,
                         preview = preview,
                         fileName = preview.fileName,
                         step = CsvImportStep.PREVIEW,
+                        requiresPassword = false,
+                        passwordError = null,
                         error = if (preview.rows.isEmpty() && preview.parseErrors.isNotEmpty()) {
                             preview.parseErrors.first()
                         } else {
@@ -108,16 +122,36 @@ class CsvImportViewModel @Inject constructor(
                         },
                     )
                 }
-            }.onFailure { e ->
+            } catch (e: com.krtky.financetracker.data.importcsv.StatementEncryptedException) {
                 _state.update {
                     it.copy(
                         loading = false,
-                        error = e.message ?: "Could not read CSV",
+                        requiresPassword = true,
+                        passwordError = if (e.isRetry) e.message else null,
+                        error = null,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = e.message ?: "Could not read statement",
                         step = CsvImportStep.PICK_FILE,
+                        requiresPassword = false,
                     )
                 }
             }
         }
+    }
+
+    fun submitPassword(password: String) {
+        val uri = _state.value.pendingFileUri ?: return
+        val name = _state.value.pendingDisplayName
+        loadFile(uri, name, password)
+    }
+
+    fun dismissPasswordDialog() {
+        _state.update { it.copy(requiresPassword = false, passwordError = null) }
     }
 
     fun setRowAction(rowId: String, action: ImportRowAction) {

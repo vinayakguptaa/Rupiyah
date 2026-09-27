@@ -129,6 +129,7 @@ interface TransactionDao {
           AND (:type IS NULL OR type = :type)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
           AND (:tabId IS NULL OR fundId = :tabId)
+          AND (:tabId IS NOT NULL OR COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER')
           AND (:accountId IS NULL OR accountId = :accountId)
           AND occurredAt >= :fromTs AND occurredAt <= :toTs
         ORDER BY occurredAt DESC, recordedAt DESC, id DESC
@@ -262,11 +263,14 @@ interface TransactionDao {
     )
     suspend fun getAllForAccount(accountId: Long): List<TransactionEntity>
 
-    @Query("SELECT * FROM transactions WHERE sheetsSynced = 0 AND deletedAt IS NULL")
+    @Query("SELECT * FROM transactions WHERE sheetsSynced = 0 AND deletedAt IS NULL AND COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER'")
     suspend fun getUnsynced(): List<TransactionEntity>
 
-    @Query("SELECT * FROM transactions WHERE sheetsSynced = 0")
+    @Query("SELECT * FROM transactions WHERE sheetsSynced = 0 AND COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER'")
     suspend fun getDirtyIncludingDeleted(): List<TransactionEntity>
+
+    @Query("UPDATE transactions SET classificationStatus = 'CLASSIFIED', sheetsSynced = 1 WHERE kind = 'TAB_TRANSFER' AND (classificationStatus != 'CLASSIFIED' OR sheetsSynced = 0)")
+    suspend fun cleanupLegacyTabTransfers()
 
     @Query("UPDATE transactions SET sheetsSynced = 1 WHERE id = :id")
     suspend fun markSynced(id: String)
@@ -390,6 +394,9 @@ interface PendingClassificationDao {
     @Query("DELETE FROM pending_classification WHERE transactionId = :id")
     suspend fun delete(id: String)
 
+    @Query("DELETE FROM pending_classification WHERE transactionId IN (SELECT id FROM transactions WHERE kind = 'TAB_TRANSFER')")
+    suspend fun deleteForTabTransfers()
+
     @Update
     suspend fun update(entity: PendingClassificationEntity)
 }
@@ -404,6 +411,9 @@ interface SyncOutboxDao {
 
     @Query("DELETE FROM sync_outbox WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("DELETE FROM sync_outbox WHERE entityType = 'transaction' AND entityId IN (SELECT id FROM transactions WHERE kind = 'TAB_TRANSFER')")
+    suspend fun deleteForTabTransfers()
 
     @Query("UPDATE sync_outbox SET attempts = attempts + 1 WHERE id = :id")
     suspend fun bumpAttempts(id: Long)

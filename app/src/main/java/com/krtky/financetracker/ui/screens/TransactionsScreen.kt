@@ -411,7 +411,7 @@ fun TransactionsScreen(
                         }
                     }
                     items(monthItems, key = { it.id }) { t ->
-                        val party = t.counterparty ?: t.note ?: "Transaction"
+                        val party = t.displayName() ?: t.note ?: "Transaction"
                         val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
                         val catColor = categoryColor(t.categoryColor)
                         TransactionCard(

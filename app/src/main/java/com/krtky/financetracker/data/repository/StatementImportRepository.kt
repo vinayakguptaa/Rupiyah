@@ -41,7 +41,14 @@ data class ImportPreviewRow(
     val matchReason: String,
     val matchedTxnId: String?,
     val matchedSummary: String?,
+    val matchedParts: List<Transaction> = emptyList(),
+    val isSplitMatch: Boolean = false,
+    val sameDayTransactions: List<Transaction> = emptyList(),
+    val nearbyTransactions: List<Transaction> = emptyList(),
     val action: ImportRowAction,
+    val categoryName: String? = null,
+    val categoryIcon: String? = null,
+    val categoryColor: Long? = null,
 )
 
 data class ImportPreview(
@@ -78,24 +85,130 @@ class StatementImportRepository @Inject constructor(
         } ?: error("Could not open file")
     }
 
+    suspend fun parseDocument(
+        uri: Uri,
+        fileName: String,
+        password: String? = null,
+    ): com.krtky.financetracker.data.importcsv.CsvParseResult = withContext(Dispatchers.IO) {
+        val mime = context.contentResolver.getType(uri)?.lowercase()
+        val lowerName = fileName.lowercase()
+
+        when {
+            lowerName.endsWith(".pdf") || mime == "application/pdf" -> {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    com.krtky.financetracker.data.importcsv.PdfStatementParser.parse(context, stream, password)
+                } ?: error("Could not open PDF file")
+            }
+            lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") ||
+                mime?.contains("spreadsheetml") == true || mime?.contains("excel") == true -> {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    com.krtky.financetracker.data.importcsv.ExcelStatementParser.parse(stream, password)
+                } ?: error("Could not open Excel file")
+            }
+            else -> {
+                val text = readUriText(uri)
+                parseWithOptionalLlmMapping(text)
+            }
+        }
+    }
+
     suspend fun buildPreview(
         accountId: Long,
         uri: Uri,
         fileName: String,
+        password: String? = null,
     ): ImportPreview = withContext(Dispatchers.IO) {
         val account = accountRepository.getById(accountId)
             ?: error("Account not found")
-        val text = readUriText(uri)
-        val parsed = parseWithOptionalLlmMapping(text)
-        val existing = loadCandidates(account)
+        val parsed = parseDocument(uri, fileName, password)
+        val allActive = transactionRepository.getForAccount(account.id)
+        val unsplit = allActive.filter { it.splitGroupId == null }
+        val splitChildren = allActive.filter { it.splitGroupId != null }
+        val splitPartsMap = splitChildren.groupBy { it.splitGroupId!! }
+
+        val splitGroupCandidates = splitPartsMap.map { (groupId, parts) ->
+            val totalPaise = parts.sumOf { it.amountPaise }
+            val parentEntity = txnDao.getById(groupId)
+            val first = parts.first()
+            Transaction(
+                id = groupId,
+                type = parentEntity?.let { com.krtky.financetracker.data.local.db.parseTransactionType(it.type) } ?: first.type,
+                amountPaise = totalPaise,
+                occurredAt = parentEntity?.occurredAt ?: first.occurredAt,
+                recordedAt = parentEntity?.recordedAt ?: first.recordedAt,
+                counterparty = parentEntity?.counterparty ?: first.counterparty,
+                accountId = account.id,
+                source = parentEntity?.let { runCatching { TransactionSource.valueOf(it.source) }.getOrNull() } ?: TransactionSource.MANUAL,
+                note = parts.joinToString(" + ") { "${it.categoryName ?: it.counterparty ?: "Part"}: ₹${it.amountPaise / 100}" },
+                splitGroupId = groupId,
+                externalRefId = parentEntity?.externalRefId ?: first.externalRefId,
+                rawDescription = parentEntity?.rawDescription ?: first.rawDescription,
+            )
+        }
+        val dedupeCandidates = unsplit + splitGroupCandidates
         val categories = categoryRepository.getAll()
 
-        // B2: within-file candidate consumption. Two statement lines that both
-        // HIGH-match the SAME existing txn must not both skip-merge: the first
-        // consumes the candidate, later same-key lines are downgraded to IMPORT.
+        val rowCategoryMap = mutableMapOf<Int, Category>()
+
+        // 1. Direct hint from CSV parser if any
+        parsed.rows.forEachIndexed { index, row ->
+            val direct = row.categoryHint?.let { hint ->
+                categories.firstOrNull { it.name.equals(hint, ignoreCase = true) }
+            }
+            if (direct != null) {
+                rowCategoryMap[index] = direct
+            }
+        }
+
+        // 2. LLM Classification Pass for unclassified rows
+        if (llmClient.isConfigured() && categories.isNotEmpty()) {
+            val unclassifiedRows = parsed.rows.mapIndexedNotNull { index, row ->
+                if (index !in rowCategoryMap) {
+                    val textToClassify = row.description?.takeIf { it.isNotBlank() }
+                        ?: row.counterparty?.takeIf { it.isNotBlank() }
+                    if (textToClassify != null) index to textToClassify else null
+                } else null
+            }
+
+            if (unclassifiedRows.isNotEmpty()) {
+                val distinctDescriptions = unclassifiedRows.map { it.second }.distinct()
+                val categoryNames = categories.map { it.name }
+                val aiClassifications = mutableMapOf<String, String>()
+
+                distinctDescriptions.chunked(20).forEach { batch ->
+                    val result = llmClient.batchClassifyDescriptions(batch, categoryNames)
+                    aiClassifications.putAll(result)
+                }
+
+                if (aiClassifications.isNotEmpty()) {
+                    unclassifiedRows.forEach { (index, desc) ->
+                        val catName = aiClassifications[desc]
+                            ?: aiClassifications.entries.firstOrNull { (k, _) ->
+                                k.equals(desc, ignoreCase = true) || desc.contains(k, ignoreCase = true)
+                            }?.value
+                        if (catName != null) {
+                            val cat = categories.firstOrNull { it.name.equals(catName, ignoreCase = true) }
+                            if (cat != null) {
+                                rowCategoryMap[index] = cat
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         val consumedIds = mutableSetOf<String>()
-        val rows = parsed.rows.map { row ->
-            val match = ImportDedupe.match(row, existing)
+        val rows = parsed.rows.mapIndexed { index, row ->
+            val assignedCat = rowCategoryMap[index]
+            val updatedParsed = if (assignedCat != null && row.categoryHint == null) {
+                row.copy(categoryHint = assignedCat.name)
+            } else {
+                row
+            }
+            val match = ImportDedupe.match(updatedParsed, dedupeCandidates, splitPartsMap)
+            val sameDay = allActive.filter { ImportDedupe.sameDay(it.occurredAt, row.occurredAt) }
+            val nearby = allActive.filter { kotlin.math.abs(it.occurredAt - row.occurredAt) <= 36 * 60 * 60_000L }
+
             val alreadyConsumed = match.existing?.id?.let { it in consumedIds } == true
             val effectiveConfidence = when {
                 match.confidence != DedupeConfidence.HIGH -> match.confidence
@@ -107,16 +220,12 @@ class StatementImportRepository @Inject constructor(
             }
             val defaultAction = when (effectiveConfidence) {
                 DedupeConfidence.HIGH -> ImportRowAction.SKIP_MERGE
-                // MEDIUM rows are imported rather than skipped: silently dropping an
-                // uncertain-but-plausible row loses money data. The preview still shows
-                // the near match (matchReason / matchedSummary) so users can switch the
-                // row to SKIP_MERGE before committing.
-                DedupeConfidence.MEDIUM -> ImportRowAction.IMPORT_ANYWAY
+                DedupeConfidence.MEDIUM -> ImportRowAction.SKIP_MERGE
                 DedupeConfidence.LOW -> ImportRowAction.IMPORT
             }
             ImportPreviewRow(
                 id = UUID.randomUUID().toString(),
-                parsed = row,
+                parsed = updatedParsed,
                 confidence = effectiveConfidence,
                 matchReason = if (alreadyConsumed) {
                     "Same amount & date as an earlier line — imported as new"
@@ -125,13 +234,16 @@ class StatementImportRepository @Inject constructor(
                 },
                 matchedTxnId = match.existing?.id,
                 matchedSummary = match.existing?.let { summarize(it) },
+                matchedParts = match.matchedParts,
+                isSplitMatch = match.isSplitMatch,
+                sameDayTransactions = sameDay,
+                nearbyTransactions = nearby,
                 action = defaultAction,
+                categoryName = assignedCat?.name,
+                categoryIcon = assignedCat?.icon,
+                categoryColor = assignedCat?.color,
             )
         }
-
-        // Resolve category hints (not used for action, but available for commit)
-        @Suppress("UNUSED_VARIABLE")
-        val _cats = categories
 
         ImportPreview(
             account = account,
@@ -242,12 +354,16 @@ class StatementImportRepository @Inject constructor(
                 return false
             }
         }
+        val cleanParty = row.counterparty?.takeIf {
+            val lower = it.trim().lowercase(java.util.Locale.US)
+            it.isNotBlank() && lower !in setOf("dr", "cr", "debit", "credit", "d", "c")
+        }
         val txn = Transaction(
             id = id,
             type = row.type,
             amountPaise = row.amountPaise,
             occurredAt = row.occurredAt,
-            counterparty = row.counterparty,
+            counterparty = cleanParty,
             categoryId = catId,
             accountId = account.id,
             source = TransactionSource.IMPORT,

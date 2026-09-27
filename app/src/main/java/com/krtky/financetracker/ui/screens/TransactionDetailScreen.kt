@@ -158,6 +158,7 @@ fun TransactionDetailScreen(
             amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
             type = it.type
             selectedAccountId = when {
+                it.isTabTransfer() -> null
                 it.accountId != null -> it.accountId
                 it.isCash || it.accountName.equals("Cash", true) ->
                     accounts.firstOrNull { a -> a.name.equals("Cash", true) }?.id
@@ -519,12 +520,12 @@ fun TransactionDetailScreen(
                     addToTab = it.tabId != null || it.type == TransactionType.CREDIT
                     amount = "%.2f".format(Locale.US, it.amountPaise / 100.0)
                     type = it.type
-                    selectedAccountId = it.accountId
+                    selectedAccountId = if (it.isTabTransfer()) null else (it.accountId
                         ?: accounts.firstOrNull { a ->
                             a.name.equals(it.accountName, true) ||
                                 (it.isCash && a.name.equals("Cash", true))
                         }?.id
-                        ?: archivedCurrent?.id
+                        ?: archivedCurrent?.id)
                     val c = Calendar.getInstance().apply { timeInMillis = it.occurredAt }
                     selectedYear = c.get(Calendar.YEAR)
                     selectedMonth = c.get(Calendar.MONTH)

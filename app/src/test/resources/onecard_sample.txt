@@ -1,0 +1,263 @@
+         BOBCARD One Credit Card Statement (22 Aug 2026 - 21 Sep 2026)
+
+
+SUMMARY                         STATEMENT ILLUSTRATION                                                      (Rupees)
+
+       Full Name                 Opening Balance (as on 22 Aug 2026)                                        11,852.75
+       Test User
+                                 Spends (in Sep)                                                       +    22,244.88
+       One Credit Card Number
+       4712-27XX-XXXX-0000       Posted EMI (including taxes)                                          +     3,598.36
+
+       Statement Date            Interest Charges (including taxes)                                    +          0.00
+       22 Sep 2026
+                                 Fees & Charges (including taxes)                                      +          8.26
+       Payment Due Date
+       09 Oct 2026               Repayments & Refunds                                                  -    11,858.77
+
+       Total Amount Due          New EMI                                                               -          0.00
+       25,845.48
+                                     Paid via points                                                   -          0.00
+       Minimum Amount Due
+       4,051.39
+
+                                Total Amount Due                                                            25,845.48
+                                If the Total Amount Due is not paid by the Payment Due Date,          =
+                                interest will be charged on the unpaid amount.
+
+                                Minimum Amount Due                                                           4,051.39
+
+
+
+TRANSACTION HISTORY
+
+
+                                                            Transaction                        Reward
+Date     Merchant Name                                                                                     Amount (Rs.)
+                                                            Type                               Points
+
+         Grok Xai
+                                                                                                                708.26
+22 Aug   Forex Fee = 7.00              Electronics          ECOM                               14.00
+         GST @ 18% = 1.26                                                                                     null 700.00
+
+
+
+22 Aug Cred                         Bills and Utilities     TOKEN_ECOM                         15.64            781.82
+
+
+22 Aug Blinkit                         Groceries            TOKEN_ECOM                         4.48             224.00
+                                                        Transaction                   Reward
+Date     Merchant Name                                                                         Amount (Rs.)
+                                                        Type                          Points
+
+
+22 Aug Blinkit                         Groceries        TOKEN_ECOM                    3.10          155.00
+
+
+27 Aug Haldiram Marketing Pvt        Food & Dining      POS           Gautam Buddha   16.78         838.82
+
+
+28 Aug Bistro                        Food & Dining      TOKEN_ECOM                    7.26          363.00
+
+
+29 Aug Eversub India Private         Food & Dining      POS           Greater Noida   14.22         710.95
+
+
+29 Aug VijaySales                      Electronics      POS           Gautam Buddha   119.98      5,999.00
+
+
+01 Sep Rbal Jagat Farm Noida         Food & Dining      POS               Noida       2.37          118.64
+
+
+02 Sep Modernbasket                    Groceries        POS           Greater Noida   4.70          235.00
+
+
+02 Sep Swiggy Pvt Ltd Food1          Food & Dining      TOKEN_ECOM                    10.52         526.00
+
+
+04 Sep Paid Via Upi Bbps              Repayments                                                 11,852.75
+
+
+05 Sep Swiggy Grocery                  Groceries        TOKEN_ECOM                    5.32          266.00
+
+
+05 Sep Lalpathlabs                  Health & Wellness   TOKEN_ECOM                    67.00       3,350.00
+
+
+06 Sep Amazon                          Transfers        TOKEN_ECOM                                  690.09
+
+
+06 Sep Blinkit Foods Limit           Food & Dining      TOKEN_ECOM                    6.86          343.00
+
+
+08 Sep Zomato Limited                Food & Dining      TOKEN_ECOM                    15.05         752.28
+
+
+         Cult.fit Emi - (5/6)
+         EMI Principal = 3,487.87
+11 Sep   EMI Interest = 93.63
+                                          EMI                                                     3,598.36
+         GST @ 18% = 16.86
+
+
+
+11 Sep Zomato                        Food & Dining      TOKEN_ECOM                    23.55       1,177.48
+12 Sep Restaurant Brands Asia          Food & Dining       POS               Greater Noida        1.79      89.26
+
+
+14 Sep Swiggy Instamart                  Groceries         TOKEN_ECOM                             3.58     179.00
+
+
+15 Sep Swiggy Food                     Food & Dining       TOKEN_ECOM                             20.90   1,045.00
+
+
+18 Sep Zomato                          Food & Dining       TOKEN_ECOM                             12.23    611.54
+
+
+19 Sep Coco Auto Care Centre G             Fuel            POS           Gautam Buddha                     609.10
+
+
+20 Sep Amazon                            Transfers         TOKEN_ECOM                                      719.00
+
+
+20 Sep Coco Auto Care Centre G             Fuel            POS                                                6.02
+
+
+20 Sep Mcdonalds                       Food & Dining       POS               Greater Noida        2.06     102.90
+
+
+20 Sep Hira Sweets Bakery Gn           Food & Dining       POS                  Noida             2.62     131.00
+
+
+20 Sep Sagar Ratna                     Food & Dining       POS               Greater Noida        30.54   1,527.00
+
+
+
+
+EMI SUMMARY
+
+EMI Posted in Sep                                             Ongoing EMIs
+3,581.50                                                      1
+
+
+
+                                 Tenure
+Name                Status                             EMI Posted (Rs)   Amount Posted (Rs) Remaining Amount (Rs)
+                                 Complete
+
+
+
+
+cult.fit EMI        Ongoing      5/6                         3,581.50                        17,907.50    3,581.47
+IMPORTANT INFORMATION
+
+
+In case you pay only the Minimum Amount Due or any amount lesser than Total Amount Due, interest will be
+charged on a daily basis on the unpaid amount. Any fresh purchases made by you will be added to the previous
+outstanding balance, on which interest will be applicable. Always try to pay the total amount due to avoid interest
+and late payment fees. Making only the minimum payment every month would result in the repayment
+stretching over months/years with consequential compounded interest payment on your outstanding
+balance
+
+To improve the functionality and stability of the Indian financial system, the Government of India and Reserve
+Bank of India (RBI) asked all banks and financial institutions to share consumer data with Credit Information
+Companies (CICs). Based on this data, these companies, or credit bureaus, generate a credit score and a credit
+report for each borrower, which is shared with banks and financial institutions as well as the borrower.
+
+In case your BOBCARD One Credit Card is lost, stolen, misplaced, or if the credit card PIN has been
+compromised, report this immediately from the OneCard App or via phone on 1800-268-7111 or email us on
+bobcardone@getonecard.app .
+
+If your One Credit Card is misplaced, you can lock the card temporarily from the OneCard App.
+
+If you are unable to make payments for some reason, please email us on bobcardone@getonecard.app or call on
+1800-268-7111 so our Customer Experience Team can assist in resolving the issue.
+
+              Grievance        Contact
+                                                  Email Id                          Postal Address
+           redressal officer   Number
+
+
+
+
+                                 022-
+           Mr. Ravi Ranjan                  escalations@bobcard.   15TH FLOOR, 1502/1503/1504, DLH PARK, S.V. ROAD,
+ Level 1                       41683700
+                Kumar                                co.in           GOREGAON Mumbai west - 400102, Maharashtra
+                               (Ext. 433)
+
+
+Sample Illustration of Interest Calculations (dues not paid in full)
+
+The interest rate on unpaid dues is charged at 45% per annum, or 3.75% per month.
+Purchase: Rs.10,000 on January 15, 2021
+Statement Date: February 01, 2021
+Total Amount Due: Rs.10,000
+Payment Due Date: February 18, 2021
+Payment Done: Rs.500 on February 10, 2021
+No other transactions in February.
+The interest will be charged basis of below formula :
+
+((Number of days X Entire outstanding amount X (Interest rate per month x 12 months)) / (Number of days in a
+year).
+
+            Balance (Rs)    Period     No. Of Days                  Calculation                Interest (Rs)
+
+
+
+
+              Rs.10,000    15-31 Jan       17           (17 x 10,0000 x (3.75/100 x 12))/365      209.59
+
+              Rs.10,000    01-09 Feb       9            (9 x 10,0000 x (3.75/100 x 12))/365       110.96
+
+              Rs.9,500     10-28 Feb       19            (19 x 9,500 x (3.75/100 x 12))/365       222.53
+
+                                                                 Interest Charged                 543.08
+
+
+Goods and Services Tax (GST) at the prevailing rate (currently 18%) will be levied on this interest charged, which
+is Rs.97.75 (18% of Interest Charged) .
+
+This will be added to the outstanding amount so in your next statement, the Total Amount Due will be Rs.
+10,140.83 (Rs.9,500 + Rs.543.08 + Rs.97.75)
+
+
+
+     Click here to view your drawal limits
+     Click here to read the Fees and Charges in details
+     Click here to view the grievance details
+     Click here for procedure to block card in case of loss/theft or misuse of card
+     Click here to read the Most Important Terms and Conditions (MITC) in detail.
+     Click here to view the Key Fact Statement
+
+
+
+
+PAY WITH YOUR ONECARD APP
+
+Outstanding amount can be paid from the OneCard app using the following modes -
+
+     Any UPI handle
+     Via Debit Card
+     Via Net Banking
+     Via IMPS or NEFT, to the unique account number provided in the app
+
+We do not accept repayments via cash or cheque.
+It is recommended to pay the dues via above authorized payment modes.
+  Any repayment via third party apps or websites may have a TAT of 5 working days for clearance or settlement of
+  dues.
+  Penal interest or any other applicable charges will be levied if the outstanding amount is not received by the
+  payment due date.
+
+
+
+
+FPL Technologies Pvt. Ltd.                          BOBCARD LIMITED                                      Place of Service - Maharashtra                  Invoice No.- Sep26/31735377
+West Bay, Survey No 128, Pallod Farms II,           GSTN: 27AAACB1989L1ZA                                State code - 27                                 Account No. - 2954836874167846878
+Nankude Wasti, Baner,                               BEHIND DIWAN SHOPPING CENTRE,2ND                     HSN - 997113 - Financial and related services
+Pune-411005                                         AND 4TH FLOOR,BARODA HOUSE,S.V.
+Maharashtra                                         ROAD, JOGESHWARI, Mumbai-400102                                                                      www.getonecard.app
+This is an authenticated intimation/statement.
+You are requested to immediately notify us on bobcardone@getonecard.app in case of any discrepancy in the statement.
+

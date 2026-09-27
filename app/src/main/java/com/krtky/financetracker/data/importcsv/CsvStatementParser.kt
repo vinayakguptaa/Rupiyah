@@ -66,12 +66,71 @@ object CsvStatementParser {
                 skipped++
                 continue
             }
+            if (rows.isNotEmpty() && looksLikeFooter(line, cells)) {
+                break
+            }
             val parsed = parseRow(i + 1, cells, resolved, line)
             if (parsed != null) {
                 rows += parsed
             } else {
                 skipped++
-                if (errors.size < 12) {
+                if (!looksLikeFooter(line, cells) && errors.size < 12) {
+                    errors += "Line ${i + 1}: could not parse amount/date"
+                }
+            }
+        }
+
+        if (rows.isEmpty() && errors.isEmpty()) {
+            errors += "No transactions found. Check that the file has a header row and Date + Debit/Credit (or Amount) columns."
+        }
+
+        return CsvParseResult(
+            rows = rows,
+            headers = headerCells,
+            presetName = presetName,
+            errors = errors,
+            skippedLines = skipped,
+        )
+    }
+
+    fun parseRows(
+        tableRows: List<List<String>>,
+        mapping: ColumnMapping? = null,
+        presetNameOverride: String? = null,
+    ): CsvParseResult {
+        if (tableRows.isEmpty()) {
+            return CsvParseResult(emptyList(), emptyList(), "empty", listOf("File is empty"))
+        }
+        val headerIndex = tableRows.indexOfFirst { row ->
+            val combined = row.joinToString(" ")
+            looksLikeHeader(combined)
+        }.takeIf { it >= 0 } ?: 0
+
+        val headerCells = tableRows[headerIndex].map { it.trim() }
+        val resolved = mapping ?: detectMapping(headerCells)
+        val presetName = presetNameOverride ?: resolved.presetName
+        val dataStart = headerIndex + 1
+
+        val rows = mutableListOf<ParsedCsvRow>()
+        val errors = mutableListOf<String>()
+        var skipped = 0
+
+        for (i in dataStart until tableRows.size) {
+            val cells = tableRows[i]
+            if (cells.all { it.isBlank() }) {
+                skipped++
+                continue
+            }
+            val rawLine = cells.joinToString(",")
+            if (rows.isNotEmpty() && looksLikeFooter(rawLine, cells)) {
+                break
+            }
+            val parsed = parseRow(i + 1, cells, resolved, rawLine)
+            if (parsed != null) {
+                rows += parsed
+            } else {
+                skipped++
+                if (!looksLikeFooter(rawLine, cells) && errors.size < 12) {
                     errors += "Line ${i + 1}: could not parse amount/date"
                 }
             }
@@ -250,6 +309,19 @@ object CsvStatementParser {
         return hits >= 2
     }
 
+    private fun looksLikeFooter(line: String, cells: List<String>): Boolean {
+        val norm = normalizeHeader(line)
+        val first = cells.firstOrNull()?.let { normalizeHeader(it) }.orEmpty()
+        val keywords = listOf(
+            "closing balance", "total balance", "opening balance",
+            "important note", "disclaimer", "end of statement",
+            "computer generated", "terms and conditions", "contact centre",
+            "customer care", "customer contact", "generated on", "statement summary",
+            "page ", "total debits", "total credits", "count of transactions",
+        )
+        return keywords.any { first.startsWith(it) || norm.startsWith(it) || first == it }
+    }
+
     // --- row parse ---------------------------------------------------------------
 
     private fun parseRow(
@@ -286,7 +358,10 @@ object CsvStatementParser {
         val (type, amountPaise, kind) = resolved
         if (amountPaise <= 0L) return null
 
-        val party = cell(m.counterparty) ?: cell(m.name) ?: guessParty(desc)
+        val party = (cell(m.counterparty) ?: cell(m.name))?.takeIf {
+            val lower = it.trim().lowercase(Locale.US)
+            lower !in setOf("dr", "cr", "debit", "credit", "d", "c")
+        }
         val ref = cell(m.ref)
         val category = when {
             kind == TransactionKind.SELF_TRANSFER -> cell(m.category) ?: "Transfer"
