@@ -50,21 +50,18 @@ class AccountsViewModel @Inject constructor(
         if (trimmed.isBlank()) return
         viewModelScope.launch {
             accountRepository.addOrRestore(trimmed, kind)
-            mirrorBankPrefs()
         }
     }
 
     fun archiveAccount(id: Long) {
         viewModelScope.launch {
             accountRepository.archive(id)
-            mirrorBankPrefs()
         }
     }
 
     fun restoreAccount(id: Long) {
         viewModelScope.launch {
             accountRepository.unarchive(id)
-            mirrorBankPrefs()
         }
     }
 
@@ -74,10 +71,5 @@ class AccountsViewModel @Inject constructor(
 
     fun setDefaultDigitalAccount(account: String) {
         viewModelScope.launch { userPreferences.setDefaultDigitalAccount(account) }
-    }
-
-    private suspend fun mirrorBankPrefs() {
-        val joined = accountRepository.activeBankNames().joinToString(",")
-        userPreferences.setBankAccounts(joined)
     }
 }

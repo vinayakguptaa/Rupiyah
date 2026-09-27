@@ -4,8 +4,8 @@ import androidx.room.withTransaction
 import com.krtky.financetracker.data.local.db.AccountEntity
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.CategoryEntity
+import com.krtky.financetracker.data.local.db.TabAggregateDto
 import com.krtky.financetracker.data.local.db.TabEntity
-import com.krtky.financetracker.data.local.db.TabLedgerEntity
 import com.krtky.financetracker.data.local.db.PendingClassificationEntity
 import com.krtky.financetracker.data.local.db.SyncOutboxEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
@@ -38,7 +38,6 @@ class TransactionRepository @Inject constructor(
     private val categoryDao = db.categoryDao()
     private val tabDao = db.tabDao()
     private val accountDao = db.accountDao()
-    private val ledgerDao = db.tabLedgerDao()
     private val pendingDao = db.pendingClassificationDao()
     private val outboxDao = db.syncOutboxDao()
 
@@ -81,16 +80,11 @@ class TransactionRepository @Inject constructor(
 
     /** Count of transactions awaiting category assignment. */
     fun observePendingClassificationCount(): Flow<Int> =
-        txnDao.observeAll().map { list -> list.count { needsClassify(it) } }
+        txnDao.observePendingClassificationCount()
 
     /** Oldest pending txn id for the Home classify chip. */
     fun observeFirstPendingClassificationId(): Flow<String?> =
-        txnDao.observeAll().map { list ->
-            list
-                .filter { needsClassify(it) }
-                .minByOrNull { it.occurredAt }
-                ?.id
-        }
+        txnDao.observeFirstPendingClassificationId()
 
     /**
      * General transaction list. Split parts are standalone rows, so SQL filtering by
@@ -104,9 +98,10 @@ class TransactionRepository @Inject constructor(
         fromTs: Long,
         toTs: Long,
         accountId: Long? = null,
+        unassignedOnly: Boolean = false,
     ): Flow<List<Transaction>> =
         combine(
-            txnDao.observeFiltered(query, type?.name, categoryId, tabId, fromTs, toTs, accountId),
+            txnDao.observeFiltered(query, type?.name, categoryId, tabId, fromTs, toTs, accountId, unassignedOnly),
             categoryDao.observeAll(),
             tabDao.observeActive(),
             accountDao.observeAll(),
@@ -230,13 +225,11 @@ class TransactionRepository @Inject constructor(
         db.withTransaction {
             // Replace current parts (re-split) or the parent itself (first split).
             if (existingChildren.isEmpty()) {
-                ledgerDao.deleteForTransaction(parent.id)
                 txnDao.softDelete(parent.id)
                 pendingDao.delete(parent.id)
                 enqueueSync(parent.id)
             } else {
                 existingChildren.forEach { child ->
-                    ledgerDao.deleteForTransaction(child.id)
                     txnDao.softDelete(child.id)
                     pendingDao.delete(child.id)
                     enqueueSync(child.id)
@@ -281,7 +274,6 @@ class TransactionRepository @Inject constructor(
                 insertManual(child, addToTab = child.tabId != null)
             }
         }
-        affectedTabs.forEach { recalculateTabLedger(it) }
         return Result.success(groupId)
     }
 
@@ -307,7 +299,6 @@ class TransactionRepository @Inject constructor(
 
         db.withTransaction {
             children.forEach { child ->
-                ledgerDao.deleteForTransaction(child.id)
                 txnDao.softDelete(child.id)
                 pendingDao.delete(child.id)
                 enqueueSync(child.id)
@@ -332,7 +323,6 @@ class TransactionRepository @Inject constructor(
             if (reopenClassify) scheduleClassification(parent.id)
             enqueueSync(parent.id)
         }
-        tabs.forEach { recalculateTabLedger(it) }
         return Result.success(Unit)
     }
 
@@ -501,7 +491,6 @@ class TransactionRepository @Inject constructor(
         ).toEntity()
         val rowId = txnDao.insert(entity)
         if (rowId == -1L) return id
-        handleTabOnInsert(entity.id, entity.tabId, entity.type, entity.amountPaise, addToTab, entity.note)
         if (!isOffBooks) {
             if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
                 scheduleClassification(entity.id)
@@ -620,15 +609,6 @@ class TransactionRepository @Inject constructor(
             classificationStatus = if (isOffBooks || txn.categoryId != null) ClassificationStatus.CLASSIFIED else txn.classificationStatus,
         )
         txnDao.update(updated.toEntity())
-        val tabsToRebuild = mutableSetOf<Long>()
-        if (oldTab != null) tabsToRebuild.add(oldTab)
-        if (updated.tabId != null) tabsToRebuild.add(updated.tabId)
-        if (oldTab != updated.tabId ||
-            existing.amountPaise != updated.amountPaise ||
-            existing.type != updated.type.name
-        ) {
-            tabsToRebuild.forEach { recalculateTabLedger(it) }
-        }
         pendingDao.delete(txn.id)
         if (!isOffBooks) {
             enqueueSync(txn.id)
@@ -665,11 +645,6 @@ class TransactionRepository @Inject constructor(
             receiptUri = receiptUri ?: existing.receiptUri,
         )
         txnDao.update(updated)
-        if (existing.tabId != updated.tabId) {
-            // Rebuild both sides so old tab loses the spend and new tab gains it cleanly
-            if (existing.tabId != null) recalculateTabLedger(existing.tabId)
-            if (updated.tabId != null) recalculateTabLedger(updated.tabId)
-        }
         if (newCat != null) pendingDao.delete(transactionId)
         enqueueSync(transactionId)
     }
@@ -682,21 +657,16 @@ class TransactionRepository @Inject constructor(
             existing.kind == TransactionKind.TAB_TRANSFER.name
         if (linkedKind && !groupId.isNullOrBlank()) {
             val legs = txnDao.getByTransferGroup(groupId)
-            val tabsToRebuild = legs.mapNotNull { it.tabId }.toSet()
             db.withTransaction {
                 for (leg in legs) {
-                    ledgerDao.deleteForTransaction(leg.id)
                     txnDao.softDelete(leg.id)
                     pendingDao.delete(leg.id)
                 }
             }
-            tabsToRebuild.forEach { recalculateTabLedger(it) }
             legs.forEach { if (it.kind != TransactionKind.TAB_TRANSFER.name) enqueueSync(it.id) }
             return
         }
-        ledgerDao.deleteForTransaction(id)
         txnDao.softDelete(id)
-        existing.tabId?.let { recalculateTabLedger(it) }
         pendingDao.delete(id)
         if (existing.kind != TransactionKind.TAB_TRANSFER.name) {
             enqueueSync(id)
@@ -806,34 +776,30 @@ class TransactionRepository @Inject constructor(
      */
     fun observeTabs(): Flow<List<TabBalance>> = combine(
         tabDao.observeActive(),
-        txnDao.observeAll(),
-    ) { tabs, allTxns -> tabBalances(tabs, allTxns) }
+        txnDao.observeTabAggregates(),
+    ) { tabs, aggregates -> tabBalances(tabs, aggregates) }
 
     fun observeArchivedTabs(): Flow<List<TabBalance>> = combine(
         tabDao.observeArchived(),
-        txnDao.observeAll(),
-    ) { tabs, allTxns -> tabBalances(tabs, allTxns) }
+        txnDao.observeTabAggregates(),
+    ) { tabs, aggregates -> tabBalances(tabs, aggregates) }
 
     fun observeTab(id: Long): Flow<TabBalance?> = combine(
         tabDao.observeById(id),
-        txnDao.observeAll(),
-    ) { tab, allTxns ->
-        tab?.let { tabBalances(listOf(it), allTxns).firstOrNull() }
+        txnDao.observeTabAggregates(),
+    ) { tab, aggregates ->
+        tab?.let { tabBalances(listOf(it), aggregates).firstOrNull() }
     }
 
     private fun tabBalances(
         tabs: List<TabEntity>,
-        allTxns: List<TransactionEntity>,
+        aggregates: List<TabAggregateDto>,
     ): List<TabBalance> {
-        val byTab = allTxns
-            .asSequence()
-            .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
-            .filter { it.tabId != null }
-            .groupBy { it.tabId!! }
+        val byTab = aggregates.associateBy { it.tabId }
         return tabs.map { tab ->
-            val rows = byTab[tab.id].orEmpty()
-            val credits = rows.filter { isCreditType(it.type) }.sumOf { it.amountPaise }
-            val debits = rows.filter { isDebitType(it.type) }.sumOf { it.amountPaise }
+            val agg = byTab[tab.id]
+            val credits = agg?.creditsPaise ?: 0L
+            val debits = agg?.debitsPaise ?: 0L
             TabBalance(
                 tab = tab.toDomain(),
                 balancePaise = debits - credits,
@@ -844,22 +810,11 @@ class TransactionRepository @Inject constructor(
     }
 
     suspend fun addTab(name: String): Long {
-        val id = tabDao.upsert(
+        return tabDao.upsert(
             TabEntity(
                 name = name.trim(),
             ),
         )
-        // Keep ledger aligned (history); display uses transactions only
-        recalculateTabLedger(id)
-        return id
-    }
-
-    /** Rebuild every active tab ledger from linked transactions and clean legacy off-books state. */
-    suspend fun repairAllTabLedgers() {
-        txnDao.cleanupLegacyTabTransfers()
-        pendingDao.deleteForTabTransfers()
-        db.syncOutboxDao().deleteForTabTransfers()
-        tabDao.getAll().filter { !it.archived }.forEach { recalculateTabLedger(it.id) }
     }
 
     suspend fun deleteTab(tabId: Long) {
@@ -871,7 +826,6 @@ class TransactionRepository @Inject constructor(
         val tab = tabDao.getById(tabId) ?: return
         if (tab.archived) {
             tabDao.update(tab.copy(archived = false))
-            recalculateTabLedger(tabId)
         }
     }
 
@@ -968,105 +922,6 @@ class TransactionRepository @Inject constructor(
         db.withTransaction {
             insertManual(txnOut, addToTab = true)
             insertManual(txnIn, addToTab = true)
-        }
-    }
-
-    suspend fun creditTabFromIncome(tabId: Long, transactionId: String, amountPaise: Long, note: String?) {
-        val current = ledgerDao.latestBalance(tabId) ?: 0L
-        // Open-tab signs: credit decreases balance (they paid you / settled).
-        val after = current - amountPaise
-        ledgerDao.insert(
-            TabLedgerEntity(
-                tabId = tabId,
-                transactionId = transactionId,
-                entryType = TabEntryType.CREDIT.name,
-                amountPaise = amountPaise,
-                balanceAfterPaise = after,
-                note = note,
-            )
-        )
-    }
-
-    /**
-     * Ledger rebuild aligned with open-tab formula:
-     * `balance = debits − credits`.
-     * Single baseline (zero) + every linked transaction / split part.
-     */
-    private suspend fun recalculateTabLedger(tabId: Long) {
-        if (tabDao.getById(tabId) == null) return
-
-        ledgerDao.deleteAllForTab(tabId)
-
-        var runningBalance = 0L
-
-        // Split parts are standalone rows, so tab linking is a direct row filter.
-        // Scope the scan to this tab's rows instead of the whole transactions table.
-        val hits = txnDao.getAllForTab(tabId)
-            .asSequence()
-            .filter { it.kind != TransactionKind.SELF_TRANSFER.name }
-            .sortedWith(compareBy({ it.occurredAt }, { it.id }))
-
-        for (txn in hits) {
-            val isCredit = isCreditType(txn.type)
-            val amount = txn.amountPaise
-            // debits − credits
-            runningBalance += if (isCredit) -amount else amount
-            ledgerDao.insert(
-                TabLedgerEntity(
-                    tabId = tabId,
-                    transactionId = txn.id,
-                    entryType = if (isCredit) {
-                        TabEntryType.CREDIT.name
-                    } else {
-                        TabEntryType.DEBIT.name
-                    },
-                    amountPaise = amount,
-                    balanceAfterPaise = runningBalance,
-                    note = txn.note,
-                    createdAt = txn.occurredAt,
-                ),
-            )
-        }
-    }
-
-    private suspend fun handleTabOnInsert(
-        transactionId: String,
-        tabId: Long?,
-        type: String,
-        amountPaise: Long,
-        @Suppress("UNUSED_PARAMETER") addToTab: Boolean,
-        note: String?,
-    ) {
-        if (tabId == null) return
-        val current = ledgerDao.latestBalance(tabId) ?: 0L
-        // Open-tab: debits raise balance (they owe you more), credits lower it.
-        when {
-            isCreditType(type) -> {
-                val after = current - amountPaise
-                ledgerDao.insert(
-                    TabLedgerEntity(
-                        tabId = tabId,
-                        transactionId = transactionId,
-                        entryType = TabEntryType.CREDIT.name,
-                        amountPaise = amountPaise,
-                        balanceAfterPaise = after,
-                        note = note,
-                    ),
-                )
-            }
-            isDebitType(type) -> {
-                val after = current + amountPaise
-                ledgerDao.insert(
-                    TabLedgerEntity(
-                        tabId = tabId,
-                        transactionId = transactionId,
-                        entryType = TabEntryType.DEBIT.name,
-                        amountPaise = amountPaise,
-                        balanceAfterPaise = after,
-                        note = note,
-                    ),
-                )
-            }
         }
     }
 

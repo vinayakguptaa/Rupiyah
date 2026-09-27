@@ -69,6 +69,7 @@ class AccountDetailViewModel @Inject constructor(
                 val accountId = head.key.first
                 val (from, to) = head.range.toMillisRange(tail.from, tail.to)
                 val sqlAccount = accountId.takeIf { it > 0L }
+                val isUnassignedDigital = (accountId == UNASSIGNED_DIGITAL_ACCOUNT_ID)
                 transactionRepository.observeFiltered(
                     query = "",
                     type = head.t,
@@ -77,18 +78,9 @@ class AccountDetailViewModel @Inject constructor(
                     fromTs = from,
                     toTs = to,
                     accountId = sqlAccount,
+                    unassignedOnly = isUnassignedDigital,
                 ).map { list ->
-                    val scoped = if (accountId == UNASSIGNED_DIGITAL_ACCOUNT_ID) {
-                        list.filter {
-                            !it.isCash &&
-                                it.accountId == null &&
-                                !it.isTabTransfer() &&
-                                !it.accountName.equals("Cash", true)
-                        }
-                    } else {
-                        list
-                    }
-                    applyPaymentAndSort(scoped, null, tail.sort)
+                    applyPaymentAndSort(list, null, tail.sort)
                 }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

@@ -40,29 +40,18 @@ class CashflowRepository @Inject constructor(
     fun observeAccountBalances(): Flow<Map<String, Long>> =
         combine(
             accountDao.observeAll(),
-            txnDao.observeAll(),
-        ) { accounts, txns ->
-            val live = txns.filter { it.deletedAt == null }
+            txnDao.observeAccountNets(),
+        ) { accounts, nets ->
+            val netMap = nets.associate { it.accountId to it.netPaise }
             val byAccount = accounts.associate { acc ->
-                val mine = live.filter {
-                    it.accountId == acc.id && !isTabOnlyBookkeeping(it.kind)
-                }
-                val net = mine.sumOf { signedPaise(it) }
+                val net = netMap[acc.id] ?: 0L
                 acc.name.trim() to (acc.openingBalancePaise + net)
             }.toMutableMap()
 
             // Rows with no owning account (e.g. unmatched SMS) — keep Home's total honest.
-            //
-            // NOTE: "Digital" here is a DISPLAY-ONLY pseudo-bucket, not a real
-            // `accounts` row. Tab-only bookkeeping (TAB_TRANSFER) is excluded so
-            // openings / tab↔tab moves never inflate available balance.
-            // Each *named* account's balance agrees with the Accounts screen.
-            val unmatched = live.filter {
-                it.accountId == null && !isTabOnlyBookkeeping(it.kind)
-            }
-            if (unmatched.isNotEmpty()) {
-                val digital = unmatched.sumOf { signedPaise(it) }
-                byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digital
+            val digitalNet = netMap[null] ?: 0L
+            if (digitalNet != 0L || accounts.none { it.name.trim().equals("Digital", ignoreCase = true) }) {
+                byAccount["Digital"] = (byAccount["Digital"] ?: 0L) + digitalNet
             }
             byAccount
         }
@@ -77,7 +66,10 @@ class CashflowRepository @Inject constructor(
      * Only self-transfer and tab-transfer rows are excluded — those are linked
      * account moves / tab bookkeeping, not spend.
      */
-    suspend fun homeCashflowSnapshot(now: Long = System.currentTimeMillis()): HomeCashflowSnapshot {
+    suspend fun homeCashflowSnapshot(
+        now: Long = System.currentTimeMillis(),
+        includeTrend: Boolean = false,
+    ): HomeCashflowSnapshot {
         val (from, to) = monthBounds(now)
         val cats = categoryDao.getAll().associateBy { it.id }
         val accounts = accountDao.getAll().associateBy { it.id }
@@ -113,7 +105,7 @@ class CashflowRepository @Inject constructor(
             }
             .sortedByDescending { it.totalPaise }
         val debitByCat = byCategory(debitRows)
-        val trend = computeMonthlyTrend(now)
+        val trend = if (includeTrend) computeMonthlyTrend(now) else emptyList()
 
         val netByCat = rows
             .groupBy { it.categoryId }

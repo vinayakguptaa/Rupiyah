@@ -28,7 +28,7 @@ data class AccountEntity(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(tableName = "funds")
+@Entity(tableName = "tabs")
 data class TabEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -44,7 +44,7 @@ data class TabEntity(
         Index(value = ["externalRefId"]),
         Index(value = ["occurredAt"]),
         Index(value = ["categoryId"]),
-        Index(value = ["fundId"]),
+        Index(value = ["tabId"]),
         Index(value = ["accountId"]),
         Index(value = ["transferGroupId"]),
         Index(value = ["splitGroupId"]),
@@ -61,7 +61,7 @@ data class TransactionEntity(
     val recordedAt: Long,
     val counterparty: String? = null,
     val categoryId: Long? = null,
-    @ColumnInfo(name = "fundId") val tabId: Long? = null,
+    val tabId: Long? = null,
     val accountId: Long? = null,
     val source: String,
     val note: String? = null,
@@ -89,18 +89,6 @@ data class TransactionEntity(
     val receiptUri: String? = null,
     /** Shared id for split-transaction parts; null if not a split child. */
     val splitGroupId: String? = null,
-)
-
-@Entity(tableName = "fund_ledger")
-data class TabLedgerEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    @ColumnInfo(name = "fundId") val tabId: Long,
-    val transactionId: String? = null,
-    val entryType: String,
-    val amountPaise: Long,
-    val balanceAfterPaise: Long,
-    val note: String? = null,
-    val createdAt: Long = System.currentTimeMillis(),
 )
 
 @Entity(tableName = "location_samples")

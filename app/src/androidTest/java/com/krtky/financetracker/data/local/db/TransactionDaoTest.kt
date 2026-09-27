@@ -151,4 +151,81 @@ class TransactionDaoTest {
         assertThat(unsynced).hasSize(1)
         assertThat(unsynced[0].id).isEqualTo("x1")
     }
+
+    @Test
+    fun observePendingClassificationCount_excludesOffBooksAndTransfers() = runBlocking {
+        // Pending normal transaction without category -> should count
+        dao.insert(
+            TransactionEntity(id = "p1", type = "DEBIT", amountPaise = 100L, occurredAt = 1L, recordedAt = 1L, source = "SMS", classificationStatus = "PENDING", updatedAt = 1L)
+        )
+        // Tab transfer (They paid IOU) -> must NOT count
+        dao.insert(
+            TransactionEntity(id = "p2", type = "DEBIT", amountPaise = 200L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "CLASSIFIED", kind = "TAB_TRANSFER", tabId = 1L, updatedAt = 2L)
+        )
+        // Self transfer -> must NOT count
+        dao.insert(
+            TransactionEntity(id = "p3", type = "DEBIT", amountPaise = 300L, occurredAt = 3L, recordedAt = 3L, source = "MANUAL", classificationStatus = "PENDING", kind = "SELF_TRANSFER", updatedAt = 3L)
+        )
+        val count = dao.observePendingClassificationCount().first()
+        assertThat(count).isEqualTo(1)
+        val firstId = dao.observeFirstPendingClassificationId().first()
+        assertThat(firstId).isEqualTo("p1")
+    }
+
+    @Test
+    fun observeAccountNets_aggregatesByAccount() = runBlocking {
+        dao.insert(
+            TransactionEntity(id = "a1", type = "CREDIT", amountPaise = 5000L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", accountId = 10L, updatedAt = 1L)
+        )
+        dao.insert(
+            TransactionEntity(id = "a2", type = "DEBIT", amountPaise = 2000L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "CLASSIFIED", accountId = 10L, updatedAt = 2L)
+        )
+        dao.insert(
+            TransactionEntity(id = "a3", type = "CREDIT", amountPaise = 1000L, occurredAt = 3L, recordedAt = 3L, source = "MANUAL", classificationStatus = "CLASSIFIED", accountId = 20L, updatedAt = 3L)
+        )
+        val nets = dao.observeAccountNets().first()
+        assertThat(nets).hasSize(2)
+        val acc10 = nets.first { it.accountId == 10L }
+        assertThat(acc10.netPaise).isEqualTo(3000L)
+        assertThat(acc10.txnCount).isEqualTo(2)
+        val acc20 = nets.first { it.accountId == 20L }
+        assertThat(acc20.netPaise).isEqualTo(1000L)
+        assertThat(acc20.txnCount).isEqualTo(1)
+    }
+
+    @Test
+    fun observeTabAggregates_calculatesBalanceCorrectly() = runBlocking {
+        // Tab 1: Credit 500, Debit 200 -> Net balance = 300 (they owe you)
+        dao.insert(
+            TransactionEntity(id = "t1", type = "CREDIT", amountPaise = 500L, occurredAt = 1L, recordedAt = 1L, source = "MANUAL", classificationStatus = "CLASSIFIED", tabId = 1L, updatedAt = 1L)
+        )
+        dao.insert(
+            TransactionEntity(id = "t2", type = "DEBIT", amountPaise = 200L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "CLASSIFIED", tabId = 1L, updatedAt = 2L)
+        )
+        val aggs = dao.observeTabAggregates().first()
+        assertThat(aggs).hasSize(1)
+        assertThat(aggs[0].tabId).isEqualTo(1L)
+        assertThat(aggs[0].creditedPaise).isEqualTo(500L)
+        assertThat(aggs[0].debitedPaise).isEqualTo(200L)
+        assertThat(aggs[0].balancePaise).isEqualTo(300L)
+    }
+
+    @Test
+    fun observeUnassignedDigital_countsOnlyUnassignedNonCashNonTab() = runBlocking {
+        // Unassigned digital row
+        dao.insert(
+            TransactionEntity(id = "d1", type = "DEBIT", amountPaise = 400L, occurredAt = 1L, recordedAt = 1L, source = "SMS", classificationStatus = "PENDING", isCash = false, accountId = null, updatedAt = 1L)
+        )
+        // Cash row -> should not be included
+        dao.insert(
+            TransactionEntity(id = "d2", type = "DEBIT", amountPaise = 200L, occurredAt = 2L, recordedAt = 2L, source = "MANUAL", classificationStatus = "PENDING", isCash = true, accountId = null, updatedAt = 2L)
+        )
+        // Tab transfer without account -> should not be included
+        dao.insert(
+            TransactionEntity(id = "d3", type = "DEBIT", amountPaise = 300L, occurredAt = 3L, recordedAt = 3L, source = "MANUAL", classificationStatus = "CLASSIFIED", kind = "TAB_TRANSFER", isCash = false, accountId = null, updatedAt = 3L)
+        )
+        val unassigned = dao.observeUnassignedDigital().first()
+        assertThat(unassigned.count).isEqualTo(1)
+        assertThat(unassigned.netPaise).isEqualTo(-400L)
+    }
 }

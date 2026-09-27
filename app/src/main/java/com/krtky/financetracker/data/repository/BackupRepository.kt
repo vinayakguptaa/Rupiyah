@@ -8,7 +8,6 @@ import com.krtky.financetracker.data.local.db.AccountEntity
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.data.local.db.CategoryEntity
 import com.krtky.financetracker.data.local.db.TabEntity
-import com.krtky.financetracker.data.local.db.TabLedgerEntity
 import com.krtky.financetracker.data.local.db.TransactionEntity
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
@@ -123,25 +122,24 @@ class BackupRepository @Inject constructor(
                         }
                     })
                     val tabs = db.tabDao().getAll()
-                    put("funds", buildJsonArray {
+                    put("tabs", buildJsonArray {
                         for (f in tabs) {
-                            val ledger = db.tabLedgerDao().getForTab(f.id)
                             add(buildJsonObject {
                                 put("id", f.id)
                                 put("name", f.name)
                                 put("archived", f.archived)
                                 put("createdAt", f.createdAt)
-                                put("ledger", buildJsonArray {
-                                    ledger.forEach { l ->
-                                        add(buildJsonObject {
-                                            put("entryType", l.entryType)
-                                            put("amountPaise", l.amountPaise)
-                                            put("balanceAfterPaise", l.balanceAfterPaise)
-                                            put("note", l.note.orEmpty())
-                                            put("createdAt", l.createdAt)
-                                        })
-                                    }
-                                })
+                            })
+                        }
+                    })
+                    put("funds", buildJsonArray {
+                        for (f in tabs) {
+                            add(buildJsonObject {
+                                put("id", f.id)
+                                put("name", f.name)
+                                put("archived", f.archived)
+                                put("createdAt", f.createdAt)
+                                put("ledger", buildJsonArray {})
                             })
                         }
                     })
@@ -157,6 +155,7 @@ class BackupRepository @Inject constructor(
                                 put("recordedAt", t.recordedAt)
                                 put("counterparty", t.counterparty.orEmpty())
                                 put("categoryId", t.categoryId ?: -1L)
+                                put("tabId", t.tabId ?: -1L)
                                 put("fundId", t.tabId ?: -1L)
                                 put("accountId", t.accountId ?: -1L)
                                 put("source", t.source)
@@ -347,8 +346,7 @@ class BackupRepository @Inject constructor(
                     runBlocking {
                         db.openHelper.writableDatabase.execSQL("DELETE FROM transactions")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM categories")
-                        db.openHelper.writableDatabase.execSQL("DELETE FROM funds")
-                        db.openHelper.writableDatabase.execSQL("DELETE FROM fund_ledger")
+                        db.openHelper.writableDatabase.execSQL("DELETE FROM tabs")
                         db.openHelper.writableDatabase.execSQL("DELETE FROM accounts")
 
                         // 5. Import Categories
@@ -394,10 +392,11 @@ class BackupRepository @Inject constructor(
                         val validAccountIds = db.accountDao().getAll().map { it.id }.toSet()
                         val cashAccountId = db.accountDao().getByName("Cash")?.id
 
-                        // 6. Import Funds & Ledger
-                        jsonObj["funds"]?.jsonArray?.forEach { item ->
+                        // 6. Import Tabs (funds)
+                        val tabsArray = jsonObj["tabs"]?.jsonArray ?: jsonObj["funds"]?.jsonArray
+                        tabsArray?.forEach { item ->
                             val obj = item.jsonObject
-                            val tabId = db.tabDao().upsert(
+                            db.tabDao().upsert(
                                 TabEntity(
                                     id = obj["id"]?.jsonPrimitive?.long ?: 0L,
                                     name = obj["name"]?.jsonPrimitive?.content.orEmpty(),
@@ -406,27 +405,13 @@ class BackupRepository @Inject constructor(
                                         ?: System.currentTimeMillis(),
                                 )
                             )
-                            obj["ledger"]?.jsonArray?.forEach { led ->
-                                val lObj = led.jsonObject
-                                db.tabLedgerDao().insert(
-                                    TabLedgerEntity(
-                                        tabId = tabId,
-                                        entryType = lObj["entryType"]?.jsonPrimitive?.content ?: "ADJUSTMENT",
-                                        amountPaise = lObj["amountPaise"]?.jsonPrimitive?.long ?: 0L,
-                                        balanceAfterPaise = lObj["balanceAfterPaise"]?.jsonPrimitive?.long ?: 0L,
-                                        note = lObj["note"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
-                                        createdAt = lObj["createdAt"]?.jsonPrimitive?.long
-                                            ?: System.currentTimeMillis(),
-                                    )
-                                )
-                            }
                         }
 
                         // 7. Import Transactions
                         jsonObj["transactions"]?.jsonArray?.forEach { item ->
                             val obj = item.jsonObject
                             val catId = obj["categoryId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
-                            val fId = obj["fundId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
+                            val fId = (obj["tabId"]?.jsonPrimitive?.long ?: obj["fundId"]?.jsonPrimitive?.long)?.takeIf { it != -1L }
                             val rawAccId = obj["accountId"]?.jsonPrimitive?.long?.takeIf { it != -1L }
                             val isCash = obj["isCash"]?.jsonPrimitive?.boolean ?: false
                             // Drop orphan ids (e.g. pre-v2 backups whose account rows were re-seeded).
@@ -491,8 +476,6 @@ class BackupRepository @Inject constructor(
                         }
                     }
                 }
-                // Rebuild ledgers so open-tab signs match derived balances after import.
-                transactionRepository.repairAllTabLedgers()
                 // Align prefs bank list with restored active accounts (and ensure Cash exists).
                 val activeBanks = db.accountDao().getAll()
                     .filter { !it.archived && !it.name.equals("Cash", true) }
@@ -572,7 +555,6 @@ class BackupRepository @Inject constructor(
             }
         }
 
-        transactionRepository.repairAllTabLedgers()
         val activeBanks = db.accountDao().getAll()
             .filter { !it.archived && !it.name.equals("Cash", true) }
             .sortedBy { it.sortOrder }

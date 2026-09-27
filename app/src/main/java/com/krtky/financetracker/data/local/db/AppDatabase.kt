@@ -11,7 +11,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class,
         TabEntity::class,
         TransactionEntity::class,
-        TabLedgerEntity::class,
         LocationSampleEntity::class,
         PendingClassificationEntity::class,
         SyncOutboxEntity::class,
@@ -19,8 +18,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    // v1 is unsupported (no 1→2). Open path is 2→12; schema JSON from v10.
-    version = 12,
+    // v1 is unsupported (no 1→2). Open path is 2→13; schema JSON from v10.
+    version = 13,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,7 +27,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun tabDao(): TabDao
     abstract fun transactionDao(): TransactionDao
-    abstract fun tabLedgerDao(): TabLedgerDao
     abstract fun locationSampleDao(): LocationSampleDao
     abstract fun pendingClassificationDao(): PendingClassificationDao
     abstract fun syncOutboxDao(): SyncOutboxDao
@@ -636,6 +634,111 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE `funds`")
                 db.execSQL("ALTER TABLE `funds_new` RENAME TO `funds`")
+            }
+        }
+
+        /**
+         * DB v13:
+         * - Rename table `funds` -> `tabs`
+         * - Drop `fund_ledger`
+         * - Rebuild `transactions` table renaming column `fundId` -> `tabId` and recreating indexes
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Create 'tabs' table and copy from 'funds'
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `tabs` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `archived` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "INSERT INTO `tabs` (id, name, archived, createdAt) " +
+                        "SELECT id, name, archived, createdAt FROM `funds`",
+                )
+                db.execSQL("DROP TABLE `funds`")
+
+                // 2. Drop the redundant fund_ledger table
+                db.execSQL("DROP TABLE IF EXISTS `fund_ledger`")
+
+                // 3. Rebuild transactions table to rename fundId -> tabId cleanly
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `transactions_new` (
+                        `id` TEXT PRIMARY KEY NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `amountPaise` INTEGER NOT NULL,
+                        `currency` TEXT NOT NULL,
+                        `occurredAt` INTEGER NOT NULL,
+                        `recordedAt` INTEGER NOT NULL,
+                        `counterparty` TEXT,
+                        `categoryId` INTEGER,
+                        `tabId` INTEGER,
+                        `accountId` INTEGER,
+                        `source` TEXT NOT NULL,
+                        `note` TEXT,
+                        `isCash` INTEGER NOT NULL,
+                        `classificationStatus` TEXT NOT NULL,
+                        `isSkipped` INTEGER NOT NULL,
+                        `kind` TEXT NOT NULL,
+                        `transferGroupId` TEXT,
+                        `rawDescription` TEXT,
+                        `classificationNotifiedAt` INTEGER,
+                        `latitude` REAL,
+                        `longitude` REAL,
+                        `placeName` TEXT,
+                        `locationAccuracy` REAL,
+                        `locationMatchedAt` INTEGER,
+                        `smsMessageId` TEXT,
+                        `externalRefId` TEXT,
+                        `contentHash` TEXT,
+                        `sheetsSynced` INTEGER NOT NULL,
+                        `deletedAt` INTEGER,
+                        `updatedAt` INTEGER NOT NULL,
+                        `version` INTEGER NOT NULL,
+                        `receiptUri` TEXT,
+                        `splitGroupId` TEXT
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `transactions_new` (
+                        id, type, amountPaise, currency, occurredAt, recordedAt, counterparty,
+                        categoryId, tabId, accountId, source, note, isCash, classificationStatus,
+                        isSkipped, kind, transferGroupId, rawDescription, classificationNotifiedAt,
+                        latitude, longitude, placeName, locationAccuracy, locationMatchedAt,
+                        smsMessageId, externalRefId, contentHash, sheetsSynced, deletedAt,
+                        updatedAt, version, receiptUri, splitGroupId
+                    )
+                    SELECT
+                        id, type, amountPaise, currency, occurredAt, recordedAt, counterparty,
+                        categoryId, fundId, accountId, source, note, isCash, classificationStatus,
+                        isSkipped, kind, transferGroupId, rawDescription, classificationNotifiedAt,
+                        latitude, longitude, placeName, locationAccuracy, locationMatchedAt,
+                        smsMessageId, externalRefId, contentHash, sheetsSynced, deletedAt,
+                        updatedAt, version, receiptUri, splitGroupId
+                    FROM `transactions`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `transactions`")
+                db.execSQL("ALTER TABLE `transactions_new` RENAME TO `transactions`")
+
+                // 4. Re-create indexes
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_smsMessageId` ON `transactions` (`smsMessageId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_contentHash` ON `transactions` (`contentHash`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_externalRefId` ON `transactions` (`externalRefId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_occurredAt` ON `transactions` (`occurredAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_categoryId` ON `transactions` (`categoryId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_tabId` ON `transactions` (`tabId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_accountId` ON `transactions` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_transferGroupId` ON `transactions` (`transferGroupId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_splitGroupId` ON `transactions` (`splitGroupId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_transactions_deletedAt` ON `transactions` (`deletedAt`)")
             }
         }
 

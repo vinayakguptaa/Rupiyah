@@ -63,22 +63,22 @@ interface AccountDao {
 
 @Dao
 interface TabDao {
-    @Query("SELECT * FROM funds WHERE archived = 0 ORDER BY name")
+    @Query("SELECT * FROM tabs WHERE archived = 0 ORDER BY name")
     fun observeActive(): Flow<List<TabEntity>>
 
-    @Query("SELECT * FROM funds WHERE archived = 1 ORDER BY name")
+    @Query("SELECT * FROM tabs WHERE archived = 1 ORDER BY name")
     fun observeArchived(): Flow<List<TabEntity>>
 
-    @Query("SELECT * FROM funds ORDER BY name")
+    @Query("SELECT * FROM tabs ORDER BY name")
     suspend fun getAll(): List<TabEntity>
 
-    @Query("SELECT * FROM funds WHERE id = :id")
+    @Query("SELECT * FROM tabs WHERE id = :id")
     suspend fun getById(id: Long): TabEntity?
 
-    @Query("SELECT * FROM funds WHERE id = :id")
+    @Query("SELECT * FROM tabs WHERE id = :id")
     fun observeById(id: Long): Flow<TabEntity?>
 
-    @Query("SELECT * FROM funds WHERE name = :name LIMIT 1")
+    @Query("SELECT * FROM tabs WHERE name = :name LIMIT 1")
     suspend fun getByName(name: String): TabEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -128,9 +128,12 @@ interface TransactionDao {
           AND (:query = '' OR counterparty LIKE '%' || :query || '%' OR note LIKE '%' || :query || '%' OR rawDescription LIKE '%' || :query || '%')
           AND (:type IS NULL OR type = :type)
           AND (:categoryId IS NULL OR categoryId = :categoryId)
-          AND (:tabId IS NULL OR fundId = :tabId)
+          AND (:tabId IS NULL OR tabId = :tabId)
           AND (:tabId IS NOT NULL OR COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER')
-          AND (:accountId IS NULL OR accountId = :accountId)
+          AND (
+            (:unassignedOnly = 0 AND (:accountId IS NULL OR accountId = :accountId)) OR
+            (:unassignedOnly = 1 AND accountId IS NULL AND isCash = 0 AND COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER')
+          )
           AND occurredAt >= :fromTs AND occurredAt <= :toTs
         ORDER BY occurredAt DESC, recordedAt DESC, id DESC
         """
@@ -143,6 +146,7 @@ interface TransactionDao {
         fromTs: Long,
         toTs: Long,
         accountId: Long?,
+        unassignedOnly: Boolean = false,
     ): Flow<List<TransactionEntity>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -222,14 +226,81 @@ interface TransactionDao {
 
     @Query(
         """
-        SELECT fundId AS id, COUNT(*) AS useCount
+        SELECT tabId AS id, COUNT(*) AS useCount
         FROM transactions
-        WHERE deletedAt IS NULL AND fundId IS NOT NULL
-        GROUP BY fundId
+        WHERE deletedAt IS NULL AND tabId IS NOT NULL
+        GROUP BY tabId
         ORDER BY useCount DESC
         """
     )
     fun observeTabUsage(): Flow<List<UsageCountRow>>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM transactions
+        WHERE deletedAt IS NULL
+          AND categoryId IS NULL
+          AND isSkipped = 0
+          AND classificationStatus != 'SKIPPED'
+          AND classificationStatus != 'CLASSIFIED'
+          AND (kind IS NULL OR (kind != 'SELF_TRANSFER' AND kind != 'TAB_TRANSFER'))
+        """
+    )
+    fun observePendingClassificationCount(): Flow<Int>
+
+    @Query(
+        """
+        SELECT id FROM transactions
+        WHERE deletedAt IS NULL
+          AND categoryId IS NULL
+          AND isSkipped = 0
+          AND classificationStatus != 'SKIPPED'
+          AND classificationStatus != 'CLASSIFIED'
+          AND (kind IS NULL OR (kind != 'SELF_TRANSFER' AND kind != 'TAB_TRANSFER'))
+        ORDER BY occurredAt ASC
+        LIMIT 1
+        """
+    )
+    fun observeFirstPendingClassificationId(): Flow<String?>
+
+    @Query(
+        """
+        SELECT accountId, 
+               SUM(CASE WHEN type = 'CREDIT' THEN amountPaise ELSE -amountPaise END) AS netPaise,
+               COUNT(*) AS txnCount
+        FROM transactions
+        WHERE deletedAt IS NULL AND (kind IS NULL OR kind != 'TAB_TRANSFER')
+        GROUP BY accountId
+        """
+    )
+    fun observeAccountNets(): Flow<List<AccountNetDto>>
+
+    @Query(
+        """
+        SELECT tabId,
+               COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN amountPaise ELSE 0 END), 0) AS debitsPaise,
+               COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amountPaise ELSE 0 END), 0) AS creditsPaise
+        FROM transactions
+        WHERE deletedAt IS NULL
+          AND tabId IS NOT NULL
+          AND (kind IS NULL OR kind != 'SELF_TRANSFER')
+        GROUP BY tabId
+        """
+    )
+    fun observeTabAggregates(): Flow<List<TabAggregateDto>>
+
+    @Query(
+        """
+        SELECT COUNT(*) AS count,
+               COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amountPaise ELSE -amountPaise END), 0) AS netPaise
+        FROM transactions
+        WHERE deletedAt IS NULL
+          AND accountId IS NULL
+          AND isCash = 0
+          AND (kind IS NULL OR kind != 'TAB_TRANSFER')
+        """
+    )
+    fun observeUnassignedDigital(): Flow<UnassignedDigitalDto>
 
     @Query(
         """
@@ -269,15 +340,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE sheetsSynced = 0 AND COALESCE(kind, 'NORMAL') != 'TAB_TRANSFER'")
     suspend fun getDirtyIncludingDeleted(): List<TransactionEntity>
 
-    @Query("UPDATE transactions SET classificationStatus = 'CLASSIFIED', sheetsSynced = 1 WHERE kind = 'TAB_TRANSFER' AND (classificationStatus != 'CLASSIFIED' OR sheetsSynced = 0)")
-    suspend fun cleanupLegacyTabTransfers()
-
     @Query("UPDATE transactions SET sheetsSynced = 1 WHERE id = :id")
     suspend fun markSynced(id: String)
 
     @Query("""
         SELECT * FROM transactions 
-        WHERE fundId = :tabId 
+        WHERE tabId = :tabId 
           AND deletedAt IS NULL 
         ORDER BY occurredAt ASC
     """)
@@ -291,6 +359,23 @@ interface TransactionDao {
     """)
     suspend fun getAllForCategory(categoryId: Long): List<TransactionEntity>
 }
+
+data class AccountNetDto(
+    val accountId: Long?,
+    val netPaise: Long,
+    val txnCount: Long = 0L,
+)
+
+data class TabAggregateDto(
+    val tabId: Long,
+    val debitsPaise: Long,
+    val creditsPaise: Long,
+)
+
+data class UnassignedDigitalDto(
+    val count: Int,
+    val netPaise: Long,
+)
 
 data class CategorySpendRow(
     val categoryId: Long?,
@@ -308,58 +393,6 @@ data class UsageCountRow(
     val id: Long,
     val useCount: Long,
 )
-
-@Dao
-interface TabLedgerDao {
-    @Insert
-    suspend fun insert(entity: TabLedgerEntity): Long
-
-    @Query("SELECT * FROM fund_ledger WHERE fundId = :tabId ORDER BY createdAt DESC")
-    fun observeForTab(tabId: Long): Flow<List<TabLedgerEntity>>
-
-    @Query("SELECT * FROM fund_ledger WHERE fundId = :tabId ORDER BY createdAt DESC")
-    suspend fun getForTab(tabId: Long): List<TabLedgerEntity>
-
-    @Query("SELECT balanceAfterPaise FROM fund_ledger WHERE fundId = :tabId ORDER BY id DESC LIMIT 1")
-    suspend fun latestBalance(tabId: Long): Long?
-
-    @Query("SELECT * FROM fund_ledger ORDER BY id DESC")
-    fun observeAll(): Flow<List<TabLedgerEntity>>
-
-    @Query(
-        """
-        SELECT COALESCE(SUM(
-            CASE
-                WHEN entryType = 'CREDIT' THEN amountPaise
-                WHEN entryType = 'ADJUSTMENT' AND amountPaise > 0 THEN amountPaise
-                ELSE 0
-            END
-        ), 0)
-        FROM fund_ledger WHERE fundId = :tabId
-        """
-    )
-    suspend fun totalCredits(tabId: Long): Long
-
-    @Query(
-        """
-        SELECT COALESCE(ABS(SUM(
-            CASE
-                WHEN entryType = 'DEBIT' THEN amountPaise
-                WHEN entryType = 'ADJUSTMENT' AND amountPaise < 0 THEN amountPaise
-                ELSE 0
-            END
-        )), 0)
-        FROM fund_ledger WHERE fundId = :tabId
-        """
-    )
-    suspend fun totalDebits(tabId: Long): Long
-
-    @Query("DELETE FROM fund_ledger WHERE transactionId = :transactionId")
-    suspend fun deleteForTransaction(transactionId: String)
-
-    @Query("DELETE FROM fund_ledger WHERE fundId = :tabId")
-    suspend fun deleteAllForTab(tabId: Long)
-}
 
 @Dao
 interface LocationSampleDao {

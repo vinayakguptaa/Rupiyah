@@ -45,43 +45,39 @@ class AccountRepository @Inject constructor(
 
     /** Digital rows with no owning account (display-only bucket). Tab-only rows excluded. */
     fun observeUnassignedDigital(): Flow<UnassignedDigital> =
-        txnDao.observeAll().map { txns ->
-            val mine = txns.filter {
-                it.deletedAt == null &&
-                    it.accountId == null &&
-                    !it.isCash &&
-                    !isTabOnlyBookkeeping(it.kind)
-            }
-            val net = mine.sumOf { t ->
-                if (t.type.equals("CREDIT", true)) t.amountPaise else -t.amountPaise
-            }
-            UnassignedDigital(count = mine.size, netPaise = net)
+        txnDao.observeUnassignedDigital().map {
+            UnassignedDigital(count = it.count, netPaise = it.netPaise)
         }
 
     private fun balancesFlow(activeOnly: Boolean): Flow<List<AccountBalance>> {
         val accountsFlow = if (activeOnly) accountDao.observeActive() else accountDao.observeAll()
-        return combine(accountsFlow, txnDao.observeAll()) { accounts, txns ->
+        return combine(accountsFlow, txnDao.observeAccountNets()) { accounts, nets ->
+            val netMap = nets.associateBy { it.accountId }
             accounts.map { entity ->
                 val account = entity.toDomain()
-                val mine = txns.filter {
-                    it.deletedAt == null &&
-                        it.accountId == account.id &&
-                        !isTabOnlyBookkeeping(it.kind)
-                }
-                val net = mine.sumOf { t ->
-                    val type = t.type.uppercase()
-                    val signed = when {
-                        type == "CREDIT" -> t.amountPaise
-                        else -> -t.amountPaise
-                    }
-                    signed
-                }
+                val netDto = netMap[account.id]
+                val net = netDto?.netPaise ?: 0L
+                val count = netDto?.txnCount ?: 0L
                 AccountBalance(
                     account = account,
                     balancePaise = account.openingBalancePaise + net,
-                    txnCount = mine.size.toLong(),
+                    txnCount = count,
                 )
             }
+        }
+    }
+
+    suspend fun ensureCashAccount(): Long {
+        val cash = accountDao.getByName("Cash")
+        return if (cash == null) {
+            accountDao.upsert(
+                AccountEntity(name = "Cash", kind = AccountKind.CASH.name, sortOrder = 0),
+            )
+        } else {
+            if (cash.archived) {
+                accountDao.update(cash.copy(archived = false, sortOrder = 0))
+            }
+            cash.id
         }
     }
 

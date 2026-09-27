@@ -17,13 +17,6 @@ class TabsViewModel @Inject constructor(
     val archivedTabs = transactionRepository.observeArchivedTabs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    init {
-        // One-shot ledger rebuild: align fund_ledger with current transactions
-        viewModelScope.launch {
-            runCatching { transactionRepository.repairAllTabLedgers() }
-        }
-    }
-
     suspend fun create(name: String) {
         if (name.isBlank()) return
         transactionRepository.addTab(name.trim())

@@ -36,17 +36,7 @@ class FinanceApp : Application(), Configuration.Provider {
         WorkScheduler.scheduleAll(this)
         CoroutineScope(Dispatchers.IO).launch {
             categoryRepository.ensureDefaults()
-            val banks = userPreferences.parseBankList(userPreferences.bankAccounts.first())
-            // Cash + Settings bank list. Empty prefs do not archive migration-seeded accounts.
-            accountRepository.syncFromBankList(banks)
-            // Mirror active names into prefs (e.g. after Room migration seeded from paymentMethod).
-            val active = accountRepository.activeBankNames()
-            if (active.joinToString(",") != banks.joinToString(",")) {
-                userPreferences.setBankAccounts(active.joinToString(","))
-            }
-            // Rebuild tab ledgers after a migration (split parents are now child rows).
-            runCatching { transactionRepository.repairAllTabLedgers() }
-            // Email ingest removed from product path — SMS + CSV + manual only.
+            accountRepository.ensureCashAccount()
             // Prime widgets on cold start so they are not stuck on empty chrome.
             runCatching {
                 com.krtky.financetracker.widget.WidgetUpdater.refreshAll(this@FinanceApp)

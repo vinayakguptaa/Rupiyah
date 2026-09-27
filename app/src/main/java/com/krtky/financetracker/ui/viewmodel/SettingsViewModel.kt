@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,7 +85,9 @@ class SettingsViewModel @Inject constructor(
                     userPreferences.smsKeywords,
                 ) { sms, senders, keywords -> Triple(sms, senders, keywords) },
                 combine(
-                    userPreferences.bankAccounts,
+                    accountRepository.observeActive().map { list ->
+                        list.filter { !it.name.equals("Cash", true) }.joinToString(",") { it.name }
+                    },
                     userPreferences.defaultPaymentMethod,
                     userPreferences.defaultDigitalAccount,
                     userPreferences.devUnlocked,
@@ -398,16 +401,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveBankAccounts(raw: String) = viewModelScope.launch {
-        userPreferences.setBankAccounts(raw)
         accountRepository.syncFromBankList(userPreferences.parseBankList(raw))
         notifySaved("Accounts saved")
     }
 
-    /** Add bank/UPI name (or restore if archived). Prefs stay mirrored for backup/SMS. */
+    /** Add bank/UPI name (or restore if archived). */
     fun addBankAccount(name: String) = viewModelScope.launch {
         val id = accountRepository.addOrRestore(name) ?: return@launch
-        syncBankPrefsFromAccounts()
-        // Clear defaults that pointed at nothing
         notifySaved("“${accountRepository.getById(id)?.name ?: name.trim()}” added")
     }
 
@@ -416,7 +416,6 @@ class SettingsViewModel @Inject constructor(
         val acc = accountRepository.getById(id) ?: return@launch
         if (acc.name.equals("Cash", true)) return@launch
         accountRepository.archive(id)
-        syncBankPrefsFromAccounts()
         val defDigital = userPreferences.defaultDigitalAccount.first()
         if (defDigital.equals(acc.name, true)) {
             userPreferences.setDefaultDigitalAccount("")
@@ -433,15 +432,7 @@ class SettingsViewModel @Inject constructor(
     fun restoreBankAccount(id: Long) = viewModelScope.launch {
         val acc = accountRepository.getById(id) ?: return@launch
         accountRepository.unarchive(id)
-        syncBankPrefsFromAccounts()
         notifySaved("“${acc.name}” restored")
-    }
-
-    private suspend fun syncBankPrefsFromAccounts() {
-        val names = accountRepository.activeBankNames()
-        val joined = names.joinToString(",")
-        userPreferences.setBankAccounts(joined)
-        _state.value = _state.value.copy(bankAccounts = joined)
     }
 
     fun saveDefaultPaymentMethod(method: String) = viewModelScope.launch {
