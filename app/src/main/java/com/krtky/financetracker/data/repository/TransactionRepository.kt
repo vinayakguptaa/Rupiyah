@@ -518,6 +518,9 @@ class TransactionRepository @Inject constructor(
         if (duplicate != null) {
             // A new SMS parse can be richer than an earlier one — refresh in place.
             if (duplicate.source == TransactionSource.SMS.name) {
+                // Never overwrite a category the user (or an earlier parse) already chose.
+                val fillCategory = duplicate.categoryId == null && txn.categoryId != null &&
+                    duplicate.classificationStatus != ClassificationStatus.SKIPPED.name
                 txnDao.update(
                     duplicate.copy(
                         source = TransactionSource.SMS.name,
@@ -525,10 +528,15 @@ class TransactionRepository @Inject constructor(
                         externalRefId = txn.externalRefId ?: duplicate.externalRefId,
                         counterparty = txn.counterparty ?: duplicate.counterparty,
                         rawDescription = txn.rawDescription ?: duplicate.rawDescription,
+                        categoryId = if (fillCategory) txn.categoryId else duplicate.categoryId,
+                        classificationStatus = if (fillCategory) {
+                            ClassificationStatus.CLASSIFIED.name
+                        } else duplicate.classificationStatus,
                         updatedAt = System.currentTimeMillis(),
                         sheetsSynced = false,
                     )
                 )
+                if (fillCategory) pendingDao.delete(duplicate.id)
             }
             return null
         }
@@ -537,7 +545,10 @@ class TransactionRepository @Inject constructor(
         val entity = txn.copy(id = id, contentHash = hash, sheetsSynced = false).toEntity()
         val rowId = txnDao.insert(entity)
         if (rowId == -1L) return null
-        scheduleClassification(id)
+        // Only nag "tap to classify" when the parse didn't already pick a category.
+        if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
+            scheduleClassification(id)
+        }
         enqueueSync(id)
         return id
     }
