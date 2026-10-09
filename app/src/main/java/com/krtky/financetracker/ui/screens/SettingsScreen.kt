@@ -247,7 +247,7 @@ fun SettingsScreen(
                         subtitle = when {
                             state.llmReady -> "Ready · used for SMS and messy text"
                             state.llmEnabled -> "Almost ready · add an API key"
-                            else -> "Needed to turn on SMS import"
+                            else -> "Off · better SMS, paste and auto-classify"
                         },
                         icon = Icons.Default.Psychology,
                         onClick = { onOpenSection(SettingsSection.LLM) },
@@ -260,7 +260,6 @@ fun SettingsScreen(
                     SettingsGroupRow(
                         title = "Bank text messages (SMS)",
                         subtitle = when {
-                            !state.llmReady -> "Set up AI helper first"
                             state.smsEnabled -> "On · reading bank SMS on this phone"
                             else -> "Turn on to read bank SMS"
                         },

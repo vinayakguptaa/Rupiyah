@@ -10,7 +10,7 @@ import com.krtky.financetracker.ui.theme.TypographyMode
 
 data class SettingsUiState(
     val llmApiKeySet: Boolean = false,
-    /** Master switch. SMS auto-import also needs [llmApiKeySet]. */
+    /** Master switch. AI features also need [llmApiKeySet]. */
     val llmEnabled: Boolean = false,
     val llmBaseUrl: String = SecureStore.DEFAULT_LLM_BASE,
     val llmModel: String = SecureStore.DEFAULT_LLM_MODEL,
@@ -42,6 +42,6 @@ data class SettingsUiState(
     val typographyMode: TypographyMode = TypographyMode.EXPRESSIVE,
     val oledMode: Boolean = false,
 ) {
-    /** AI on + key saved — required to turn on SMS import. */
+    /** AI on + key saved. SMS import works without it (regex only). */
     val llmReady: Boolean get() = llmEnabled && llmApiKeySet
 }

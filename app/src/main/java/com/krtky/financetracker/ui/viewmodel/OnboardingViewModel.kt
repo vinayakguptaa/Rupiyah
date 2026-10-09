@@ -54,29 +54,11 @@ class OnboardingViewModel @Inject constructor(
 
     fun saveSmsRules(senders: String, keywords: String) = viewModelScope.launch {
         userPreferences.setSmsRules(senders, keywords)
-        // SMS import requires a ready AI helper (set up on the next page if needed).
-        if (secureStore.isLlmReady()) {
-            userPreferences.setSmsEnabled(true)
-            _state.value = _state.value.copy(smsEnabled = true)
-        } else {
-            userPreferences.setSmsEnabled(false)
-            _state.value = _state.value.copy(
-                smsEnabled = false,
-                status = "SMS rules saved — turn on SMS after you set up AI helper",
-            )
-        }
     }
 
     fun setLocationGranted(granted: Boolean) { _state.value = _state.value.copy(locationGranted = granted) }
     fun setNotificationGranted(granted: Boolean) { _state.value = _state.value.copy(notificationGranted = granted) }
     fun setSmsEnabled(enabled: Boolean) {
-        if (enabled && !secureStore.isLlmReady()) {
-            _state.value = _state.value.copy(
-                smsEnabled = false,
-                status = "Set up AI helper first — required for bank SMS",
-            )
-            return
-        }
         viewModelScope.launch {
             userPreferences.setSmsEnabled(enabled)
             _state.value = _state.value.copy(smsEnabled = enabled, status = null)

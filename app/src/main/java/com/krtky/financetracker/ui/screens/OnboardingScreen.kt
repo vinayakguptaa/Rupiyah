@@ -602,7 +602,7 @@ private fun SmsPage(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "Reads bank SMS on this phone. Needs the AI helper (previous step) before monitoring can turn on.",
+            "Reads bank SMS on this phone. With the AI helper (previous step) merchants and categories are read too.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = scheme.onSurfaceVariant,

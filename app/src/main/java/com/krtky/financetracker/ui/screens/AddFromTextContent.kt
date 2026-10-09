@@ -88,7 +88,7 @@ fun AddFromTextContent(
                     "A debit/credit opens the review form; a move between your own accounts opens Transfer. " +
                     "If the paste has several payments, only the clearest one is used."
             } else {
-                "Turn on AI helper in Settings first. Without a key, only very clear bank-style text (amount + debited/credited) can be read."
+                "Without the AI helper only clear bank-style text (amount + debited/credited) can be read. Set it up in Settings for anything messier."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,

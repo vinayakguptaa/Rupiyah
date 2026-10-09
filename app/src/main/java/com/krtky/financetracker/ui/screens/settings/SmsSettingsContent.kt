@@ -33,11 +33,11 @@ fun SmsSettingsContent(vm: SettingsViewModel) {
     SettingsBlock(
         title = "Read bank SMS",
         helpTitle = "Bank text messages",
-        helpMessage = "Needs AI helper first. When on, bank SMS on this phone can become draft spends. Only messages from the senders and keywords you list below are used.",
+        helpMessage = "When on, bank SMS on this phone become spends. Only messages from the senders and keywords you list below are used. With the AI helper set up, merchants and categories are read more accurately.",
     ) {
         if (!state.llmReady) {
             Text(
-                "Set up AI helper first (Settings → Smarter reading → AI helper). Bank SMS cannot be read without it.",
+                "Without the AI helper, only amount, debit/credit and reference are read. Set it up in AI helper for merchants and categories.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = scheme.onSurfaceVariant,
             )
@@ -45,18 +45,14 @@ fun SmsSettingsContent(vm: SettingsViewModel) {
         SettingsToggleRow(
             title = "Read bank text messages",
             subtitle = when {
-                !state.llmReady -> "Needs AI helper first"
-                state.smsEnabled -> "On"
+                state.smsEnabled && state.llmReady -> "On · AI reading"
+                state.smsEnabled -> "On · basic reading"
                 else -> "Off"
             },
-            checked = state.smsEnabled && state.llmReady,
+            checked = state.smsEnabled,
             onCheckedChange = { enabled ->
                 if (enabled) {
-                    if (!state.llmReady) {
-                        vm.setSmsEnabled(true)
-                    } else {
-                        smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                    }
+                    smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                 } else {
                     vm.setSmsEnabled(false)
                 }

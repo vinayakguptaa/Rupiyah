@@ -11,6 +11,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
+import com.krtky.financetracker.data.llm.LlmClient
+import com.krtky.financetracker.data.llm.LlmResult
 import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
@@ -53,9 +55,15 @@ class SettingsViewModel @Inject constructor(
     private val sheetsSyncService: SheetsSyncService,
     private val backupRepository: BackupRepository,
     private val uiMessenger: UiMessenger,
+    private val llmClient: LlmClient,
 ) : ViewModel() {
     private val _state = MutableStateFlow(secureSnapshot())
     val state: StateFlow<SettingsUiState> = _state
+
+    /** Result of the last "Test connection" run; null until one has run. */
+    data class LlmTestState(val running: Boolean = false, val ok: Boolean = false, val message: String? = null)
+    private val _llmTest = MutableStateFlow(LlmTestState())
+    val llmTest: StateFlow<LlmTestState> = _llmTest
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status
 
@@ -207,10 +215,6 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setSmsEnabled(enabled: Boolean) = viewModelScope.launch {
-        if (enabled && !secureStore.isLlmReady()) {
-            notifySaved("Set up AI helper first — required to read bank SMS")
-            return@launch
-        }
         userPreferences.setSmsEnabled(enabled)
         if (enabled) notifySaved("Bank SMS reading on")
         else notifySaved("Bank SMS reading off")
@@ -255,19 +259,13 @@ class SettingsViewModel @Inject constructor(
 
     fun setLlmEnabled(enabled: Boolean) {
         secureStore.llmEnabled = enabled
-        if (!enabled || secureStore.llmApiKey.isNullOrBlank()) {
-            // Auto-import cannot run without a ready AI helper.
-            viewModelScope.launch { disableAutoImportForMissingAi() }
-        }
+        _llmTest.value = LlmTestState()
         refreshSecureFields()
         notifySaved(
             when {
-                enabled && !secureStore.llmApiKey.isNullOrBlank() ->
-                    "AI helper on — you can use SMS import"
-                enabled ->
-                    "AI helper on — paste your API key to finish"
-                else ->
-                    "AI helper off — SMS auto-import turned off"
+                enabled && !secureStore.llmApiKey.isNullOrBlank() -> "AI helper on"
+                enabled -> "AI helper on — paste your API key to finish"
+                else -> "AI helper off — SMS still imported with basic reading"
             },
         )
     }
@@ -280,31 +278,33 @@ class SettingsViewModel @Inject constructor(
             // Saving a key implies the user wants AI on.
             if (key.isNotBlank()) secureStore.llmEnabled = true
         }
-        if (!secureStore.isLlmReady()) {
-            viewModelScope.launch { disableAutoImportForMissingAi() }
-        }
         refreshSecureFields()
-        notifySaved(
-            if (secureStore.isLlmReady()) {
-                "AI helper ready — SMS import unlocked"
-            } else {
-                "AI helper saved — add a key to unlock SMS import"
-            },
-        )
+        if (secureStore.isLlmReady()) {
+            // Verify right away so a bad key / model shows up here, not as "nothing found" later.
+            testLlmConnection()
+        } else {
+            _llmTest.value = LlmTestState()
+            notifySaved("AI helper saved — add a key to finish")
+        }
+    }
+
+    fun testLlmConnection() {
+        if (_llmTest.value.running) return
+        _llmTest.value = LlmTestState(running = true)
+        viewModelScope.launch {
+            _llmTest.value = when (val r = llmClient.testConnection()) {
+                is LlmResult.Ok -> LlmTestState(ok = true, message = "Connected · ${secureStore.llmModel} replied")
+                is LlmResult.Failed -> LlmTestState(ok = false, message = r.error.describe())
+            }
+        }
     }
 
     fun clearLlmKey() {
         secureStore.llmApiKey = null
         secureStore.llmEnabled = false
-        viewModelScope.launch { disableAutoImportForMissingAi() }
+        _llmTest.value = LlmTestState()
         refreshSecureFields()
-        notifySaved("AI key removed — SMS auto-import turned off")
-    }
-
-    /** Stops SMS import when AI is no longer ready. */
-    private suspend fun disableAutoImportForMissingAi() {
-        userPreferences.setSmsEnabled(false)
-        _state.value = _state.value.copy(smsEnabled = false)
+        notifySaved("AI key removed — SMS still imported with basic reading")
     }
 
     fun saveSheets(id: String, token: String?) {
