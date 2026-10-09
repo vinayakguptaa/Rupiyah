@@ -17,6 +17,8 @@ inline fun <T, R> LlmResult<T>.map(f: (T) -> R): LlmResult<R> = when (this) {
 sealed interface LlmError {
     /** AI is off or no API key saved. */
     data object NotConfigured : LlmError
+    /** The transaction has no text (SMS, narration, note or name) for the AI to read. */
+    data object NoInput : LlmError
     /** Non-2xx from the provider. [body] is a short excerpt of the provider's error message. */
     data class Http(val code: Int, val body: String) : LlmError
     data object Timeout : LlmError
@@ -35,6 +37,7 @@ sealed interface LlmError {
     /** Short, user-facing explanation. */
     fun describe(): String = when (this) {
         NotConfigured -> "AI helper is not set up (Settings → AI helper)"
+        NoInput -> "Nothing for AI to read on this transaction — pick a category by hand"
         is Http -> when (code) {
             401, 403 -> "AI provider rejected the API key ($code)"
             404 -> "AI endpoint or model not found (404) — check base URL and model name"

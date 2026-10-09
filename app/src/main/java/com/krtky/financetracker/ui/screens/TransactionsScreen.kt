@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -115,6 +116,7 @@ fun TransactionsScreen(
     val customTo by vm.customTo.collectAsStateWithLifecycle()
     val items by vm.transactions.collectAsStateWithLifecycle()
     val isAiClassifying by vm.isAiClassifying.collectAsStateWithLifecycle()
+    val aiSuggest by vm.aiSuggest.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(vm) {
         vm.aiMessages.collect { snackbarHostState.showSnackbar(it) }
@@ -567,6 +569,21 @@ fun TransactionsScreen(
                         Spacer(Modifier.width(4.dp))
                         Text("Category", color = scheme.primary, fontWeight = FontWeight.SemiBold)
                     }
+                    if (vm.isLlmConfigured()) {
+                        TextButton(
+                            onClick = {
+                                haptics.select()
+                                vm.autoClassifyWithAi(selectedIds)
+                                selectedIds = emptySet()
+                            },
+                            enabled = !isAiClassifying,
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ) {
+                            Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("AI", color = scheme.primary, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                     Spacer(Modifier.width(8.dp))
                     if (selectedIds.size >= 2) {
                         TextButton(
@@ -629,7 +646,10 @@ fun TransactionsScreen(
     if (quickClassifyTxn != null) {
         val t = quickClassifyTxn!!
         ModalBottomSheet(
-            onDismissRequest = { quickClassifyTxn = null },
+            onDismissRequest = {
+                vm.clearAiSuggestion()
+                quickClassifyTxn = null
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = scheme.surfaceContainerLow,
         ) {
@@ -691,6 +711,73 @@ fun TransactionsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = scheme.onSurface,
                             )
+                        }
+                    }
+                }
+
+                // Per-transaction AI: runs the full SMS parser on this row and suggests a category
+                if (vm.isLlmConfigured()) {
+                    val ai = aiSuggest?.takeIf { it.txnId == t.id }
+                    Surface(
+                        color = scheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Psychology,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = scheme.onSecondaryContainer,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            val suggestion = ai?.suggestion
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    when {
+                                        ai == null -> "Not sure? Let AI read it"
+                                        ai.loading -> "Reading…"
+                                        ai.error != null -> ai.error
+                                        suggestion?.categoryName != null -> "AI suggests ${suggestion.categoryName}"
+                                        else -> "AI couldn't pick a category"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = scheme.onSecondaryContainer,
+                                )
+                                val party = suggestion?.counterparty
+                                if (party != null && t.counterparty.isNullOrBlank()) {
+                                    Text(
+                                        "Paid to $party",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = scheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                    )
+                                }
+                            }
+                            when {
+                                ai?.loading == true -> CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = scheme.onSecondaryContainer,
+                                )
+                                suggestion?.categoryId != null -> Button(
+                                    onClick = {
+                                        haptics.select()
+                                        vm.applyAiSuggestion()
+                                        quickClassifyTxn = null
+                                    },
+                                    shape = MaterialTheme.shapes.extraLarge,
+                                ) { Text("Apply") }
+                                else -> TextButton(
+                                    onClick = {
+                                        haptics.select()
+                                        vm.suggestWithAi(t)
+                                    },
+                                ) { Text(if (ai == null) "Ask AI" else "Retry") }
+                            }
                         }
                     }
                 }

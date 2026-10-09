@@ -134,6 +134,40 @@ class TransactionsViewModel @Inject constructor(
 
     fun isLlmConfigured(): Boolean = classifier.isConfigured()
 
+    /** Per-transaction "Suggest with AI" state for the classify sheet. */
+    data class AiSuggestState(
+        val txnId: String,
+        val loading: Boolean = true,
+        val suggestion: TransactionParser.AiSuggestion? = null,
+        val error: String? = null,
+    )
+    private val _aiSuggest = MutableStateFlow<AiSuggestState?>(null)
+    val aiSuggest: StateFlow<AiSuggestState?> = _aiSuggest.asStateFlow()
+    private var suggestJob: Job? = null
+
+    fun suggestWithAi(txn: Transaction) {
+        suggestJob?.cancel()
+        _aiSuggest.value = AiSuggestState(txn.id)
+        suggestJob = viewModelScope.launch {
+            _aiSuggest.value = when (val r = classifier.suggest(txn)) {
+                is LlmResult.Ok -> AiSuggestState(txn.id, loading = false, suggestion = r.value)
+                is LlmResult.Failed -> AiSuggestState(txn.id, loading = false, error = r.error.describe())
+            }
+        }
+    }
+
+    fun applyAiSuggestion() {
+        val state = _aiSuggest.value ?: return
+        val suggestion = state.suggestion ?: return
+        _aiSuggest.value = null
+        viewModelScope.launch { classifier.applySuggestion(state.txnId, suggestion) }
+    }
+
+    fun clearAiSuggestion() {
+        suggestJob?.cancel()
+        _aiSuggest.value = null
+    }
+
     fun quickClassify(id: String, categoryId: Long) = viewModelScope.launch {
         transactionRepository.classify(id, categoryId, null, null)
     }

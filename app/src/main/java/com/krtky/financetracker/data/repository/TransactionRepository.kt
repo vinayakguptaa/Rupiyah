@@ -554,6 +554,25 @@ class TransactionRepository @Inject constructor(
     }
 
     /**
+     * Apply an AI suggestion: set the category and fill the counterparty only if it is empty.
+     * Nothing the user typed is overwritten.
+     */
+    suspend fun applyAiSuggestion(transactionId: String, categoryId: Long?, counterparty: String?) {
+        val existing = txnDao.getById(transactionId) ?: return
+        if (existing.counterparty.isNullOrBlank() && !counterparty.isNullOrBlank()) {
+            txnDao.update(
+                existing.copy(
+                    counterparty = counterparty,
+                    updatedAt = System.currentTimeMillis(),
+                    version = existing.version + 1,
+                    sheetsSynced = false,
+                ),
+            )
+        }
+        if (categoryId != null) classify(transactionId, categoryId, null, null) else enqueueSync(transactionId)
+    }
+
+    /**
      * Insert a bank-statement CSV row. Caller is responsible for dedupe decisions;
      * still guards unique contentHash / externalRef collisions.
      * @return new id, or null if ignored as hard duplicate.

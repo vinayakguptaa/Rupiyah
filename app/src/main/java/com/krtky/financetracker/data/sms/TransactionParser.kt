@@ -254,6 +254,59 @@ class TransactionParser @Inject constructor(
         return Detailed(ParseOutcome(merged, selfTransfer), llmError)
     }
 
+    /** What the full AI parser thinks an existing transaction is. */
+    data class AiSuggestion(
+        val categoryId: Long?,
+        val categoryName: String?,
+        val counterparty: String?,
+        val note: String?,
+    )
+
+    /**
+     * Run the full extraction prompt on one saved transaction (its SMS / narration / note)
+     * and return a category + counterparty suggestion. Amount, type and date are left alone.
+     */
+    suspend fun suggestFor(txn: Transaction): LlmResult<AiSuggestion> {
+        val text = listOfNotNull(txn.rawDescription, txn.note, txn.counterparty)
+            .map { SmsRedactor.stripHtml(it).trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?: return LlmResult.Failed(LlmError.NoInput)
+        val categories = categoryRepository.getAll()
+        val banks = accountRepository.activeBankNames()
+        val body = buildString {
+            // Known facts help when the only text is a short merchant name.
+            appendLine(
+                "Known: ${txn.type.name} of ${Money(txn.amountPaise).formatInr()}" +
+                    (txn.accountName?.let { " via $it" } ?: "") +
+                    (txn.counterparty?.takeIf { it != text }?.let { " with $it" } ?: ""),
+            )
+            append(SmsRedactor.redact(text))
+        }
+        return when (
+            val r = llmClient.extractTransaction(
+                messageBody = body,
+                subject = null,
+                sender = txn.source.name.lowercase(Locale.US),
+                categories = categories.map { it.name },
+                banks = banks,
+            )
+        ) {
+            is LlmResult.Failed -> r
+            is LlmResult.Ok -> {
+                val e = r.value
+                val catId = matchCategory(e.category, categories)
+                LlmResult.Ok(
+                    AiSuggestion(
+                        categoryId = catId,
+                        categoryName = categories.firstOrNull { it.id == catId }?.name,
+                        counterparty = (e.counterparty ?: e.merchant)?.trim()?.takeIf { it.isNotBlank() },
+                        note = e.note?.trim()?.takeIf { it.isNotBlank() },
+                    ),
+                )
+            }
+        }
+    }
+
     private fun looksLikeNonMovement(text: String): Boolean =
         nonMovement.containsMatchIn(text) && !movementConfirm.containsMatchIn(text)
 

@@ -2,6 +2,7 @@ package com.krtky.financetracker.data.llm
 
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.data.sms.SmsRedactor
+import com.krtky.financetracker.data.sms.TransactionParser
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.Transaction
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ import javax.inject.Singleton
 class TransactionClassifier @Inject constructor(
     private val llmClient: LlmClient,
     private val transactionRepository: TransactionRepository,
+    private val parser: TransactionParser,
 ) {
     data class Outcome<K>(
         val matches: Map<K, Category>,
@@ -57,13 +59,44 @@ class TransactionClassifier @Inject constructor(
         return Outcome(matches, error)
     }
 
-    /** Classify and persist; returns how many rows got a category. */
+    /**
+     * Classify and persist. Pass 1 is the cheap batch call; pass 2 runs the full SMS parser
+     * on up to [DEEP_LIMIT] rows that are still unresolved but have raw SMS / narration text.
+     */
     suspend fun classifyAndSave(txns: List<Transaction>, categories: List<Category>): Outcome<String> {
         val texts = txns.mapNotNull { t -> describe(t)?.let { t.id to it } }.toMap()
-        val outcome = classify(texts, categories)
-        outcome.matches.forEach { (id, cat) -> transactionRepository.classify(id, cat.id, null, null) }
-        return outcome
+        val batch = classify(texts, categories)
+        batch.matches.forEach { (id, cat) -> transactionRepository.classify(id, cat.id, null, null) }
+        if (batch.error != null) return batch
+
+        val matches = batch.matches.toMutableMap()
+        val deep = txns
+            .filter { it.id !in matches && !it.rawDescription.isNullOrBlank() }
+            .take(DEEP_LIMIT)
+        for (t in deep) {
+            when (val r = parser.suggestFor(t)) {
+                is LlmResult.Ok -> {
+                    val cat = categories.firstOrNull { it.id == r.value.categoryId } ?: continue
+                    transactionRepository.applyAiSuggestion(t.id, cat.id, r.value.counterparty)
+                    matches[t.id] = cat
+                }
+                is LlmResult.Failed -> {
+                    if (r.error is LlmError.NoInput) continue
+                    return Outcome(matches, r.error)
+                }
+            }
+        }
+        return Outcome(matches)
     }
+
+    /** Full-parser suggestion for one transaction (not saved). */
+    suspend fun suggest(txn: Transaction): LlmResult<TransactionParser.AiSuggestion> {
+        if (!llmClient.isConfigured()) return LlmResult.Failed(LlmError.NotConfigured)
+        return parser.suggestFor(txn)
+    }
+
+    suspend fun applySuggestion(txnId: String, suggestion: TransactionParser.AiSuggestion) =
+        transactionRepository.applyAiSuggestion(txnId, suggestion.categoryId, suggestion.counterparty)
 
     private suspend fun classifyBatch(batch: List<String>, categories: List<Category>): LlmResult<Map<Int, Category>> {
         val user = buildString {
@@ -108,6 +141,8 @@ class TransactionClassifier @Inject constructor(
 
         private const val BATCH_SIZE = 25
         private const val RETRY_DELAY_MS = 3_000L
+        /** One LLM call per row in pass 2 — keep it small for free-tier rate limits. */
+        private const val DEEP_LIMIT = 15
 
         private val SYSTEM = """You are an expert personal finance transaction classifier for India.
 You receive ALLOWED CATEGORIES and a numbered list of transactions (merchant / counterparty and bank narration such as UPI, POS, card, NEFT, IMPS, salary).
