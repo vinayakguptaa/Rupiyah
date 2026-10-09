@@ -15,25 +15,34 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +67,7 @@ import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.components.TransactionCard
 import com.krtky.financetracker.ui.components.DeleteConfirmSheet
 import com.krtky.financetracker.ui.components.EmptyState
+import com.krtky.financetracker.ui.components.CategoryChipRow
 import com.krtky.financetracker.ui.components.TransactionFilterBar
 import com.krtky.financetracker.ui.components.sortOverflowChildren
 import com.krtky.financetracker.ui.components.chrome.OverflowMenuButton
@@ -82,6 +92,7 @@ import com.krtky.financetracker.ui.viewmodel.TimeRange
 import com.krtky.financetracker.ui.viewmodel.TransactionsViewModel
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
     onOpen: (String) -> Unit,
@@ -103,6 +114,10 @@ fun TransactionsScreen(
     val customFrom by vm.customFrom.collectAsStateWithLifecycle()
     val customTo by vm.customTo.collectAsStateWithLifecycle()
     val items by vm.transactions.collectAsStateWithLifecycle()
+    val isAiClassifying by vm.isAiClassifying.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var quickClassifyTxn by remember { mutableStateOf<Transaction?>(null) }
+    var showBulkCategorySheet by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -322,6 +337,75 @@ fun TransactionsScreen(
                     fontWeight = FontWeight.Medium,
                 )
             }
+            if (needsClassify) {
+                val unclassifiedCount = items.count { it.needsClassification() }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 4.dp),
+                    shape = MaterialTheme.shapes.large,
+                    color = scheme.primaryContainer.copy(alpha = 0.5f),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Classify Inbox",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = scheme.onPrimaryContainer,
+                            )
+                            Text(
+                                "$unclassifiedCount pending · tap a spend to classify",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onPrimaryContainer.copy(alpha = 0.85f),
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                haptics.select()
+                                scope.launch {
+                                    val res = vm.autoClassifyWithAi()
+                                    res.fold(
+                                        onSuccess = { count ->
+                                            snackbarHostState.showSnackbar(
+                                                if (count > 0) "AI classified $count transaction(s)"
+                                                else "AI could not match any new categories",
+                                            )
+                                        },
+                                        onFailure = {
+                                            snackbarHostState.showSnackbar(it.message ?: "AI classification failed")
+                                        },
+                                    )
+                                }
+                            },
+                            enabled = !isAiClassifying && unclassifiedCount > 0,
+                            shape = MaterialTheme.shapes.extraLarge,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = scheme.primary,
+                                contentColor = scheme.onPrimary,
+                            ),
+                        ) {
+                            if (isAiClassifying) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = scheme.onPrimary,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Classifying…")
+                            } else {
+                                Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Auto-Classify")
+                            }
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(4.dp))
         }
 
@@ -433,6 +517,9 @@ fun TransactionsScreen(
                                     selectedIds =
                                         if (t.id in selectedIds) selectedIds - t.id
                                         else selectedIds + t.id
+                                } else if (needsClassify || t.needsClassification()) {
+                                    haptics.select()
+                                    quickClassifyTxn = t
                                 } else {
                                     onOpen(t.id)
                                 }
@@ -479,6 +566,18 @@ fun TransactionsScreen(
                     color = scheme.onSurfaceVariant,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            haptics.select()
+                            showBulkCategorySheet = true
+                        },
+                        shape = MaterialTheme.shapes.extraLarge,
+                    ) {
+                        Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Category", color = scheme.primary, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.width(8.dp))
                     if (selectedIds.size >= 2) {
                         TextButton(
                             onClick = {
@@ -514,6 +613,13 @@ fun TransactionsScreen(
             }
         }
     }
+
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = if (selectedIds.isNotEmpty()) 84.dp else NavContentInsets.bottom + 8.dp),
+    )
     } // end Box
 
     if (showDeleteConfirm) {
@@ -528,6 +634,165 @@ fun TransactionsScreen(
                 showDeleteConfirm = false
             },
         )
+    }
+
+    if (quickClassifyTxn != null) {
+        val t = quickClassifyTxn!!
+        ModalBottomSheet(
+            onDismissRequest = { quickClassifyTxn = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = scheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Dimens.ScreenHorizontal)
+                    .padding(bottom = 36.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // Header: Title + Amount
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            t.displayName() ?: t.counterparty ?: "Transaction",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = scheme.onSurface,
+                        )
+                        Text(
+                            listOfNotNull(
+                                t.occurredAt.formatDateTime(),
+                                t.accountName,
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    val sign = if (t.type == TransactionType.DEBIT) "-" else "+"
+                    Text(
+                        text = "$sign${t.amountPaise.inr()}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (t.type == TransactionType.DEBIT) scheme.error else scheme.primary,
+                    )
+                }
+
+                // Raw Statement / SMS Narration Box
+                if (!t.rawDescription.isNullOrBlank()) {
+                    Surface(
+                        color = scheme.surfaceContainerHigh,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                "STATEMENT / SMS NARRATION",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.primary,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                t.rawDescription!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onSurface,
+                            )
+                        }
+                    }
+                }
+
+                // Category chips
+                Text(
+                    "Choose category",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurfaceVariant,
+                )
+                CategoryChipRow(
+                    categories = categories,
+                    selectedCategoryId = t.categoryId,
+                    onCategorySelected = { catId ->
+                        if (catId != null) {
+                            haptics.select()
+                            vm.quickClassify(t.id, catId)
+                            quickClassifyTxn = null
+                        }
+                    },
+                )
+
+                // Footer actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = {
+                            haptics.select()
+                            vm.skipClassification(t.id)
+                            quickClassifyTxn = null
+                        },
+                    ) {
+                        Text("Skip")
+                    }
+                    TextButton(
+                        onClick = {
+                            val id = t.id
+                            quickClassifyTxn = null
+                            onOpen(id)
+                        },
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open full editor")
+                    }
+                }
+            }
+        }
+    }
+
+    if (showBulkCategorySheet && selectedIds.isNotEmpty()) {
+        ModalBottomSheet(
+            onDismissRequest = { showBulkCategorySheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = scheme.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Dimens.ScreenHorizontal)
+                    .padding(bottom = 36.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text(
+                    "Categorize ${selectedIds.size} transactions",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = scheme.onSurface,
+                )
+                Text(
+                    "Select a category to apply to all selected transactions.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+                CategoryChipRow(
+                    categories = categories,
+                    selectedCategoryId = null,
+                    onCategorySelected = { catId ->
+                        if (catId != null) {
+                            haptics.select()
+                            vm.bulkClassify(selectedIds, catId)
+                            selectedIds = emptySet()
+                            showBulkCategorySheet = false
+                        }
+                    },
+                )
+            }
+        }
     }
 }
 

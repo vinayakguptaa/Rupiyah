@@ -301,6 +301,7 @@ class TransactionParser @Inject constructor(
             isCash = link.isCash,
             externalRefId = llm.externalRefId ?: base.externalRefId,
             note = llm.note ?: base.note,
+            rawDescription = base.rawDescription ?: llm.rawDescription,
             classificationStatus = if (classified) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
             contentHash = TransactionRepository.contentHash(
                 llm.type,
@@ -363,6 +364,7 @@ class TransactionParser @Inject constructor(
             contentHash = hash,
             classificationStatus = if (categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
             note = null,
+            rawDescription = sms.body,
             categoryName = categories.firstOrNull { it.id == categoryId }?.name,
         )
     }
@@ -421,6 +423,7 @@ class TransactionParser @Inject constructor(
             contentHash = hash,
             classificationStatus = if (categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
             note = e.note,
+            rawDescription = sms.body,
             categoryName = categories.firstOrNull { it.id == categoryId }?.name,
         )
     }

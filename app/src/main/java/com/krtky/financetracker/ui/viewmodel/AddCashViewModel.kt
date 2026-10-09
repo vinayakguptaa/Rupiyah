@@ -96,6 +96,7 @@ class AddCashViewModel @Inject constructor(
         receiptLocalUri: Uri? = null,
         splits: List<SplitPart> = emptyList(),
         source: TransactionSource = TransactionSource.MANUAL,
+        rawDescription: String? = null,
     ): String? {
         val money = Money.fromRupeesString(amountText) ?: return null
         if (splits.isNotEmpty()) {
@@ -131,6 +132,7 @@ class AddCashViewModel @Inject constructor(
             accountId = resolvedAccountId,
             source = source,
             note = note.ifBlank { null },
+            rawDescription = rawDescription,
             isCash = methodLabel.equals("Cash", true) || account?.kind?.name == "CASH",
             classificationStatus = if (primaryCat != null || splits.any { it.categoryId != null }) {
                 ClassificationStatus.CLASSIFIED

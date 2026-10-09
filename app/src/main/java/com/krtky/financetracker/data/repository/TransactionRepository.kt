@@ -522,6 +522,7 @@ class TransactionRepository @Inject constructor(
                         smsMessageId = txn.smsMessageId ?: duplicate.smsMessageId,
                         externalRefId = txn.externalRefId ?: duplicate.externalRefId,
                         counterparty = txn.counterparty ?: duplicate.counterparty,
+                        rawDescription = txn.rawDescription ?: duplicate.rawDescription,
                         updatedAt = System.currentTimeMillis(),
                         sheetsSynced = false,
                     )
@@ -745,6 +746,22 @@ class TransactionRepository @Inject constructor(
         )
         pendingDao.delete(transactionId)
         enqueueSync(transactionId)
+    }
+
+    suspend fun bulkClassify(transactionIds: Collection<String>, categoryId: Long) {
+        db.withTransaction {
+            for (id in transactionIds) {
+                classify(id, categoryId, null, null)
+            }
+        }
+    }
+
+    suspend fun bulkSkipClassification(transactionIds: Collection<String>) {
+        db.withTransaction {
+            for (id in transactionIds) {
+                skipClassification(id)
+            }
+        }
     }
 
     suspend fun getRecommendedTabForCategory(categoryId: Long): Long? {

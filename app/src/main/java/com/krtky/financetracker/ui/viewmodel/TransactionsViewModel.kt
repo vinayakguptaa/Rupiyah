@@ -2,6 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krtky.financetracker.data.llm.LlmClient
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
@@ -13,6 +14,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -23,8 +25,9 @@ import javax.inject.Inject
 @HiltViewModel
 class TransactionsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
-    categoryRepository: CategoryRepository,
+    private val categoryRepository: CategoryRepository,
     accountRepository: AccountRepository,
+    private val llmClient: LlmClient,
 ) : ViewModel() {
     private val _query = MutableStateFlow("")
     private val filters = TransactionFilterState()
@@ -114,6 +117,81 @@ class TransactionsViewModel @Inject constructor(
     fun clearFilters() = filters.clear(type = null, clearQuery = { _query.value = "" })
     fun delete(ids: Set<String>) = viewModelScope.launch {
         ids.forEach { transactionRepository.delete(it) }
+    }
+
+    private val _isAiClassifying = MutableStateFlow(false)
+    val isAiClassifying: StateFlow<Boolean> = _isAiClassifying.asStateFlow()
+
+    fun isLlmConfigured(): Boolean = llmClient.isConfigured()
+
+    fun quickClassify(id: String, categoryId: Long) = viewModelScope.launch {
+        transactionRepository.classify(id, categoryId, null, null)
+    }
+
+    fun skipClassification(id: String) = viewModelScope.launch {
+        transactionRepository.skipClassification(id)
+    }
+
+    fun bulkClassify(ids: Set<String>, categoryId: Long) = viewModelScope.launch {
+        transactionRepository.bulkClassify(ids, categoryId)
+    }
+
+    fun bulkSkip(ids: Set<String>) = viewModelScope.launch {
+        transactionRepository.bulkSkipClassification(ids)
+    }
+
+    suspend fun autoClassifyWithAi(targetIds: Set<String>? = null): Result<Int> {
+        if (!llmClient.isConfigured()) {
+            return Result.failure(IllegalStateException("AI helper is not configured"))
+        }
+        val list = transactions.value.filter { it.needsClassification() }
+        val targets = if (!targetIds.isNullOrEmpty()) list.filter { it.id in targetIds } else list
+        if (targets.isEmpty()) return Result.success(0)
+
+        _isAiClassifying.value = true
+        return try {
+            val allCategories = categoryRepository.getAll()
+            val categoryNames = allCategories.map { it.name }
+            if (categoryNames.isEmpty()) return Result.success(0)
+
+            val unclassifiedRows = targets.mapNotNull { t ->
+                val text = t.rawDescription?.takeIf { it.isNotBlank() }
+                    ?: t.counterparty?.takeIf { it.isNotBlank() }
+                    ?: t.note?.takeIf { it.isNotBlank() }
+                if (text != null) t to text else null
+            }
+            if (unclassifiedRows.isEmpty()) return Result.success(0)
+
+            val distinctDescriptions = unclassifiedRows.map { it.second }.distinct()
+            val aiClassifications = mutableMapOf<String, String>()
+
+            distinctDescriptions.chunked(20).forEach { batch ->
+                val res = llmClient.batchClassifyDescriptions(batch, categoryNames)
+                aiClassifications.putAll(res)
+            }
+
+            var classifiedCount = 0
+            if (aiClassifications.isNotEmpty()) {
+                for ((txn, desc) in unclassifiedRows) {
+                    val catName = aiClassifications[desc]
+                        ?: aiClassifications.entries.firstOrNull { (k, _) ->
+                            k.equals(desc, ignoreCase = true) || desc.contains(k, ignoreCase = true) || k.contains(desc, ignoreCase = true)
+                        }?.value
+                    if (catName != null) {
+                        val matchedCat = allCategories.firstOrNull { it.name.equals(catName, ignoreCase = true) }
+                        if (matchedCat != null) {
+                            transactionRepository.classify(txn.id, matchedCat.id, null, null)
+                            classifiedCount++
+                        }
+                    }
+                }
+            }
+            Result.success(classifiedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            _isAiClassifying.value = false
+        }
     }
 
     suspend fun merge(ids: Set<String>): String? =

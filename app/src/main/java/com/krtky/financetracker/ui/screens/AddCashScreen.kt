@@ -233,6 +233,7 @@ fun AddCashScreen(
                                     occurredAt = whenMs,
                                     receiptLocalUri = formState.receiptUri,
                                     source = saveSource,
+                                    rawDescription = parsedAccountHint?.rawDescription,
                                 ) != null
                                 saving = false
                                 if (ok) {

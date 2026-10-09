@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import android.util.Log
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,24 +32,54 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        Log.i(TAG, "SMS broadcast received (action: ${intent.action})")
         val pending = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             try {
-                if (!preferences.smsEnabled.first()) return@launch
-                // Bank SMS auto-import requires a ready AI helper.
-                if (!secureStore.isLlmReady()) return@launch
+                val smsEnabled = preferences.smsEnabled.first()
+                if (!smsEnabled) {
+                    Log.w(TAG, "SMS auto-read aborted: smsEnabled is false in settings")
+                    return@launch
+                }
+                val llmReady = secureStore.isLlmReady()
+                if (!llmReady) {
+                    Log.w(TAG, "SMS auto-read aborted: AI helper is not ready (missing key or disabled)")
+                    return@launch
+                }
                 val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-                if (messages.isNullOrEmpty()) return@launch
+                if (messages.isNullOrEmpty()) {
+                    Log.w(TAG, "SMS broadcast had no messages")
+                    return@launch
+                }
                 val sender = messages.firstOrNull()?.originatingAddress.orEmpty()
                 val body = messages.joinToString("") { it.messageBody.orEmpty() }
-                if (body.isBlank()) return@launch
-                if (!shouldInspect(sender, body)) return@launch
+                if (body.isBlank()) {
+                    Log.w(TAG, "SMS from '$sender' had blank body")
+                    return@launch
+                }
+                Log.d(TAG, "Incoming SMS from '$sender', body length: ${body.length}")
+                if (!shouldInspect(sender, body)) {
+                    Log.d(TAG, "SMS from '$sender' filtered out by shouldInspect (filters / money hints)")
+                    return@launch
+                }
                 val receivedAt = System.currentTimeMillis()
-                val txn = parser.parseSms(sender, body, receivedAt) ?: return@launch
+                val txn = parser.parseSms(sender, body, receivedAt)
+                if (txn == null) {
+                    Log.w(TAG, "Parser could not extract transaction from SMS (sender: '$sender')")
+                    return@launch
+                }
+                Log.i(TAG, "Successfully parsed SMS: ${txn.type} ₹${txn.amountPaise / 100.0} party='${txn.counterparty}'")
                 val withLoc = attachLocation(txn)
                 val id = transactionRepository.insertFromSms(withLoc)
-                if (id != null) notifier.notifyPayment(id, "SMS payment")
+                if (id != null) {
+                    Log.i(TAG, "Transaction inserted with ID '$id', firing payment notification")
+                    notifier.notifyPayment(id, "SMS payment")
+                } else {
+                    Log.w(TAG, "Transaction skipped by repository (duplicate or clash)")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error in SmsReceiver coroutine", e)
             } finally {
                 pending.finish()
                 scope.cancel()
@@ -92,6 +123,7 @@ class SmsReceiver : BroadcastReceiver() {
     }
 
     companion object {
+        private const val TAG = "SmsReceiver"
         private val MONEY_HINT = Regex(
             """(?:₹|rs\.?|inr|upi|debited|credited|spent|paid|withdrawn|a/c|acct|account|txn|transaction)""",
             RegexOption.IGNORE_CASE,
