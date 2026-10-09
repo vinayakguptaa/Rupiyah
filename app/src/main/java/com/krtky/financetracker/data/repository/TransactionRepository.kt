@@ -505,7 +505,9 @@ class TransactionRepository @Inject constructor(
             txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, txn.smsMessageId
         )
         if (txn.smsMessageId != null && txnDao.findBySmsMessageId(txn.smsMessageId) != null) return null
-        val duplicate = txn.externalRefId?.takeIf { it.isNotBlank() }?.let { txnDao.findByExternalRefId(it) }
+        // Masked refs (e.g. "****ACCT****" from older AI parses) are not unique — never dedupe on them.
+        val duplicate = txn.externalRefId?.takeIf { it.isNotBlank() && '*' !in it }
+            ?.let { txnDao.findByExternalRefId(it) }
             ?: txnDao.findSimilar(
                 type = txn.type.name,
                 amountPaise = txn.amountPaise,

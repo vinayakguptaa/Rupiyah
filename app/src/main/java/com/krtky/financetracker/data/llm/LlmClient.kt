@@ -91,6 +91,7 @@ class LlmClient @Inject constructor(
             }
             appendLine("Use type \"DEBIT\" or \"CREDIT\". Use \"none\" for bills/dues/reminders/non-completed — do not invent a txn.")
             appendLine("Put the Name in \"counterparty\". For occurredAt prefer ISO-8601 with +05:30 when a date/time is in the message; else null.")
+            appendLine("Masked values like ****ACCT**** are redacted: never copy them into referenceId (use null).")
             appendLine("Extract only one completed movement from this message. Respond with a single JSON object.")
             appendLine()
             appendLine("Message body:")

@@ -306,6 +306,8 @@ class TransactionParser @Inject constructor(
         val catId = llm.categoryId ?: base.categoryId
         val catName = categories.firstOrNull { it.id == catId }?.name
         val classified = catId != null
+        // Regex reads the unredacted text, so its ref is authoritative; the LLM only sees masked digits.
+        val ref = base.externalRefId ?: llm.externalRefId
         return base.copy(
             type = llm.type,
             amountPaise = if (llm.amountPaise > 0) llm.amountPaise else base.amountPaise,
@@ -315,7 +317,7 @@ class TransactionParser @Inject constructor(
             accountId = link.accountId,
             accountName = link.accountName,
             isCash = link.isCash,
-            externalRefId = llm.externalRefId ?: base.externalRefId,
+            externalRefId = ref,
             note = llm.note ?: base.note,
             rawDescription = base.rawDescription ?: llm.rawDescription,
             classificationStatus = if (classified) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
@@ -324,7 +326,7 @@ class TransactionParser @Inject constructor(
                 if (llm.amountPaise > 0) llm.amountPaise else base.amountPaise,
                 base.occurredAt,
                 party,
-                llm.externalRefId ?: base.externalRefId,
+                ref,
                 base.smsMessageId,
             ),
         )
@@ -420,8 +422,9 @@ class TransactionParser @Inject constructor(
             ?: if (type == TransactionType.CREDIT) {
                 categories.firstOrNull { it.name.contains("Salary", true) || it.name.contains("Income", true) }?.id
             } else null
+        val ref = e.referenceId?.trim()?.takeIf { it.isNotBlank() && '*' !in it }
         val hash = TransactionRepository.contentHash(
-            type, money.paise, occurred, party, e.referenceId, sms.messageId,
+            type, money.paise, occurred, party, ref, sms.messageId,
         )
         return Transaction(
             id = UUID.randomUUID().toString(),
@@ -435,7 +438,7 @@ class TransactionParser @Inject constructor(
             isCash = link.isCash,
             source = source,
             smsMessageId = sms.messageId,
-            externalRefId = e.referenceId,
+            externalRefId = ref,
             contentHash = hash,
             classificationStatus = if (categoryId != null) ClassificationStatus.CLASSIFIED else ClassificationStatus.PENDING,
             note = e.note,
