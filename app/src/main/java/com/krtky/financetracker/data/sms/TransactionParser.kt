@@ -362,9 +362,8 @@ class TransactionParser @Inject constructor(
         val bank = detectBank(text, sms.sender, banks)
         val method = resolveMethodLabel(bank, banks, defaultDigital)
         val link = resolveAccount(method)
-        val categoryId = if (type == TransactionType.CREDIT) {
-            categories.firstOrNull { it.name.contains("Salary", true) || it.name.contains("Income", true) }?.id
-        } else null
+        // No guessing from type alone: a credit can be salary, a refund or a friend paying back.
+        val categoryId: Long? = null
         val occurred = sms.receivedAt
         val hash = TransactionRepository.contentHash(type, money.paise, occurred, counterparty, ref, sms.messageId)
 
@@ -421,9 +420,6 @@ class TransactionParser @Inject constructor(
         }
         val link = resolveAccount(method)
         val categoryId = matchCategory(e.category, categories)
-            ?: if (type == TransactionType.CREDIT) {
-                categories.firstOrNull { it.name.contains("Salary", true) || it.name.contains("Income", true) }?.id
-            } else null
         val ref = e.referenceId?.trim()?.takeIf { it.isNotBlank() && '*' !in it }
         val hash = TransactionRepository.contentHash(
             type, money.paise, occurred, party, ref, sms.messageId,
