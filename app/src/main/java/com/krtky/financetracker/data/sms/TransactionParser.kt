@@ -308,7 +308,9 @@ class TransactionParser @Inject constructor(
         val classified = catId != null
         // Regex reads the unredacted text, so its ref is authoritative; the LLM only sees masked digits.
         val ref = base.externalRefId ?: llm.externalRefId
+        val occurred = pickOccurredAt(receivedAt = base.occurredAt, llmTime = llm.occurredAt)
         return base.copy(
+            occurredAt = occurred,
             type = llm.type,
             amountPaise = if (llm.amountPaise > 0) llm.amountPaise else base.amountPaise,
             counterparty = party,
@@ -324,7 +326,7 @@ class TransactionParser @Inject constructor(
             contentHash = TransactionRepository.contentHash(
                 llm.type,
                 if (llm.amountPaise > 0) llm.amountPaise else base.amountPaise,
-                base.occurredAt,
+                occurred,
                 party,
                 ref,
                 base.smsMessageId,
@@ -635,5 +637,23 @@ class TransactionParser @Inject constructor(
             }
         }
         return null
+    }
+
+    companion object {
+        private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
+
+        /**
+         * Choose between the time the message arrived and the date the AI read from its text.
+         * The AI date wins only when it names a different day (an older SMS or a pasted note);
+         * on the same day the arrival time is more precise. Future or implausibly old dates are ignored.
+         */
+        fun pickOccurredAt(receivedAt: Long, llmTime: Long): Long {
+            if (llmTime == receivedAt) return receivedAt
+            if (llmTime > receivedAt + 60 * 60_000L) return receivedAt
+            if (receivedAt - llmTime > 400L * 24 * 60 * 60_000L) return receivedAt
+            val llmDay = Instant.ofEpochMilli(llmTime).atZone(IST).toLocalDate()
+            val receivedDay = Instant.ofEpochMilli(receivedAt).atZone(IST).toLocalDate()
+            return if (llmDay == receivedDay) receivedAt else llmTime
+        }
     }
 }
