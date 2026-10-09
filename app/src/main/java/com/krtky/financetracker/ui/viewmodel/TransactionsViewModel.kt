@@ -2,7 +2,10 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.krtky.financetracker.data.llm.LlmClient
+import com.krtky.financetracker.data.llm.LlmResult
+import com.krtky.financetracker.data.llm.TransactionClassifier
+import com.krtky.financetracker.data.sms.TransactionParser
+import kotlinx.coroutines.Job
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
 import com.krtky.financetracker.data.repository.TransactionRepository
@@ -11,7 +14,10 @@ import com.krtky.financetracker.domain.model.TransactionType
 import com.krtky.financetracker.ui.util.TransactionSortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +33,7 @@ class TransactionsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val categoryRepository: CategoryRepository,
     accountRepository: AccountRepository,
-    private val llmClient: LlmClient,
+    private val classifier: TransactionClassifier,
 ) : ViewModel() {
     private val _query = MutableStateFlow("")
     private val filters = TransactionFilterState()
@@ -122,7 +128,11 @@ class TransactionsViewModel @Inject constructor(
     private val _isAiClassifying = MutableStateFlow(false)
     val isAiClassifying: StateFlow<Boolean> = _isAiClassifying.asStateFlow()
 
-    fun isLlmConfigured(): Boolean = llmClient.isConfigured()
+    private val _aiMessages = Channel<String>(Channel.BUFFERED)
+    /** One-shot user messages from Auto-Classify (shown as snackbars). */
+    val aiMessages: Flow<String> = _aiMessages.receiveAsFlow()
+
+    fun isLlmConfigured(): Boolean = classifier.isConfigured()
 
     fun quickClassify(id: String, categoryId: Long) = viewModelScope.launch {
         transactionRepository.classify(id, categoryId, null, null)
@@ -140,57 +150,40 @@ class TransactionsViewModel @Inject constructor(
         transactionRepository.bulkSkipClassification(ids)
     }
 
-    suspend fun autoClassifyWithAi(targetIds: Set<String>? = null): Result<Int> {
-        if (!llmClient.isConfigured()) {
-            return Result.failure(IllegalStateException("AI helper is not configured"))
+    /**
+     * Classify the pending rows currently shown (or just [targetIds]) with AI.
+     * Runs in [viewModelScope] so leaving the screen does not drop the results;
+     * each batch is saved as soon as it returns.
+     */
+    fun autoClassifyWithAi(targetIds: Set<String>? = null) {
+        if (_isAiClassifying.value) return
+        if (!classifier.isConfigured()) {
+            _aiMessages.trySend("Set up the AI helper in Settings first")
+            return
         }
-        val list = transactions.value.filter { it.needsClassification() }
-        val targets = if (!targetIds.isNullOrEmpty()) list.filter { it.id in targetIds } else list
-        if (targets.isEmpty()) return Result.success(0)
-
+        val pending = transactions.value.filter { it.needsClassification() }
+        val targets = if (!targetIds.isNullOrEmpty()) pending.filter { it.id in targetIds } else pending
+        if (targets.isEmpty()) {
+            _aiMessages.trySend("Nothing waiting for a category here")
+            return
+        }
         _isAiClassifying.value = true
-        return try {
-            val allCategories = categoryRepository.getAll()
-            val categoryNames = allCategories.map { it.name }
-            if (categoryNames.isEmpty()) return Result.success(0)
-
-            val unclassifiedRows = targets.mapNotNull { t ->
-                val text = t.rawDescription?.takeIf { it.isNotBlank() }
-                    ?: t.counterparty?.takeIf { it.isNotBlank() }
-                    ?: t.note?.takeIf { it.isNotBlank() }
-                if (text != null) t to text else null
+        viewModelScope.launch {
+            try {
+                val outcome = classifier.classifyAndSave(targets, categoryRepository.getAll())
+                val count = outcome.matches.size
+                val error = outcome.error
+                _aiMessages.send(
+                    when {
+                        error != null && count > 0 -> "AI classified $count, then stopped: ${error.describe()}"
+                        error != null -> error.describe()
+                        count > 0 -> "AI classified $count of ${targets.size} transaction(s)"
+                        else -> "AI was not confident about any of these — classify them by hand"
+                    },
+                )
+            } finally {
+                _isAiClassifying.value = false
             }
-            if (unclassifiedRows.isEmpty()) return Result.success(0)
-
-            val distinctDescriptions = unclassifiedRows.map { it.second }.distinct()
-            val aiClassifications = mutableMapOf<String, String>()
-
-            distinctDescriptions.chunked(20).forEach { batch ->
-                val res = llmClient.batchClassifyDescriptions(batch, categoryNames)
-                aiClassifications.putAll(res)
-            }
-
-            var classifiedCount = 0
-            if (aiClassifications.isNotEmpty()) {
-                for ((txn, desc) in unclassifiedRows) {
-                    val catName = aiClassifications[desc]
-                        ?: aiClassifications.entries.firstOrNull { (k, _) ->
-                            k.equals(desc, ignoreCase = true) || desc.contains(k, ignoreCase = true) || k.contains(desc, ignoreCase = true)
-                        }?.value
-                    if (catName != null) {
-                        val matchedCat = allCategories.firstOrNull { it.name.equals(catName, ignoreCase = true) }
-                        if (matchedCat != null) {
-                            transactionRepository.classify(txn.id, matchedCat.id, null, null)
-                            classifiedCount++
-                        }
-                    }
-                }
-            }
-            Result.success(classifiedCount)
-        } catch (e: Exception) {
-            Result.failure(e)
-        } finally {
-            _isAiClassifying.value = false
         }
     }
 

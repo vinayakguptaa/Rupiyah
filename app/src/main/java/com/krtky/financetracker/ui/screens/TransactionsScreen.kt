@@ -116,6 +116,9 @@ fun TransactionsScreen(
     val items by vm.transactions.collectAsStateWithLifecycle()
     val isAiClassifying by vm.isAiClassifying.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(vm) {
+        vm.aiMessages.collect { snackbarHostState.showSnackbar(it) }
+    }
     var quickClassifyTxn by remember { mutableStateOf<Transaction?>(null) }
     var showBulkCategorySheet by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
@@ -367,20 +370,7 @@ fun TransactionsScreen(
                         Button(
                             onClick = {
                                 haptics.select()
-                                scope.launch {
-                                    val res = vm.autoClassifyWithAi()
-                                    res.fold(
-                                        onSuccess = { count ->
-                                            snackbarHostState.showSnackbar(
-                                                if (count > 0) "AI classified $count transaction(s)"
-                                                else "AI could not match any new categories",
-                                            )
-                                        },
-                                        onFailure = {
-                                            snackbarHostState.showSnackbar(it.message ?: "AI classification failed")
-                                        },
-                                    )
-                                }
+                                vm.autoClassifyWithAi()
                             },
                             enabled = !isAiClassifying && unclassifiedCount > 0,
                             shape = MaterialTheme.shapes.extraLarge,

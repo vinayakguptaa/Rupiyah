@@ -10,6 +10,7 @@ import com.krtky.financetracker.data.importcsv.ParsedCsvRow
 import com.krtky.financetracker.data.importcsv.enrichTransaction
 import com.krtky.financetracker.data.importcsv.shouldEnrichExisting
 import com.krtky.financetracker.data.llm.LlmClient
+import com.krtky.financetracker.data.llm.TransactionClassifier
 import com.krtky.financetracker.data.local.db.AppDatabase
 import com.krtky.financetracker.domain.model.Account
 import com.krtky.financetracker.domain.model.Category
@@ -76,6 +77,7 @@ class StatementImportRepository @Inject constructor(
     private val accountRepository: AccountRepository,
     private val categoryRepository: CategoryRepository,
     private val llmClient: LlmClient,
+    private val classifier: TransactionClassifier,
 ) {
     private val txnDao = db.transactionDao()
 
@@ -160,40 +162,19 @@ class StatementImportRepository @Inject constructor(
             }
         }
 
-        // 2. LLM Classification Pass for unclassified rows
-        if (llmClient.isConfigured() && categories.isNotEmpty()) {
-            val unclassifiedRows = parsed.rows.mapIndexedNotNull { index, row ->
-                if (index !in rowCategoryMap) {
-                    val textToClassify = row.description?.takeIf { it.isNotBlank() }
-                        ?: row.counterparty?.takeIf { it.isNotBlank() }
-                    if (textToClassify != null) index to textToClassify else null
-                } else null
-            }
-
-            if (unclassifiedRows.isNotEmpty()) {
-                val distinctDescriptions = unclassifiedRows.map { it.second }.distinct()
-                val categoryNames = categories.map { it.name }
-                val aiClassifications = mutableMapOf<String, String>()
-
-                distinctDescriptions.chunked(20).forEach { batch ->
-                    val result = llmClient.batchClassifyDescriptions(batch, categoryNames)
-                    aiClassifications.putAll(result)
+        // 2. AI classification for rows without a category hint
+        var aiNote: String? = null
+        if (classifier.isConfigured() && categories.isNotEmpty()) {
+            val texts = parsed.rows.withIndex()
+                .filter { (index, _) -> index !in rowCategoryMap }
+                .mapNotNull { (index, row) ->
+                    TransactionClassifier.describe(row.counterparty, row.description)?.let { index to it }
                 }
-
-                if (aiClassifications.isNotEmpty()) {
-                    unclassifiedRows.forEach { (index, desc) ->
-                        val catName = aiClassifications[desc]
-                            ?: aiClassifications.entries.firstOrNull { (k, _) ->
-                                k.equals(desc, ignoreCase = true) || desc.contains(k, ignoreCase = true)
-                            }?.value
-                        if (catName != null) {
-                            val cat = categories.firstOrNull { it.name.equals(catName, ignoreCase = true) }
-                            if (cat != null) {
-                                rowCategoryMap[index] = cat
-                            }
-                        }
-                    }
-                }
+                .toMap()
+            if (texts.isNotEmpty()) {
+                val outcome = classifier.classify(texts, categories)
+                rowCategoryMap.putAll(outcome.matches)
+                aiNote = outcome.error?.let { "AI categories incomplete: ${it.describe()}" }
             }
         }
 
@@ -251,7 +232,7 @@ class StatementImportRepository @Inject constructor(
             presetName = parsed.presetName,
             headers = parsed.headers,
             rows = rows,
-            parseErrors = parsed.errors,
+            parseErrors = listOfNotNull(aiNote) + parsed.errors,
             skippedLines = parsed.skippedLines,
         )
     }

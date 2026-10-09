@@ -7,7 +7,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Call
@@ -104,57 +103,6 @@ class LlmClient @Inject constructor(
                 LlmResult.Ok(json.decodeFromString(ExtractedTransaction.serializer(), r.value))
             }.getOrElse { LlmResult.Failed(LlmError.BadResponse(it.message?.take(120) ?: "invalid JSON")) }
         }
-    }
-
-    /**
-     * Batch-classify a list of transaction descriptions or bank narrations into allowed categories using the configured LLM.
-     * Returns a map of description -> canonical category name.
-     */
-    suspend fun batchClassifyDescriptions(
-        descriptions: List<String>,
-        categoryNames: List<String>,
-    ): Map<String, String> {
-        if (!isConfigured() || descriptions.isEmpty() || categoryNames.isEmpty()) return emptyMap()
-
-        val system = """You are an expert personal finance transaction classifier.
-You will receive a list of bank statement transaction descriptions / narrations (such as UPI, POS swipes, card transactions, NEFT, IMPS, salary, etc.) and a list of allowed categories.
-For each transaction description:
-1. Identify the merchant, counterparty, or purpose of spend (for example: from 'UPI/DR/625203830280/Swiggy/ICICI' identify 'Swiggy' -> 'Food & Dining').
-2. Choose EXACTLY ONE matching category name from ALLOWED CATEGORIES.
-3. If you cannot confidently determine the category, or if it is an unknown/ambiguous transfer, assign null for category.
-Return JSON with format:
-{"classifications": [{"description": "...exact input string...", "category": "...exact allowed category name or null..."}]}"""
-
-        val user = buildString {
-            appendLine("ALLOWED CATEGORIES:")
-            appendLine(categoryNames.joinToString(", "))
-            appendLine()
-            appendLine("TRANSACTION DESCRIPTIONS TO CLASSIFY:")
-            descriptions.forEachIndexed { i, d -> appendLine("${i + 1}. $d") }
-        }
-
-        val jsonStr = completeJson(system = system, user = user).getOrNull() ?: return emptyMap()
-        return runCatching {
-            val root = json.parseToJsonElement(jsonStr).jsonObject
-            val array = root["classifications"]?.jsonArray
-                ?: root["categories"]?.jsonArray
-                ?: root["results"]?.jsonArray
-            val result = mutableMapOf<String, String>()
-            array?.forEach { elem ->
-                val obj = elem.jsonObject
-                val d = obj["description"]?.jsonPrimitive?.contentOrNull
-                    ?: obj["merchant"]?.jsonPrimitive?.contentOrNull
-                    ?: obj["narration"]?.jsonPrimitive?.contentOrNull
-                val c = obj["category"]?.jsonPrimitive?.contentOrNull
-                if (!d.isNullOrBlank() && !c.isNullOrBlank()) {
-                    val canonical = categoryNames.firstOrNull { it.equals(c, ignoreCase = true) }
-                    if (canonical != null) {
-                        result[d] = canonical
-                    }
-                }
-            }
-            result
-        }.getOrDefault(emptyMap())
     }
 
     /** Minimal round trip to validate base URL, model and key. */
