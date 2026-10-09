@@ -1,6 +1,8 @@
 package com.krtky.financetracker.data.llm
 
+import android.util.Log
 import com.krtky.financetracker.data.prefs.SecureStore
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -8,13 +10,20 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 @Serializable
 data class ExtractedTransaction(
@@ -34,17 +43,22 @@ data class ExtractedTransaction(
     val confidence: Double? = null,
 )
 
+/**
+ * Thin OpenAI-compatible chat-completions transport. Every call returns an [LlmResult];
+ * failures are logged (status + provider message, never the prompt) and surfaced to callers.
+ */
 @Singleton
 class LlmClient @Inject constructor(
     private val secureStore: SecureStore,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    /** True only when AI is on and an API key is saved (required for SMS auto-import). */
+    /** True only when AI is on and an API key is saved. */
     fun isConfigured(): Boolean = secureStore.isLlmReady()
 
     suspend fun extractTransaction(
@@ -53,8 +67,7 @@ class LlmClient @Inject constructor(
         sender: String,
         categories: List<String> = emptyList(),
         banks: List<String> = emptyList(),
-    ): ExtractedTransaction? {
-        if (!secureStore.isLlmReady()) return null
+    ): LlmResult<ExtractedTransaction> {
         val system = secureStore.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }
 
         val user = buildString {
@@ -78,16 +91,18 @@ class LlmClient @Inject constructor(
             }
             appendLine("Use type \"DEBIT\" or \"CREDIT\". Use \"none\" for bills/dues/reminders/non-completed — do not invent a txn.")
             appendLine("Put the Name in \"counterparty\". For occurredAt prefer ISO-8601 with +05:30 when a date/time is in the message; else null.")
-            appendLine("Extract only one completed movement from this message.")
+            appendLine("Extract only one completed movement from this message. Respond with a single JSON object.")
             appendLine()
             appendLine("Message body:")
             append(messageBody.take(6000))
         }
 
-        val cleaned = completeJson(system = system, user = user) ?: return null
-        return runCatching {
-            json.decodeFromString(ExtractedTransaction.serializer(), cleaned)
-        }.getOrNull()
+        return when (val r = completeJson(system = system, user = user)) {
+            is LlmResult.Failed -> r
+            is LlmResult.Ok -> runCatching {
+                LlmResult.Ok(json.decodeFromString(ExtractedTransaction.serializer(), r.value))
+            }.getOrElse { LlmResult.Failed(LlmError.BadResponse(it.message?.take(120) ?: "invalid JSON")) }
+        }
     }
 
     /**
@@ -117,7 +132,7 @@ Return JSON with format:
             descriptions.forEachIndexed { i, d -> appendLine("${i + 1}. $d") }
         }
 
-        val jsonStr = completeJson(system = system, user = user) ?: return emptyMap()
+        val jsonStr = completeJson(system = system, user = user).getOrNull() ?: return emptyMap()
         return runCatching {
             val root = json.parseToJsonElement(jsonStr).jsonObject
             val array = root["classifications"]?.jsonArray
@@ -141,27 +156,39 @@ Return JSON with format:
         }.getOrDefault(emptyMap())
     }
 
-    suspend fun batchClassifyMerchants(
-        merchants: List<String>,
-        categoryNames: List<String>,
-    ): Map<String, String> = batchClassifyDescriptions(merchants, categoryNames)
+    /** Minimal round trip to validate base URL, model and key. */
+    suspend fun testConnection(): LlmResult<Unit> =
+        completeJson(
+            system = "You are a health check. Reply with the JSON object {\"ok\": true}.",
+            user = "Respond with JSON.",
+        ).map { }
 
     /**
-     * One JSON-object chat completion. Returns the assistant content with
-     * markdown fences stripped, or null if AI is off / the call fails.
+     * One JSON-object chat completion. Returns the assistant content trimmed to the
+     * outermost JSON object.
      *
-     * Used for small structured tasks (CSV header mapping). Do not send
-     * whole files — keep [user] to headers + a few sample rows.
+     * Keep [user] small — never send whole files.
      */
-    suspend fun completeJson(system: String, user: String): String? {
-        if (!secureStore.isLlmReady()) return null
-        val apiKey = secureStore.llmApiKey ?: return null
-        val base = secureStore.llmBaseUrl.trimEnd('/')
-        val model = secureStore.llmModel
+    suspend fun completeJson(system: String, user: String): LlmResult<String> {
+        if (!secureStore.isLlmReady()) return LlmResult.Failed(LlmError.NotConfigured)
+        val apiKey = secureStore.llmApiKey ?: return LlmResult.Failed(LlmError.NotConfigured)
+        val first = request(apiKey, system, user, jsonMode = true)
+        // Some OpenAI-compatible servers don't support response_format; retry once without it.
+        val err = first.errorOrNull()
+        val result = if (err is LlmError.Http && err.code == 400 &&
+            err.body.contains("response_format", ignoreCase = true)
+        ) {
+            request(apiKey, system, user, jsonMode = false)
+        } else first
+        result.errorOrNull()?.let { Log.w(TAG, "LLM call failed (model=${secureStore.llmModel}): $it") }
+        return result
+    }
+
+    private suspend fun request(apiKey: String, system: String, user: String, jsonMode: Boolean): LlmResult<String> {
         val payload = ChatRequest(
-            model = model,
+            model = secureStore.llmModel,
             temperature = 0.0,
-            responseFormat = ResponseFormat("json_object"),
+            responseFormat = if (jsonMode) ResponseFormat("json_object") else null,
             messages = listOf(
                 ChatMessage("system", system),
                 ChatMessage("user", user),
@@ -169,30 +196,65 @@ Return JSON with format:
         )
         val body = json.encodeToString(ChatRequest.serializer(), payload)
             .toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url("$base/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type", "application/json")
-            .post(body)
-            .build()
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
-                client.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) return@use null
-                    val text = resp.body?.string() ?: return@use null
-                    val chat = json.decodeFromString(ChatResponse.serializer(), text)
-                    val content = chat.choices.firstOrNull()?.message?.content ?: return@use null
-                    content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-                }
-            }.getOrNull()
+        val request = runCatching {
+            Request.Builder()
+                .url(chatCompletionsUrl(secureStore.llmBaseUrl))
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(body)
+                .build()
+        }.getOrElse { return LlmResult.Failed(LlmError.Network("invalid base URL")) }
+
+        val response = try {
+            client.newCall(request).await()
+        } catch (e: InterruptedIOException) {
+            return LlmResult.Failed(LlmError.Timeout)
+        } catch (e: IOException) {
+            return LlmResult.Failed(LlmError.Network(e.message ?: e.javaClass.simpleName))
         }
+        return response.use { resp ->
+            val text = runCatching { resp.body?.string().orEmpty() }.getOrDefault("")
+            if (!resp.isSuccessful) {
+                return@use LlmResult.Failed(LlmError.Http(resp.code, providerMessage(text)))
+            }
+            val content = runCatching {
+                json.decodeFromString(ChatResponse.serializer(), text).choices.firstOrNull()?.message?.content
+            }.getOrNull()
+                ?: return@use LlmResult.Failed(LlmError.BadResponse("no message content"))
+            val obj = extractJsonObject(content)
+                ?: return@use LlmResult.Failed(LlmError.BadResponse("no JSON object in reply"))
+            LlmResult.Ok(obj)
+        }
+    }
+
+    /** Pull `error.message` out of an OpenAI-style error body, else a short raw excerpt. */
+    private fun providerMessage(body: String): String {
+        val msg = runCatching {
+            val err = json.parseToJsonElement(body).jsonObject["error"]
+            runCatching { err?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull }.getOrNull()
+                ?: err?.jsonPrimitive?.contentOrNull
+        }.getOrNull()
+        return (msg ?: body).replace(Regex("\\s+"), " ").trim().take(200)
+    }
+
+    /** OkHttp call that cancels the HTTP request when the coroutine is cancelled. */
+    private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { runCatching { cancel() } }
+        enqueue(object : Callback {
+            override fun onResponse(call: Call, response: Response) {
+                if (cont.isActive) cont.resume(response) else response.close()
+            }
+
+            override fun onFailure(call: Call, e: IOException) {
+                if (cont.isActive) cont.resumeWithException(e)
+            }
+        })
     }
 
     @Serializable
     private data class ChatRequest(
         val model: String,
         val temperature: Double,
-        @SerialName("response_format") val responseFormat: ResponseFormat,
+        @SerialName("response_format") val responseFormat: ResponseFormat? = null,
         val messages: List<ChatMessage>,
     )
 
@@ -210,4 +272,21 @@ Return JSON with format:
 
     @Serializable
     private data class Msg(val content: String? = null)
+
+    companion object {
+        private const val TAG = "LlmClient"
+
+        /** Accepts `…/v1`, `…/v1/` or a full `…/chat/completions` URL. */
+        fun chatCompletionsUrl(base: String): String {
+            val b = base.trim().trimEnd('/')
+            return if (b.endsWith("/chat/completions")) b else "$b/chat/completions"
+        }
+
+        /** Strip markdown fences / prose around the reply: outermost `{ … }`, or null. */
+        fun extractJsonObject(content: String): String? {
+            val start = content.indexOf('{')
+            val end = content.lastIndexOf('}')
+            return if (start in 0 until end) content.substring(start, end + 1) else null
+        }
+    }
 }

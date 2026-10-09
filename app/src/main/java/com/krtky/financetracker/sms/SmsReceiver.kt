@@ -64,7 +64,7 @@ class SmsReceiver : BroadcastReceiver() {
                     return@launch
                 }
                 val receivedAt = System.currentTimeMillis()
-                val txn = parser.parseSms(sender, body, receivedAt)
+                val txn = parser.parseSms(sender, body, receivedAt).transaction
                 if (txn == null) {
                     Log.w(TAG, "Parser could not extract transaction from SMS (sender: '$sender')")
                     return@launch

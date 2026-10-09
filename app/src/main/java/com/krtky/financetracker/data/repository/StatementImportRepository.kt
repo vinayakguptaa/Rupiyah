@@ -329,7 +329,7 @@ class StatementImportRepository @Inject constructor(
         val raw = llmClient.completeJson(
             system = CsvHeaderRolesParser.LLM_SYSTEM,
             user = user,
-        ) ?: return null
+        ).getOrNull() ?: return null
         val roles = CsvHeaderRolesParser.fromJson(raw) ?: return null
         return CsvHeaderRolesParser.toMapping(inspect.headers, roles)
     }

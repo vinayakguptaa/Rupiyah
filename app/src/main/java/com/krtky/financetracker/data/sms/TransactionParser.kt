@@ -2,6 +2,8 @@ package com.krtky.financetracker.data.sms
 
 import com.krtky.financetracker.data.llm.ExtractedTransaction
 import com.krtky.financetracker.data.llm.LlmClient
+import com.krtky.financetracker.data.llm.LlmError
+import com.krtky.financetracker.data.llm.LlmResult
 import com.krtky.financetracker.data.prefs.UserPreferences
 import com.krtky.financetracker.data.repository.AccountRepository
 import com.krtky.financetracker.data.repository.CategoryRepository
@@ -92,16 +94,27 @@ class TransactionParser @Inject constructor(
         "FamPay", "PhonePe", "GPay", "Google Pay", "Paytm", "Amazon Pay", "CRED",
     )
 
-    suspend fun parseSms(sender: String, body: String, receivedAt: Long): Transaction? =
-        parseSource(
+    /** Result of one parse: the transaction (if any) and why the AI pass failed (if it did). */
+    data class SmsParse(
+        val transaction: Transaction?,
+        /** Non-null when the AI call failed; [transaction] is then regex-only (or null). */
+        val llmError: LlmError?,
+    )
+
+    /**
+     * Deterministic regex parse, enriched by the LLM when configured.
+     * Works without AI; pass [useLlm] = false to force the regex-only path.
+     */
+    suspend fun parseSms(sender: String, body: String, receivedAt: Long, useLlm: Boolean = true): SmsParse {
+        val d = parseSourceDetailed(
             RawSms("sms-$receivedAt-${body.hashCode()}", sender, body, receivedAt),
             TransactionSource.SMS,
+            useLlm,
         )
-
-    /** Same pipeline as SMS: deterministic + LLM merge. For pasted bank notes or free text. */
-    suspend fun parsePastedText(body: String, receivedAt: Long = System.currentTimeMillis()): Transaction? {
-        return parsePastedMovement(body, receivedAt)?.transaction
+        return SmsParse(d.outcome?.transaction, d.llmError)
     }
+
+    data class PasteParse(val movement: ParsedMovement?, val llmError: LlmError?)
 
     /**
      * Paste/share review path: one completed movement, plus optional self-transfer
@@ -110,11 +123,12 @@ class TransactionParser @Inject constructor(
     suspend fun parsePastedMovement(
         body: String,
         receivedAt: Long = System.currentTimeMillis(),
-    ): ParsedMovement? {
+    ): PasteParse {
         val trimmed = body.trim()
-        if (trimmed.isBlank()) return null
+        if (trimmed.isBlank()) return PasteParse(null, null)
         val sms = RawSms("paste-$receivedAt-${trimmed.hashCode()}", "paste", trimmed, receivedAt)
-        val outcome = parseSourceDetailed(sms, TransactionSource.PASTE) ?: return null
+        val detailed = parseSourceDetailed(sms, TransactionSource.PASTE, useLlm = true)
+        val outcome = detailed.outcome ?: return PasteParse(null, detailed.llmError)
         val accounts = accountRepository.observeActive().first()
         val heuristic = inferSelfTransfer(trimmed, accounts)
         val llmPair = outcome.selfTransfer?.let { (fromName, toName) ->
@@ -128,10 +142,13 @@ class TransactionParser @Inject constructor(
                 }
             if (from != null && to != null && from.id != to.id) from.id to to.id else null
         }
-        return ParsedMovement(
-            transaction = outcome.transaction,
-            transferFromAccountId = llmPair?.first ?: heuristic?.first,
-            transferToAccountId = llmPair?.second ?: heuristic?.second,
+        return PasteParse(
+            ParsedMovement(
+                transaction = outcome.transaction,
+                transferFromAccountId = llmPair?.first ?: heuristic?.first,
+                transferToAccountId = llmPair?.second ?: heuristic?.second,
+            ),
+            detailed.llmError,
         )
     }
 
@@ -146,6 +163,8 @@ class TransactionParser @Inject constructor(
         /** Source/destination account labels when LLM marks a self-transfer. */
         val selfTransfer: Pair<String, String>? = null,
     )
+
+    private data class Detailed(val outcome: ParseOutcome?, val llmError: LlmError? = null)
 
     /**
      * Self-transfer when the note names two of the user's accounts
@@ -183,16 +202,14 @@ class TransactionParser @Inject constructor(
         return ordered[0].id to ordered[1].id
     }
 
-    private suspend fun parseSource(sms: RawSms, source: TransactionSource): Transaction? =
-        parseSourceDetailed(sms, source)?.transaction
-
     private suspend fun parseSourceDetailed(
         sms: RawSms,
         source: TransactionSource,
-    ): ParseOutcome? {
+        useLlm: Boolean,
+    ): Detailed {
         val text = SmsRedactor.stripHtml(sms.body)
         // Bills / dues / reminders never become transactions — even if an amount is present.
-        if (looksLikeNonMovement(text)) return null
+        if (looksLikeNonMovement(text)) return Detailed(null)
 
         val categories = categoryRepository.getAll()
         // Prefer live active accounts; fall back to prefs mirror.
@@ -203,23 +220,22 @@ class TransactionParser @Inject constructor(
             .orEmpty()
             .ifBlank { banks.firstOrNull().orEmpty() }
 
-        val extracted = if (llmClient.isConfigured()) {
-            val redacted = SmsRedactor.redact(text)
-            runCatching {
-                llmClient.extractTransaction(
-                    messageBody = redacted,
-                    subject = null,
-                    sender = sms.sender,
-                    categories = categories.map { it.name },
-                    banks = banks,
-                )
-            }.getOrNull()
+        val llmResult = if (useLlm && llmClient.isConfigured()) {
+            llmClient.extractTransaction(
+                messageBody = SmsRedactor.redact(text),
+                subject = null,
+                sender = sms.sender,
+                categories = categories.map { it.name },
+                banks = banks,
+            )
         } else {
             null
         }
+        val extracted = llmResult?.getOrNull()
+        val llmError = llmResult?.errorOrNull()
 
         // When AI explicitly refuses, do not fall back to deterministic amount scraping.
-        if (extracted != null && isRejectedExtract(extracted)) return null
+        if (extracted != null && isRejectedExtract(extracted)) return Detailed(null)
 
         val deterministic = parseDeterministic(
             text, sms, source, categories, banks, defaultDigital,
@@ -228,14 +244,14 @@ class TransactionParser @Inject constructor(
             mapExtracted(it, sms, source, categories, banks, defaultDigital)
         }
         val merged = merge(deterministic, fromLlm, categories, banks, defaultDigital)
-            ?: return null
+            ?: return Detailed(null, llmError)
 
         val selfTransfer = extracted?.takeIf { it.isSelfTransfer == true }?.let { e ->
             val from = e.bank?.trim()?.takeIf { it.isNotBlank() }
             val to = e.toBank?.trim()?.takeIf { it.isNotBlank() }
             if (from != null && to != null && !from.equals(to, true)) from to to else null
         }
-        return ParseOutcome(merged, selfTransfer)
+        return Detailed(ParseOutcome(merged, selfTransfer), llmError)
     }
 
     private fun looksLikeNonMovement(text: String): Boolean =

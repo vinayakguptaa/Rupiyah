@@ -53,13 +53,18 @@ class AddCashViewModel @Inject constructor(
     suspend fun parsePastedText(text: String): Result<PasteParseResult> {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return Result.failure(IllegalArgumentException("Paste some text first"))
-        val movement = transactionParser.parsePastedMovement(trimmed)
+        val parse = transactionParser.parsePastedMovement(trimmed)
+        val movement = parse.movement
             ?: return Result.failure(
                 IllegalArgumentException(
-                    if (llmClient.isConfigured()) {
-                        "No completed debit/credit found (bills, dues, and reminders are skipped). Paste one clear bank/UPI confirmation."
-                    } else {
-                        "Could not read that text. Set up AI helper in Settings for notes that are not bank-style SMS."
+                    when {
+                        // Say why AI didn't help instead of pretending the text had nothing in it.
+                        parse.llmError != null ->
+                            "Could not read that text — ${parse.llmError.describe()}"
+                        llmClient.isConfigured() ->
+                            "No completed debit/credit found (bills, dues, and reminders are skipped). Paste one clear bank/UPI confirmation."
+                        else ->
+                            "Could not read that text. Set up AI helper in Settings for notes that are not bank-style SMS."
                     },
                 ),
             )
