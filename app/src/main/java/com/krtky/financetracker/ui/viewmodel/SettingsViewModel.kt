@@ -62,6 +62,7 @@ class SettingsViewModel @Inject constructor(
 
     /** Result of the last "Test connection" run; null until one has run. */
     data class LlmTestState(val running: Boolean = false, val ok: Boolean = false, val message: String? = null)
+    private val SLOW_REPLY_MS = 8_000L
     private val _llmTest = MutableStateFlow(LlmTestState())
     val llmTest: StateFlow<LlmTestState> = _llmTest
     private val _status = MutableStateFlow<String?>(null)
@@ -185,6 +186,7 @@ class SettingsViewModel @Inject constructor(
         llmEnabled = secureStore.llmEnabled,
         llmBaseUrl = secureStore.llmBaseUrl,
         llmModel = secureStore.llmModel,
+        llmFallbacks = secureStore.llmFallbackModels.joinToString(", "),
         sheetId = secureStore.sheetsSpreadsheetId.orEmpty(),
         sheetTokenSet = !secureStore.sheetsAccessToken.isNullOrBlank(),
         googleWebClientId = secureStore.googleWebClientId.orEmpty(),
@@ -198,6 +200,7 @@ class SettingsViewModel @Inject constructor(
             llmEnabled = s.llmEnabled,
             llmBaseUrl = s.llmBaseUrl,
             llmModel = s.llmModel,
+            llmFallbacks = s.llmFallbacks,
             sheetId = s.sheetId,
             sheetTokenSet = s.sheetTokenSet,
             googleWebClientId = s.googleWebClientId,
@@ -270,9 +273,10 @@ class SettingsViewModel @Inject constructor(
         )
     }
 
-    fun saveLlm(base: String, model: String, key: String?) {
+    fun saveLlm(base: String, model: String, key: String?, fallbacks: String? = null) {
         secureStore.llmBaseUrl = base.ifBlank { SecureStore.DEFAULT_LLM_BASE }
         secureStore.llmModel = model.ifBlank { SecureStore.DEFAULT_LLM_MODEL }
+        if (fallbacks != null) secureStore.llmFallbackModels = fallbacks.split(',').map { it.trim() }.filter { it.isNotBlank() }
         if (key != null) {
             secureStore.llmApiKey = key
             // Saving a key implies the user wants AI on.
@@ -293,7 +297,18 @@ class SettingsViewModel @Inject constructor(
         _llmTest.value = LlmTestState(running = true)
         viewModelScope.launch {
             _llmTest.value = when (val r = llmClient.testConnection()) {
-                is LlmResult.Ok -> LlmTestState(ok = true, message = "Connected · ${secureStore.llmModel} replied")
+                is LlmResult.Ok -> {
+                    val secs = "%.1f".format(r.value / 1000.0)
+                    val slow = r.value > SLOW_REPLY_MS
+                    LlmTestState(
+                        ok = !slow,
+                        message = if (slow) {
+                            "Connected, but slow: ${secureStore.llmModel} took $secs s. Pick a faster model for SMS sync."
+                        } else {
+                            "Connected · ${secureStore.llmModel} replied in $secs s"
+                        },
+                    )
+                }
                 is LlmResult.Failed -> LlmTestState(ok = false, message = r.error.describe())
             }
         }

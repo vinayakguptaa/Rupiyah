@@ -63,8 +63,18 @@ class SecureStore @Inject constructor(
         set(v) = putString(KEY_LLM_BASE, v)
 
     var llmModel: String
-        get() = getString(KEY_LLM_MODEL) ?: DEFAULT_LLM_MODEL
+        get() = getString(KEY_LLM_MODEL)?.takeUnless { it in RETIRED_MODELS } ?: DEFAULT_LLM_MODEL
         set(v) = putString(KEY_LLM_MODEL, v)
+
+    /**
+     * Models tried in order when the main one is rate-limited or down. Each Groq model has its own
+     * per-minute quota, so a backup roughly multiplies free-tier throughput. Not set → Groq defaults.
+     */
+    var llmFallbackModels: List<String>
+        get() = getString(KEY_LLM_FALLBACKS)
+            ?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }
+            ?: if (llmBaseUrl.contains("groq.com", ignoreCase = true)) DEFAULT_GROQ_FALLBACKS else emptyList()
+        set(v) = putString(KEY_LLM_FALLBACKS, v.joinToString(",") { it.trim() }.ifBlank { null })
 
     var sheetsSpreadsheetId: String?
         get() = getString(KEY_SHEETS_ID)
@@ -88,12 +98,21 @@ class SecureStore @Inject constructor(
         const val KEY_LLM_ENABLED = "llm_enabled"
         const val KEY_LLM_BASE = "llm_base_url"
         const val KEY_LLM_MODEL = "llm_model"
+        const val KEY_LLM_FALLBACKS = "llm_fallback_models"
         const val KEY_LLM_SYSTEM = "llm_system_prompt"
         const val KEY_SHEETS_ID = "sheets_spreadsheet_id"
         const val KEY_SHEETS_TOKEN = "sheets_access_token"
         const val KEY_GOOGLE_WEB_CLIENT_ID = "google_web_client_id"
         const val DEFAULT_LLM_BASE = "https://api.groq.com/openai/v1"
-        const val DEFAULT_LLM_MODEL = "llama-3.3-70b-versatile"
+        /**
+         * Picked by an eval on real SMS + the user's own categories (Oct 2026): best category accuracy,
+         * every extracted field correct, ~0.35 s per call. Backups have separate Groq rate limits.
+         */
+        const val DEFAULT_LLM_MODEL = "qwen/qwen3.8-27b"
+        val DEFAULT_GROQ_FALLBACKS = listOf("openai/gpt-oss-120b", "openai/gpt-oss-20b")
+
+        /** Models Groq has retired; a saved one falls back to [DEFAULT_LLM_MODEL]. */
+        val RETIRED_MODELS = setOf("llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768")
         val DEFAULT_LLM_SYSTEM = """
             You extract completed bank/wallet money movements from SMS or pasted text in India.
             Return ONLY valid JSON matching this schema (null allowed where noted):

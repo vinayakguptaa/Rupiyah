@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.R
 import com.krtky.financetracker.ui.components.AppSecondaryButton
 import com.krtky.financetracker.ui.components.GroupedCard
@@ -748,7 +749,7 @@ private fun LlmPage(
                     selected = false,
                     onClick = {
                         onBaseUrlChange("https://api.groq.com/openai/v1")
-                        onModelChange("llama-3.3-70b-versatile")
+                        onModelChange(SecureStore.DEFAULT_LLM_MODEL)
                     },
                     label = { Text("Groq") },
                     shape = shapes.medium,
@@ -787,7 +788,7 @@ private fun LlmPage(
                         append("1. Sign up at console.groq.com\n")
                         append("2. Create an API key\n")
                         append("3. Base URL: https://api.groq.com/openai/v1\n")
-                        append("4. Model: llama-3.3-70b-versatile\n\n")
+                        append("4. Model: ${SecureStore.DEFAULT_LLM_MODEL}\n\n")
                         append("Option B — OpenAI\n")
                         append("1. Sign up at platform.openai.com\n")
                         append("2. Add billing if required\n")

@@ -6,7 +6,13 @@ import com.krtky.financetracker.data.sms.SmsRedactor
 import com.krtky.financetracker.data.sms.TransactionParser
 import com.krtky.financetracker.domain.model.Category
 import com.krtky.financetracker.domain.model.Transaction
+import android.util.Log
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
@@ -68,7 +74,22 @@ class TransactionClassifier @Inject constructor(
      * pass 2 runs the full SMS parser on up to [DEEP_LIMIT] rows still unresolved.
      */
     suspend fun classifyAndSave(txns: List<Transaction>, categories: List<Category>): Outcome<String> {
-        val matches = mutableMapOf<String, Category>()
+        val start = System.currentTimeMillis()
+        val outcome = classifyAndSaveInner(txns, categories, start)
+        Log.i(
+            TAG,
+            "auto-classify: ${outcome.matches.size}/${txns.size} classified in ${System.currentTimeMillis() - start}ms" +
+                (outcome.error?.let { " — stopped: $it" } ?: ""),
+        )
+        return outcome
+    }
+
+    private suspend fun classifyAndSaveInner(
+        txns: List<Transaction>,
+        categories: List<Category>,
+        start: Long,
+    ): Outcome<String> {
+        val matches = java.util.concurrent.ConcurrentHashMap<String, Category>()
         val hints = mutableMapOf<String, String>()
         for (t in txns) {
             val g = localClassifier.guess(t.counterparty, t.rawDescription ?: t.note, t.type, categories) ?: continue
@@ -80,9 +101,10 @@ class TransactionClassifier @Inject constructor(
                 hints[t.id] = g.categoryName
             }
         }
-        val rest = txns.filter { it.id !in matches }
-        if (rest.isEmpty()) return Outcome(matches)
-        if (!llmClient.isConfigured()) return Outcome(matches, LlmError.NotConfigured)
+        Log.i(TAG, "auto-classify pass 0 (local): ${matches.size} in ${System.currentTimeMillis() - start}ms")
+        val rest = txns.filter { !matches.containsKey(it.id) }
+        if (rest.isEmpty()) return Outcome(matches.toMap())
+        if (!llmClient.isConfigured()) return Outcome(matches.toMap(), LlmError.NotConfigured)
 
         val texts = rest.mapNotNull { t ->
             describe(t)?.let { d -> t.id to (hints[t.id]?.let { "$d [local guess: $it]" } ?: d) }
@@ -90,25 +112,34 @@ class TransactionClassifier @Inject constructor(
         val batch = classify(texts, categories)
         batch.matches.forEach { (id, cat) -> transactionRepository.classify(id, cat.id, null, null) }
         matches.putAll(batch.matches)
-        if (batch.error != null) return Outcome(matches, batch.error)
+        Log.i(TAG, "auto-classify pass 1 (batch AI): ${batch.matches.size} of ${texts.size}")
+        if (batch.error != null) return Outcome(matches.toMap(), batch.error)
 
+        // Pass 2: full parser per row, a few calls at a time.
         val deep = txns
-            .filter { it.id !in matches && !it.rawDescription.isNullOrBlank() }
+            .filter { !matches.containsKey(it.id) && !it.rawDescription.isNullOrBlank() }
             .take(DEEP_LIMIT)
-        for (t in deep) {
-            when (val r = parser.suggestFor(t)) {
-                is LlmResult.Ok -> {
-                    val cat = categories.firstOrNull { it.id == r.value.categoryId } ?: continue
-                    transactionRepository.applyAiSuggestion(t.id, cat.id, r.value.counterparty)
-                    matches[t.id] = cat
+        val firstError = java.util.concurrent.atomic.AtomicReference<LlmError?>(null)
+        val permits = Semaphore(DEEP_CONCURRENCY)
+        coroutineScope {
+            deep.map { t ->
+                async {
+                    permits.withPermit {
+                        if (firstError.get()?.isTransient == false) return@withPermit
+                        when (val r = parser.suggestFor(t)) {
+                            is LlmResult.Ok -> {
+                                val cat = categories.firstOrNull { it.id == r.value.categoryId } ?: return@withPermit
+                                transactionRepository.applyAiSuggestion(t.id, cat.id, r.value.counterparty)
+                                matches[t.id] = cat
+                            }
+                            is LlmResult.Failed -> if (r.error !is LlmError.NoInput) firstError.compareAndSet(null, r.error)
+                        }
+                    }
                 }
-                is LlmResult.Failed -> {
-                    if (r.error is LlmError.NoInput) continue
-                    return Outcome(matches, r.error)
-                }
-            }
+            }.awaitAll()
         }
-        return Outcome(matches)
+        Log.i(TAG, "auto-classify pass 2 (full parser): ${deep.size} tried")
+        return Outcome(matches.toMap(), firstError.get())
     }
 
     /** Full-parser suggestion for one transaction (not saved). */
@@ -165,6 +196,8 @@ class TransactionClassifier @Inject constructor(
         private const val RETRY_DELAY_MS = 3_000L
         /** One LLM call per row in pass 2 — keep it small for free-tier rate limits. */
         private const val DEEP_LIMIT = 15
+        private const val DEEP_CONCURRENCY = 3
+        private const val TAG = "TransactionClassifier"
 
         private val SYSTEM = """You are an expert personal finance transaction classifier for India.
 You receive ALLOWED CATEGORIES and a numbered list of transactions (merchant / counterparty and bank narration such as UPI, POS, card, NEFT, IMPS, salary).

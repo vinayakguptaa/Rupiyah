@@ -52,9 +52,10 @@ class LlmClient @Inject constructor(
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        // The regex result is already saved when AI runs, so a slow model is not worth waiting for.
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
     /** True only when AI is on and an API key is saved. */
@@ -113,12 +114,14 @@ class LlmClient @Inject constructor(
         }
     }
 
-    /** Minimal round trip to validate base URL, model and key. */
-    suspend fun testConnection(): LlmResult<Unit> =
-        completeJson(
+    /** Minimal round trip to validate base URL, model and key. Returns the reply time in ms. */
+    suspend fun testConnection(): LlmResult<Long> {
+        val start = System.currentTimeMillis()
+        return completeJson(
             system = "You are a health check. Reply with the JSON object {\"ok\": true}.",
             user = "Respond with JSON.",
-        ).map { }
+        ).map { System.currentTimeMillis() - start }
+    }
 
     /**
      * One JSON-object chat completion. Returns the assistant content trimmed to the
@@ -129,27 +132,67 @@ class LlmClient @Inject constructor(
     suspend fun completeJson(system: String, user: String): LlmResult<String> {
         if (!secureStore.isLlmReady()) return LlmResult.Failed(LlmError.NotConfigured)
         val apiKey = secureStore.llmApiKey ?: return LlmResult.Failed(LlmError.NotConfigured)
-        val first = request(apiKey, system, user, jsonMode = true)
-        // Some OpenAI-compatible servers don't support response_format; retry once without it.
-        val err = first.errorOrNull()
-        val result = if (err is LlmError.Http && err.code == 400 &&
-            err.body.contains("response_format", ignoreCase = true)
-        ) {
-            request(apiKey, system, user, jsonMode = false)
-        } else first
-        result.errorOrNull()?.let { Log.w(TAG, "LLM call failed (model=${secureStore.llmModel}): $it") }
+        // Main model first, then backups: each Groq model has its own rate limit.
+        val models = (listOf(secureStore.llmModel) + secureStore.llmFallbackModels).distinct()
+        var result: LlmResult<String> = LlmResult.Failed(LlmError.NotConfigured)
+        for ((i, model) in models.withIndex()) {
+            val start = System.currentTimeMillis()
+            result = requestWithFallbacks(apiKey, model, system, user)
+            val ms = System.currentTimeMillis() - start
+            val err = result.errorOrNull()
+            if (err == null) {
+                Log.i(TAG, "LLM ok model=$model ${ms}ms" + if (i > 0) " (backup)" else "")
+                return result
+            }
+            Log.w(TAG, "LLM failed model=$model ${ms}ms: $err")
+            if (!shouldTryNextModel(err)) return result
+        }
         return result
     }
 
-    private suspend fun request(apiKey: String, system: String, user: String, jsonMode: Boolean): LlmResult<String> {
+    /** One model; servers that reject an optional field get one retry without it. */
+    private suspend fun requestWithFallbacks(apiKey: String, model: String, system: String, user: String): LlmResult<String> {
+        var jsonMode = true
+        var tuned = true
+        while (true) {
+            val result = request(apiKey, model, system, user, jsonMode, tuned)
+            val err = result.errorOrNull() as? LlmError.Http ?: return result
+            if (err.code != 400) return result
+            when {
+                tuned && err.body.contains("reasoning", ignoreCase = true) -> tuned = false
+                jsonMode && err.body.contains("response_format", ignoreCase = true) -> jsonMode = false
+                else -> return result
+            }
+        }
+    }
+
+    /** Rate limits, oversize requests, outages and bad model ids are model-specific; auth errors are not. */
+    private fun shouldTryNextModel(err: LlmError): Boolean = when (err) {
+        is LlmError.Http -> err.code == 429 || err.code == 413 || err.code == 404 || err.code >= 500
+        LlmError.Timeout, is LlmError.BadResponse -> true
+        else -> false
+    }
+
+    private suspend fun request(
+        apiKey: String,
+        model: String,
+        system: String,
+        user: String,
+        jsonMode: Boolean,
+        tuned: Boolean,
+    ): LlmResult<String> {
+        val reasoning = if (tuned) reasoningFor(secureStore.llmBaseUrl, model) else null
         val payload = ChatRequest(
-            model = secureStore.llmModel,
+            model = model,
             temperature = 0.0,
             responseFormat = if (jsonMode) ResponseFormat("json_object") else null,
             messages = listOf(
                 ChatMessage("system", system),
                 ChatMessage("user", user),
             ),
+            reasoningEffort = reasoning?.effort,
+            includeReasoning = reasoning?.include,
+            reasoningFormat = reasoning?.format,
         )
         val body = json.encodeToString(ChatRequest.serializer(), payload)
             .toRequestBody("application/json".toMediaType())
@@ -213,7 +256,14 @@ class LlmClient @Inject constructor(
         val temperature: Double,
         @SerialName("response_format") val responseFormat: ResponseFormat? = null,
         val messages: List<ChatMessage>,
+        // Groq reasoning controls; omitted from the JSON when null.
+        @SerialName("reasoning_effort") val reasoningEffort: String? = null,
+        @SerialName("include_reasoning") val includeReasoning: Boolean? = null,
+        @SerialName("reasoning_format") val reasoningFormat: String? = null,
     )
+
+    /** Reasoning settings that keep a reasoning model quick for short JSON tasks. */
+    data class Reasoning(val effort: String?, val include: Boolean? = null, val format: String? = null)
 
     @Serializable
     private data class ResponseFormat(val type: String)
@@ -232,6 +282,20 @@ class LlmClient @Inject constructor(
 
     companion object {
         private const val TAG = "LlmClient"
+
+        /**
+         * Only for Groq, where these fields are documented: gpt-oss thinks briefly, Qwen not at all.
+         * Other providers get a plain request.
+         */
+        fun reasoningFor(baseUrl: String, model: String): Reasoning? {
+            if (!baseUrl.contains("groq.com", ignoreCase = true)) return null
+            val m = model.lowercase()
+            return when {
+                m.startsWith("openai/gpt-oss") -> Reasoning(effort = "low", include = false)
+                m.startsWith("qwen/") -> Reasoning(effort = "none", format = "hidden")
+                else -> null
+            }
+        }
 
         /** Accepts `…/v1`, `…/v1/` or a full `…/chat/completions` URL. */
         fun chatCompletionsUrl(base: String): String {

@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.krtky.financetracker.data.prefs.SecureStore
 import com.krtky.financetracker.ui.components.SettingsBlock
 import com.krtky.financetracker.ui.components.SettingsButtonStack
 import com.krtky.financetracker.ui.components.SettingsSegment
@@ -34,6 +35,7 @@ fun LlmSettingsContent(vm: SettingsViewModel) {
     var llmKey by remember(state.llmApiKeySet) { mutableStateOf("") }
     var llmBase by remember(state.llmBaseUrl) { mutableStateOf(state.llmBaseUrl) }
     var llmModel by remember(state.llmModel) { mutableStateOf(state.llmModel) }
+    var llmFallbacks by remember(state.llmFallbacks) { mutableStateOf(state.llmFallbacks) }
 
     SettingsBlock(
         title = "Smarter reading",
@@ -92,7 +94,8 @@ fun LlmSettingsContent(vm: SettingsViewModel) {
                     selected = llmBase.contains("groq", ignoreCase = true),
                     onClick = {
                         llmBase = "https://api.groq.com/openai/v1"
-                        llmModel = "llama-3.3-70b-versatile"
+                        llmModel = SecureStore.DEFAULT_LLM_MODEL
+                        llmFallbacks = SecureStore.DEFAULT_GROQ_FALLBACKS.joinToString(", ")
                     },
                 )
                 SettingsSegment(
@@ -119,6 +122,21 @@ fun LlmSettingsContent(vm: SettingsViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = shapes.medium,
             )
+            if (llmModel.trim().equals("openrouter/free", true) || llmModel.trim().equals("openrouter/auto", true)) {
+                SettingsStatusText(
+                    text = "This router picks a different model on every call: replies are slow, sometimes empty, " +
+                        "and free use is capped per day. Pin one model instead (e.g. Groq ${SecureStore.DEFAULT_LLM_MODEL}).",
+                    positive = false,
+                )
+            }
+            OutlinedTextField(
+                llmFallbacks,
+                { llmFallbacks = it },
+                label = { Text("Backup models (comma-separated)") },
+                supportingText = { Text("Used when the main model is busy or rate-limited") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = shapes.medium,
+            )
             OutlinedTextField(
                 llmBase,
                 { llmBase = it },
@@ -128,7 +146,7 @@ fun LlmSettingsContent(vm: SettingsViewModel) {
             )
             SettingsButtonStack {
                 Button(
-                    onClick = { vm.saveLlm(llmBase, llmModel, llmKey.ifBlank { null }) },
+                    onClick = { vm.saveLlm(llmBase, llmModel, llmKey.ifBlank { null }, llmFallbacks) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = shapes.large,
                 ) { Text("Save") }

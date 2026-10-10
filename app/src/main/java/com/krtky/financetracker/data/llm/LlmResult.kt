@@ -31,6 +31,8 @@ sealed interface LlmError {
         get() = when (this) {
             is Http -> code == 408 || code == 429 || code >= 500
             Timeout, is Network -> true
+            // Routers like openrouter/free pick a different model per call; an empty reply may not repeat.
+            is BadResponse -> true
             else -> false
         }
 

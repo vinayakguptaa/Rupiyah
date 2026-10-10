@@ -14,6 +14,8 @@ data class SettingsUiState(
     val llmEnabled: Boolean = false,
     val llmBaseUrl: String = SecureStore.DEFAULT_LLM_BASE,
     val llmModel: String = SecureStore.DEFAULT_LLM_MODEL,
+    /** Comma-separated backup models, tried when the main one is rate-limited. */
+    val llmFallbacks: String = "",
     val location: Boolean = false,
     val sheetsSync: Boolean = false,
     val sheetId: String = "",

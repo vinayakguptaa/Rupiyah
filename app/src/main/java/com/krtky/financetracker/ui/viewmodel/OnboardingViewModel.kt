@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 data class OnboardingUiState(
     val llmBaseUrl: String = "https://api.groq.com/openai/v1",
-    val llmModel: String = "llama-3.3-70b-versatile",
+    val llmModel: String = SecureStore.DEFAULT_LLM_MODEL,
     val llmApiKeySet: Boolean = false,
     val smsSenders: String = "",
     val smsKeywords: String = "debited,credited,spent,paid,sent,received,transaction,INR,Rs,UPI",
