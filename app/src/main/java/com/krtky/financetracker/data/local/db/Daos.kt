@@ -172,8 +172,27 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE deletedAt IS NULL AND externalRefId = :ref LIMIT 1")
     suspend fun findByExternalRefId(ref: String): TransactionEntity?
 
-    @Query("SELECT * FROM transactions WHERE deletedAt IS NULL AND type = :type AND amountPaise = :amountPaise AND occurredAt BETWEEN :fromTs AND :toTs ORDER BY ABS(occurredAt - :targetTs) LIMIT 1")
-    suspend fun findSimilar(type: String, amountPaise: Long, fromTs: Long, toTs: Long, targetTs: Long): TransactionEntity?
+    /**
+     * Same type + amount close in time. Rows on two different known accounts are separate legs
+     * (e.g. SBI debit paying a OneCard bill), so they never match each other.
+     */
+    @Query(
+        """
+        SELECT * FROM transactions
+        WHERE deletedAt IS NULL AND type = :type AND amountPaise = :amountPaise
+          AND occurredAt BETWEEN :fromTs AND :toTs
+          AND (:accountId IS NULL OR accountId IS NULL OR accountId = :accountId)
+        ORDER BY ABS(occurredAt - :targetTs) LIMIT 1
+        """
+    )
+    suspend fun findSimilar(
+        type: String,
+        amountPaise: Long,
+        fromTs: Long,
+        toTs: Long,
+        targetTs: Long,
+        accountId: Long? = null,
+    ): TransactionEntity?
 
     @Query(
         """

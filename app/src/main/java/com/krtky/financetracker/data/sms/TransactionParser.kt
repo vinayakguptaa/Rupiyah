@@ -46,52 +46,22 @@ class TransactionParser @Inject constructor(
     private val userPreferences: UserPreferences,
     private val accountRepository: AccountRepository,
 ) {
-    private val amountRegex = Regex(
-        """(?:₹|Rs\.?|INR|Rs)\s*([0-9,]+(?:\.[0-9]{1,2})?)|([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:₹|Rs\.?|INR)""",
-        RegexOption.IGNORE_CASE,
-    )
     private val debited = Regex(
         """\b(debited|spent|paid|sent|payment of|withdrawn|deducted|purchase of|txn of|has been paid)\b""",
         RegexOption.IGNORE_CASE,
     )
-    private val credited = Regex("""\b(credited|received|added|deposit|refund|got)\b""", RegexOption.IGNORE_CASE)
-    private val nonMovement = Regex(
-        """\b(
-            bill\s+(is\s+)?(generated|ready|due)|
-            (your\s+)?(credit\s+card\s+)?bill\b|
-            bill\s+of\s+rs|
-            payment\s+due|
-            due\s+(on|by|date|amount)|
-            outstanding(\s+amount)?|
-            amount\s+due|
-            total\s+due|
-            minimum\s+due|
-            please\s+pay|
-            pay\s+by|
-            emi\s+due|
-            autopay\s+(scheduled|reminder)|
-            reminder|
-            statement(\s+generated)?|
-            request\s+to\s+pay|
-            collect\s+payment|
-            unpaid|
-            overdue|
-            scheduled\s+(for|on)|
-            will\s+be\s+(debited|charged)
-        )\b""".trimIndent().replace("\n", ""),
+    private val credited = Regex(
+        """\b(credited|received|added|deposit|refund|got|(a\s+)?credit\s+(by|of))\b""",
         RegexOption.IGNORE_CASE,
     )
-    private val movementConfirm = Regex(
-        """\b(debited|credited|spent|withdrawn|deducted|transferred|successful(?:ly)?\s+paid|payment\s+successful|upi-?ref|txn\s*id|utr)\b""",
-        RegexOption.IGNORE_CASE,
-    )
+    private val movementConfirm = SmsFilter.MOVEMENT_CONFIRM
     private val refRegex = Regex(
         """(?:UPI|Ref|Reference|Txn|Transaction|UTR)[\s#:.\-]*([A-Za-z0-9]{6,})""",
         RegexOption.IGNORE_CASE,
     )
     private val bankHints = listOf(
         "HDFC", "ICICI", "SBI", "AXIS", "KOTAK", "YES BANK", "IDFC", "PNB", "BOB", "CANARA",
-        "FamPay", "PhonePe", "GPay", "Google Pay", "Paytm", "Amazon Pay", "CRED",
+        "FamPay", "PhonePe", "GPay", "Google Pay", "Paytm", "Amazon Pay", "CRED", "OneCard",
     )
 
     /** Result of one parse: the transaction (if any) and why the AI pass failed (if it did). */
@@ -307,8 +277,7 @@ class TransactionParser @Inject constructor(
         }
     }
 
-    private fun looksLikeNonMovement(text: String): Boolean =
-        nonMovement.containsMatchIn(text) && !movementConfirm.containsMatchIn(text)
+    private fun looksLikeNonMovement(text: String): Boolean = SmsFilter.isNonMovement(text)
 
     private fun isRejectedExtract(e: ExtractedTransaction): Boolean {
         val t = e.type?.trim()?.lowercase(Locale.US) ?: return false
@@ -395,12 +364,9 @@ class TransactionParser @Inject constructor(
         banks: List<String>,
         defaultDigital: String,
     ): Transaction? {
-        if (nonMovement.containsMatchIn(text) && !movementConfirm.containsMatchIn(text)) {
-            return null
-        }
+        if (SmsFilter.isNonMovement(text)) return null
 
-        val amountMatch = amountRegex.find(text) ?: return null
-        val amountStr = amountMatch.groupValues.drop(1).firstOrNull { it.isNotBlank() } ?: return null
+        val amountStr = SmsFilter.firstAmount(text) ?: return null
         val money = Money.fromRupeesString(amountStr) ?: return null
         if (money.paise <= 0) return null
 
@@ -592,6 +558,11 @@ class TransactionParser @Inject constructor(
     }
 
     private fun detectBank(text: String, sender: String, banks: List<String>): String? {
+        // The sender id is the most reliable signal (AX-KOTAKB-S, JD-SBIUPI-T, …).
+        SmsFilter.bankForSender(sender, banks)?.let { label ->
+            matchBankToList(label, banks)?.let { return it }
+            if (banks.isEmpty()) return label
+        }
         val blob = "$sender $text"
         // Prefer user's configured accounts first
         banks.firstOrNull { bank -> blob.contains(bank, ignoreCase = true) }?.let { return it }
@@ -617,7 +588,7 @@ class TransactionParser @Inject constructor(
             )
         }
         for (p in patterns) {
-            val m = p.find(text)?.groupValues?.getOrNull(1)?.trim()?.trimEnd('.', ',', ';')
+            val m = p.find(text)?.groupValues?.getOrNull(1)?.let(::cleanCounterparty)
             if (!m.isNullOrBlank() &&
                 !m.equals("your", true) &&
                 !m.equals("you", true) &&
@@ -690,6 +661,23 @@ class TransactionParser @Inject constructor(
 
     companion object {
         private val IST: ZoneId = ZoneId.of("Asia/Kolkata")
+
+        /** Words that end a payee name in bank SMS: "to X on 04-08-26", "to X. UPI Ref …", "at X via …". */
+        private val COUNTERPARTY_END = Regex(
+            """(?i)\s+(on|ref|refno|upi|imps|neft|avl|avbl|bal|balance|via|dated|for|from|a/c|ac|with\s+your|using|thru|through|of\s+(rs|inr|₹))\b.*$|\s+\d{1,2}[-/][A-Za-z0-9]{2,3}[-/]\d{2,4}.*$|\.\s.*$|\.(upi|ref|avl|bal)\b.*$""",
+        )
+
+        private val HONORIFIC = Regex("""(?i)^\s*((mr|mrs|ms|miss|dr|shri|smt|m/s)\.?|nach-?|ach-?)\s+""")
+
+        /** Trim a regex-captured payee down to the name / VPA. */
+        fun cleanCounterparty(raw: String): String? =
+            raw.replace(HONORIFIC, "")
+                .replace(COUNTERPARTY_END, "")
+                .trim()
+                .trimEnd('.', ',', ';', '-', ':')
+                .trim()
+                .take(50)
+                .takeIf { it.length >= 2 }
 
         /**
          * Choose between the time the message arrived and the date the AI read from its text.

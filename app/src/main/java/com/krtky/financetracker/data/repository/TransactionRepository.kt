@@ -514,6 +514,7 @@ class TransactionRepository @Inject constructor(
                 fromTs = txn.occurredAt - 10 * 60_000L,
                 toTs = txn.occurredAt + 10 * 60_000L,
                 targetTs = txn.occurredAt,
+                accountId = txn.accountId,
             )
         if (duplicate != null) {
             // A new SMS parse can be richer than an earlier one — refresh in place.
