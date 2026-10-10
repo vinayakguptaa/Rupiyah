@@ -66,6 +66,8 @@ class LlmClient @Inject constructor(
         sender: String,
         categories: List<String> = emptyList(),
         banks: List<String> = emptyList(),
+        /** Local parser / classifier guesses to confirm or correct. */
+        hints: String? = null,
     ): LlmResult<ExtractedTransaction> {
         val system = secureStore.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }
 
@@ -92,6 +94,12 @@ class LlmClient @Inject constructor(
             appendLine("Put the Name in \"counterparty\". For occurredAt prefer ISO-8601 with +05:30 when a date/time is in the message; else null.")
             appendLine("Masked values like ****ACCT**** are redacted: never copy them into referenceId (use null).")
             appendLine("Extract only one completed movement from this message. Respond with a single JSON object.")
+            if (!hints.isNullOrBlank()) {
+                appendLine()
+                appendLine("LOCAL GUESSES (from a regex parser and the user's own past categories).")
+                appendLine("Check each against the message: keep it when the message supports it, correct it when it is wrong, never copy it blindly.")
+                appendLine(hints.trim())
+            }
             appendLine()
             appendLine("Message body:")
             append(messageBody.take(6000))

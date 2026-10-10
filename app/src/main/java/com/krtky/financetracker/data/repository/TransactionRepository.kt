@@ -500,11 +500,18 @@ class TransactionRepository @Inject constructor(
         return id
     }
 
-    suspend fun insertFromSms(txn: Transaction): String? {
+    /** Outcome of [insertFromSmsDetailed]: the new row id, or the existing row it matched. */
+    data class SmsInsert(val insertedId: String?, val duplicateOfId: String?)
+
+    suspend fun insertFromSms(txn: Transaction): String? = insertFromSmsDetailed(txn).insertedId
+
+    suspend fun insertFromSmsDetailed(txn: Transaction): SmsInsert {
         val hash = txn.contentHash ?: contentHash(
             txn.type, txn.amountPaise, txn.occurredAt, txn.counterparty, txn.externalRefId, txn.smsMessageId
         )
-        if (txn.smsMessageId != null && txnDao.findBySmsMessageId(txn.smsMessageId) != null) return null
+        if (txn.smsMessageId != null) {
+            txnDao.findBySmsMessageId(txn.smsMessageId)?.let { return SmsInsert(null, it.id) }
+        }
         // Masked refs (e.g. "****ACCT****" from older AI parses) are not unique — never dedupe on them.
         val duplicate = txn.externalRefId?.takeIf { it.isNotBlank() && '*' !in it }
             ?.let { txnDao.findByExternalRefId(it) }
@@ -539,19 +546,68 @@ class TransactionRepository @Inject constructor(
                 )
                 if (fillCategory) pendingDao.delete(duplicate.id)
             }
-            return null
+            return SmsInsert(null, duplicate.id)
         }
-        if (txnDao.findByContentHash(hash) != null) return null
+        txnDao.findByContentHash(hash)?.let { return SmsInsert(null, it.id) }
         val id = txn.id.ifBlank { UUID.randomUUID().toString() }
         val entity = txn.copy(id = id, contentHash = hash, sheetsSynced = false).toEntity()
         val rowId = txnDao.insert(entity)
-        if (rowId == -1L) return null
+        if (rowId == -1L) return SmsInsert(null, null)
         // Only nag "tap to classify" when the parse didn't already pick a category.
         if (entity.classificationStatus == ClassificationStatus.PENDING.name) {
             scheduleClassification(id)
         }
         enqueueSync(id)
-        return id
+        return SmsInsert(id, null)
+    }
+
+    /** Undo a soft delete (SMS inbox "Import anyway" after "Not a transaction"). */
+    suspend fun restoreDeleted(id: String): Boolean {
+        val existing = txnDao.getById(id) ?: return false
+        if (existing.deletedAt == null) return true
+        txnDao.update(
+            existing.copy(
+                deletedAt = null,
+                updatedAt = System.currentTimeMillis(),
+                version = existing.version + 1,
+                sheetsSynced = false,
+            ),
+        )
+        enqueueSync(id)
+        return true
+    }
+
+    /**
+     * Fill gaps on an SMS row from the AI pass: counterparty / note only when empty,
+     * category only while the row is still waiting for one. Never overrides the user.
+     */
+    suspend fun enrichFromAi(transactionId: String, counterparty: String?, categoryId: Long?, note: String?) {
+        val existing = txnDao.getById(transactionId) ?: return
+        val waiting = existing.categoryId == null &&
+            existing.classificationStatus == ClassificationStatus.PENDING.name && !existing.isSkipped
+        // A placeholder from an older regex ("Mr", "NACH- X of Rs 60.00") counts as empty.
+        val keepParty = existing.counterparty?.trim()?.takeIf {
+            it.length >= 3 && !it.matches(Regex("(?i)(mr|mrs|ms|dr)\\.?")) && !it.contains(Regex("(?i)\\bof\\s+(rs|inr)\\b"))
+        }
+        val newParty = keepParty ?: counterparty?.takeIf { it.isNotBlank() }
+        val newNote = existing.note?.takeIf { it.isNotBlank() } ?: note?.takeIf { it.isNotBlank() }
+        val newCat = if (waiting && categoryId != null) categoryId else existing.categoryId
+        if (newParty == existing.counterparty && newNote == existing.note && newCat == existing.categoryId) return
+        txnDao.update(
+            existing.copy(
+                counterparty = newParty,
+                note = newNote,
+                categoryId = newCat,
+                classificationStatus = if (newCat != null && waiting) {
+                    ClassificationStatus.CLASSIFIED.name
+                } else existing.classificationStatus,
+                updatedAt = System.currentTimeMillis(),
+                version = existing.version + 1,
+                sheetsSynced = false,
+            ),
+        )
+        if (newCat != null && waiting) pendingDao.delete(transactionId)
+        enqueueSync(transactionId)
     }
 
     /**

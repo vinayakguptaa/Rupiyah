@@ -69,19 +69,30 @@ class TransactionParser @Inject constructor(
         val transaction: Transaction?,
         /** Non-null when the AI call failed; [transaction] is then regex-only (or null). */
         val llmError: LlmError?,
+        /** The AI read the message and said it is not a completed transaction. */
+        val rejectedByAi: Boolean = false,
     )
 
     /**
      * Deterministic regex parse, enriched by the LLM when configured.
      * Works without AI; pass [useLlm] = false to force the regex-only path.
+     * [hints] are the local parser / classifier guesses for the AI to confirm or correct.
      */
-    suspend fun parseSms(sender: String, body: String, receivedAt: Long, useLlm: Boolean = true): SmsParse {
+    suspend fun parseSms(
+        sender: String,
+        body: String,
+        receivedAt: Long,
+        useLlm: Boolean = true,
+        hints: String? = null,
+        messageId: String? = null,
+    ): SmsParse {
         val d = parseSourceDetailed(
-            RawSms("sms-$receivedAt-${body.hashCode()}", sender, body, receivedAt),
+            RawSms(messageId ?: "sms-$receivedAt-${body.hashCode()}", sender, body, receivedAt),
             TransactionSource.SMS,
             useLlm,
+            hints,
         )
-        return SmsParse(d.outcome?.transaction, d.llmError)
+        return SmsParse(d.outcome?.transaction, d.llmError, d.rejectedByAi)
     }
 
     data class PasteParse(val movement: ParsedMovement?, val llmError: LlmError?)
@@ -134,7 +145,11 @@ class TransactionParser @Inject constructor(
         val selfTransfer: Pair<String, String>? = null,
     )
 
-    private data class Detailed(val outcome: ParseOutcome?, val llmError: LlmError? = null)
+    private data class Detailed(
+        val outcome: ParseOutcome?,
+        val llmError: LlmError? = null,
+        val rejectedByAi: Boolean = false,
+    )
 
     /**
      * Self-transfer when the note names two of the user's accounts
@@ -176,6 +191,7 @@ class TransactionParser @Inject constructor(
         sms: RawSms,
         source: TransactionSource,
         useLlm: Boolean,
+        hints: String? = null,
     ): Detailed {
         val text = SmsRedactor.stripHtml(sms.body)
         // Bills / dues / reminders never become transactions — even if an amount is present.
@@ -197,6 +213,7 @@ class TransactionParser @Inject constructor(
                 sender = sms.sender,
                 categories = categories.map { it.name },
                 banks = banks,
+                hints = hints,
             )
         } else {
             null
@@ -205,7 +222,7 @@ class TransactionParser @Inject constructor(
         val llmError = llmResult?.errorOrNull()
 
         // When AI explicitly refuses, do not fall back to deterministic amount scraping.
-        if (extracted != null && isRejectedExtract(extracted)) return Detailed(null)
+        if (extracted != null && isRejectedExtract(extracted)) return Detailed(null, rejectedByAi = true)
 
         val deterministic = parseDeterministic(
             text, sms, source, categories, banks, defaultDigital,

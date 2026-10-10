@@ -17,10 +17,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.krtky.financetracker.R
 import com.krtky.financetracker.data.prefs.UserPreferences
-import com.krtky.financetracker.data.repository.TransactionRepository
-import com.krtky.financetracker.data.sms.TransactionParser
-import com.krtky.financetracker.domain.model.Transaction
-import com.krtky.financetracker.location.LocationRepository
+import com.krtky.financetracker.data.sms.SmsInboxReader
+import com.krtky.financetracker.data.sms.SmsPipeline
 import com.krtky.financetracker.notification.ClassificationNotifier
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -28,18 +26,16 @@ import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /**
- * Parses one bank SMS off the broadcast thread: regex first, enriched by AI when configured.
- * A transient AI failure (rate limit, timeout, offline) is retried once; after that the
- * regex-only result is saved so the transaction is never lost.
+ * One live SMS: store it, then run the pipeline (filter → local parse → local classify → AI).
+ * The transaction is saved as soon as the regex can read it; a transient AI failure is
+ * retried once to fill in the rest.
  */
 @HiltWorker
 class SmsImportWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val preferences: UserPreferences,
-    private val parser: TransactionParser,
-    private val transactionRepository: TransactionRepository,
-    private val locationRepository: LocationRepository,
+    private val pipeline: SmsPipeline,
     private val notifier: ClassificationNotifier,
 ) : CoroutineWorker(context, params) {
 
@@ -48,86 +44,27 @@ class SmsImportWorker @AssistedInject constructor(
         val body = inputData.getString(KEY_BODY).orEmpty()
         val receivedAt = inputData.getLong(KEY_RECEIVED_AT, System.currentTimeMillis())
         if (body.isBlank()) return Result.success()
-
         if (!preferences.smsEnabled.first()) {
             Log.w(TAG, "SMS import skipped: SMS reading is off in settings")
             return Result.success()
         }
-        if (!shouldInspect(sender, body)) {
-            Log.d(TAG, "SMS from '$sender' filtered out (sender/keyword rules)")
-            return Result.success()
-        }
 
-        val parse = parser.parseSms(sender, body, receivedAt)
-        val llmError = parse.llmError
-        if (llmError != null) {
-            Log.w(TAG, "AI parse failed (attempt ${runAttemptCount + 1}): ${llmError.describe()}")
-            if (llmError.isTransient && runAttemptCount < MAX_RETRIES) return Result.retry()
-        }
-        val txn = parse.transaction
-        if (txn == null) {
-            Log.d(TAG, "No completed transaction in SMS from '$sender'")
-            return Result.success()
-        }
-        val id = transactionRepository.insertFromSms(attachLocation(txn))
-        if (id != null) {
-            Log.i(TAG, "SMS transaction saved (${if (llmError == null) "AI+regex" else "regex only"})")
-            notifier.notifyPayment(id, "SMS payment")
-        } else {
-            Log.i(TAG, "SMS transaction matched an existing row; not inserted")
-        }
-        return Result.success()
-    }
+        val id = pipeline.ingest(sender, body, receivedAt, SmsPipeline.Origin.LIVE)
+        val before = pipeline.get(id)
+        val after = pipeline.process(id) ?: return Result.success()
+        Log.i(TAG, "SMS ${after.id}: status=${after.status} ai=${after.aiStatus}" +
+            (after.ignoreReason?.let { " ($it)" } ?: "") + (after.lastError?.let { " error=$it" } ?: ""))
 
-    private suspend fun attachLocation(txn: Transaction): Transaction {
-        val locationOn = runCatching { preferences.locationEnabled.first() }.getOrDefault(false)
-        if (!locationOn) return txn
-        val live = runCatching { locationRepository.captureCurrent() }.getOrNull() ?: return txn
-        return txn.copy(
-            latitude = live.latitude,
-            longitude = live.longitude,
-            placeName = live.placeName,
-            locationAccuracy = live.accuracy,
-            locationMatchedAt = System.currentTimeMillis(),
-        )
-    }
+        val newlyImported = before?.status != SmsPipeline.STATUS_IMPORTED && after.status == SmsPipeline.STATUS_IMPORTED
+        if (newlyImported) after.transactionId?.let { notifier.notifyPayment(it, "SMS payment") }
 
-    private suspend fun shouldInspect(sender: String, body: String): Boolean {
-        val normalizedSender = sender.trim().lowercase()
-        val text = body.lowercase()
-        val senders = preferences.smsSenders.first()
-            .split(',', '\n', ';')
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-        val keywords = preferences.smsKeywords.first()
-            .split(',', '\n', ';')
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-
-        val senderAllowed = senders.isEmpty() ||
-            senders.any { normalizedSender == it || normalizedSender.contains(it) || it.contains(normalizedSender) }
-        val keywordMatched = keywords.isEmpty() || keywords.any { text.contains(it) }
-        val looksLikeMoney = MONEY_HINT.containsMatchIn(body)
-
-        // Catch bank SMS even when sender IDs are messy (AX-HDFCBK vs HDFCBK).
-        if (looksLikeMoney && (senderAllowed || keywordMatched || senders.isEmpty())) return true
-        return senderAllowed && keywordMatched
+        val transient = after.aiStatus == SmsPipeline.AI_FAILED &&
+            after.lastError?.startsWith(SmsPipeline.TRANSIENT_PREFIX) == true
+        return if (transient && runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
     }
 
     /** Only used on API < 31, where expedited work runs as a short foreground service. */
-    override suspend fun getForegroundInfo(): ForegroundInfo {
-        val nm = applicationContext.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(FG_CHANNEL_ID, "Background processing", NotificationManager.IMPORTANCE_MIN),
-        )
-        val notification = NotificationCompat.Builder(applicationContext, FG_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Reading bank SMS…")
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setSilent(true)
-            .build()
-        return ForegroundInfo(FG_NOTIFICATION_ID, notification)
-    }
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, "Reading bank SMS…")
 
     companion object {
         private const val TAG = "SmsImportWorker"
@@ -135,16 +72,9 @@ class SmsImportWorker @AssistedInject constructor(
         private const val KEY_BODY = "body"
         private const val KEY_RECEIVED_AT = "received_at"
         private const val MAX_RETRIES = 1
-        private const val FG_CHANNEL_ID = "background_work"
-        private const val FG_NOTIFICATION_ID = 7301
 
         // WorkManager Data is capped at 10 KB; bank SMS bodies are far smaller.
         private const val MAX_BODY_CHARS = 3_000
-
-        private val MONEY_HINT = Regex(
-            """(?:₹|rs\.?|inr|upi|debited|credited|spent|paid|withdrawn|a/c|acct|account|txn|transaction)""",
-            RegexOption.IGNORE_CASE,
-        )
 
         fun enqueue(context: Context, sender: String, body: String, receivedAt: Long) {
             val request = OneTimeWorkRequestBuilder<SmsImportWorker>()
@@ -166,4 +96,110 @@ class SmsImportWorker @AssistedInject constructor(
             )
         }
     }
+}
+
+/**
+ * "Sync SMS": read the last [KEY_HOURS] hours of the inbox, store every message, then run the
+ * pipeline on everything still open (AI calls capped per run). Also retries queued AI work.
+ */
+@HiltWorker
+class SmsSyncWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val reader: SmsInboxReader,
+    private val pipeline: SmsPipeline,
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val hours = inputData.getInt(KEY_HOURS, 0)
+        var read = 0
+        if (hours > 0) {
+            val since = System.currentTimeMillis() - hours * 60L * 60_000L
+            val messages = reader.readSince(since)
+            messages.forEach { pipeline.ingest(it.sender, it.body, it.receivedAt, SmsPipeline.Origin.SYNC) }
+            read = messages.size
+            pipeline.recheckIgnored(since)
+        }
+        if (inputData.getBoolean(KEY_REQUEUE_AI, false)) pipeline.requeueAi()
+        val processed = pipeline.processPending()
+        Log.i(TAG, "SMS sync: read $read message(s) from the last $hours h, processed $processed")
+        return Result.success(workDataOf(KEY_READ to read, KEY_PROCESSED to processed))
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, "Syncing bank SMS…")
+
+    companion object {
+        private const val TAG = "SmsSyncWorker"
+        const val UNIQUE_NAME = "sms-sync"
+        private const val KEY_HOURS = "hours"
+        private const val KEY_REQUEUE_AI = "requeue_ai"
+        const val KEY_READ = "read"
+        const val KEY_PROCESSED = "processed"
+
+        /** [hours] = 0 only processes what is already stored (e.g. "Retry with AI"). */
+        fun enqueue(context: Context, hours: Int, requeueAi: Boolean = false) {
+            val request = OneTimeWorkRequestBuilder<SmsSyncWorker>()
+                .setInputData(workDataOf(KEY_HOURS to hours, KEY_REQUEUE_AI to requeueAi))
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.KEEP, request)
+        }
+    }
+}
+
+/** One inbox action that may call the AI ("Import anyway", "Retry", "Put back in queue"). */
+@HiltWorker
+class SmsActionWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val pipeline: SmsPipeline,
+) : CoroutineWorker(context, params) {
+
+    enum class Action { FORCE_IMPORT, RETRY_AI, RESET }
+
+    override suspend fun doWork(): Result {
+        val id = inputData.getString(KEY_ID) ?: return Result.success()
+        val action = inputData.getString(KEY_ACTION)?.let { runCatching { Action.valueOf(it) }.getOrNull() }
+            ?: return Result.success()
+        val after = when (action) {
+            Action.FORCE_IMPORT -> pipeline.forceImport(id)
+            Action.RETRY_AI -> pipeline.retryAi(id)
+            Action.RESET -> pipeline.reset(id)
+        }
+        Log.i(TAG, "$action $id → status=${after?.status} ai=${after?.aiStatus}")
+        return Result.success()
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext, "Reading bank SMS…")
+
+    companion object {
+        private const val TAG = "SmsActionWorker"
+        private const val KEY_ID = "id"
+        private const val KEY_ACTION = "action"
+
+        fun enqueue(context: Context, id: String, action: Action) {
+            val request = OneTimeWorkRequestBuilder<SmsActionWorker>()
+                .setInputData(workDataOf(KEY_ID to id, KEY_ACTION to action.name))
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("sms-action-$id", ExistingWorkPolicy.REPLACE, request)
+        }
+    }
+}
+
+private const val FG_CHANNEL_ID = "background_work"
+private const val FG_NOTIFICATION_ID = 7301
+
+private fun foregroundInfo(context: Context, title: String): ForegroundInfo {
+    val nm = context.getSystemService(NotificationManager::class.java)
+    nm.createNotificationChannel(
+        NotificationChannel(FG_CHANNEL_ID, "Background processing", NotificationManager.IMPORTANCE_MIN),
+    )
+    val notification = NotificationCompat.Builder(context, FG_CHANNEL_ID)
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .setContentTitle(title)
+        .setPriority(NotificationCompat.PRIORITY_MIN)
+        .setSilent(true)
+        .build()
+    return ForegroundInfo(FG_NOTIFICATION_ID, notification)
 }

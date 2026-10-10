@@ -15,11 +15,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PendingClassificationEntity::class,
         SyncOutboxEntity::class,
         SyncStateEntity::class,
+        SmsMessageEntity::class,
     ],
     // Keep >= highest version ever installed on devices. Downgrading crashes Room
     // unless fallbackToDestructiveMigrationOnDowngrade() is set in AppModule.
-    // v1 is unsupported (no 1→2). Open path is 2→13; schema JSON from v10.
-    version = 13,
+    // v1 is unsupported (no 1→2). Open path is 2→15; schema JSON from v10.
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingClassificationDao(): PendingClassificationDao
     abstract fun syncOutboxDao(): SyncOutboxDao
     abstract fun syncStateDao(): SyncStateDao
+    abstract fun smsMessageDao(): SmsMessageDao
     abstract fun learningDao(): LearningDao
 
     companion object {
@@ -644,6 +646,31 @@ abstract class AppDatabase : RoomDatabase() {
          * - Drop `fund_ledger`
          * - Rebuild `transactions` table renaming column `fundId` -> `tabId` and recreating indexes
          */
+        /** SMS inbox: remember the user's manual decision on a message. */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sms_messages` ADD COLUMN `userOverride` TEXT")
+            }
+        }
+
+        /** Staged SMS import: raw messages are stored before parsing. */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sms_messages` (" +
+                        "`id` TEXT NOT NULL, `sender` TEXT NOT NULL, `body` TEXT NOT NULL, " +
+                        "`bodyHash` TEXT NOT NULL, `receivedAt` INTEGER NOT NULL, `origin` TEXT NOT NULL, " +
+                        "`status` TEXT NOT NULL, `ignoreReason` TEXT, `bank` TEXT, `localSummary` TEXT, " +
+                        "`aiStatus` TEXT NOT NULL, `aiSummary` TEXT, `lastError` TEXT, `transactionId` TEXT, " +
+                        "`attempts` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sms_messages_bodyHash` ON `sms_messages` (`bodyHash`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sms_messages_receivedAt` ON `sms_messages` (`receivedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sms_messages_status` ON `sms_messages` (`status`)")
+            }
+        }
+
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 1. Create 'tabs' table and copy from 'funds'

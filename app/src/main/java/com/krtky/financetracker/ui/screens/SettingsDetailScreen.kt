@@ -33,6 +33,7 @@ import com.krtky.financetracker.ui.screens.settings.LlmSettingsContent
 import com.krtky.financetracker.ui.screens.settings.LocationSettingsContent
 import com.krtky.financetracker.ui.screens.settings.ProfileSettingsContent
 import com.krtky.financetracker.ui.screens.settings.SheetsSettingsContent
+import com.krtky.financetracker.ui.screens.settings.SmsInboxContent
 import com.krtky.financetracker.ui.screens.settings.SmsSettingsContent
 import com.krtky.financetracker.ui.viewmodel.SettingsViewModel
 
@@ -40,6 +41,8 @@ import com.krtky.financetracker.ui.viewmodel.SettingsViewModel
 fun SettingsDetailScreen(
     section: String,
     onBack: () -> Unit,
+    onOpenTransaction: (String) -> Unit = {},
+    onReviewText: (String) -> Unit = {},
     vm: SettingsViewModel = hiltViewModel(),
 ) {
     val sectionEnum = SettingsSection.fromRoute(section)
@@ -89,7 +92,10 @@ fun SettingsDetailScreen(
                 )
                 "backup" -> BackupSettingsContent(vm)
                 "llm" -> LlmSettingsContent(vm)
-                "sms" -> SmsSettingsContent(vm)
+                "sms" -> {
+                    SmsInboxContent(onOpenTransaction = onOpenTransaction, onReviewText = onReviewText)
+                    SmsSettingsContent(vm)
+                }
                 "location" -> LocationSettingsContent(vm)
                 "sheets" -> SheetsSettingsContent(vm)
                 "google_auth" -> GoogleAuthSettingsContent(vm)

@@ -621,6 +621,12 @@ class MainActivity : ComponentActivity() {
                                     SettingsDetailScreen(
                                         section = args.section,
                                         onBack = { nav.popBackStack() },
+                                        onOpenTransaction = { nav.navigate(TxnRoute(it)) },
+                                        // SMS inbox "Review & add": same flow as text shared into the app
+                                        onReviewText = { text ->
+                                            pendingShareText.value = text
+                                            pendingShowPaste.value = true
+                                        },
                                     )
                                 }
                             }
