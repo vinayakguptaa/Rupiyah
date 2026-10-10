@@ -2,6 +2,7 @@ package com.krtky.financetracker.data.repository
 
 import android.content.Context
 import android.net.Uri
+import com.krtky.financetracker.data.classify.LocalClassifier
 import com.krtky.financetracker.data.importcsv.CsvHeaderRolesParser
 import com.krtky.financetracker.data.importcsv.CsvStatementParser
 import com.krtky.financetracker.data.importcsv.DedupeConfidence
@@ -78,6 +79,7 @@ class StatementImportRepository @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val llmClient: LlmClient,
     private val classifier: TransactionClassifier,
+    private val localClassifier: LocalClassifier,
 ) {
     private val txnDao = db.transactionDao()
 
@@ -162,7 +164,14 @@ class StatementImportRepository @Inject constructor(
             }
         }
 
-        // 2. AI classification for rows without a category hint
+        // 2. Your own history / merchant rules (no AI)
+        parsed.rows.forEachIndexed { index, row ->
+            if (index in rowCategoryMap) return@forEachIndexed
+            val g = localClassifier.guess(row.counterparty, row.description, row.type, categories)
+            if (g?.confident == true) categories.firstOrNull { it.id == g.categoryId }?.let { rowCategoryMap[index] = it }
+        }
+
+        // 3. AI classification for rows still without a category
         var aiNote: String? = null
         if (classifier.isConfigured() && categories.isNotEmpty()) {
             val texts = parsed.rows.withIndex()

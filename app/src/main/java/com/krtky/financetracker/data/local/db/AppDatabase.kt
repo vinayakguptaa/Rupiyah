@@ -31,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingClassificationDao(): PendingClassificationDao
     abstract fun syncOutboxDao(): SyncOutboxDao
     abstract fun syncStateDao(): SyncStateDao
+    abstract fun learningDao(): LearningDao
 
     companion object {
         /**

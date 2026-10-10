@@ -2,6 +2,7 @@ package com.krtky.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.krtky.financetracker.data.llm.LlmError
 import com.krtky.financetracker.data.llm.LlmResult
 import com.krtky.financetracker.data.llm.TransactionClassifier
 import com.krtky.financetracker.data.sms.TransactionParser
@@ -191,10 +192,7 @@ class TransactionsViewModel @Inject constructor(
      */
     fun autoClassifyWithAi(targetIds: Set<String>? = null) {
         if (_isAiClassifying.value) return
-        if (!classifier.isConfigured()) {
-            _aiMessages.trySend("Set up the AI helper in Settings first")
-            return
-        }
+        // No AI check here: the first pass uses the user's own history and works offline.
         val pending = transactions.value.filter { it.needsClassification() }
         val targets = if (!targetIds.isNullOrEmpty()) pending.filter { it.id in targetIds } else pending
         if (targets.isEmpty()) {
@@ -209,7 +207,9 @@ class TransactionsViewModel @Inject constructor(
                 val error = outcome.error
                 _aiMessages.send(
                     when {
-                        error != null && count > 0 -> "AI classified $count, then stopped: ${error.describe()}"
+                        error is LlmError.NotConfigured && count > 0 ->
+                            "Classified $count from your history — set up AI for the rest"
+                        error != null && count > 0 -> "Classified $count, then AI stopped: ${error.describe()}"
                         error != null -> error.describe()
                         count > 0 -> "AI classified $count of ${targets.size} transaction(s)"
                         else -> "AI was not confident about any of these — classify them by hand"

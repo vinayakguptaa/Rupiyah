@@ -1,5 +1,6 @@
 package com.krtky.financetracker.data.llm
 
+import com.krtky.financetracker.data.classify.LocalClassifier
 import com.krtky.financetracker.data.repository.TransactionRepository
 import com.krtky.financetracker.data.sms.SmsRedactor
 import com.krtky.financetracker.data.sms.TransactionParser
@@ -26,6 +27,7 @@ class TransactionClassifier @Inject constructor(
     private val llmClient: LlmClient,
     private val transactionRepository: TransactionRepository,
     private val parser: TransactionParser,
+    private val localClassifier: LocalClassifier,
 ) {
     data class Outcome<K>(
         val matches: Map<K, Category>,
@@ -60,16 +62,36 @@ class TransactionClassifier @Inject constructor(
     }
 
     /**
-     * Classify and persist. Pass 1 is the cheap batch call; pass 2 runs the full SMS parser
-     * on up to [DEEP_LIMIT] rows that are still unresolved but have raw SMS / narration text.
+     * Classify and persist, cheapest first:
+     * pass 0 applies confident guesses from the user's own history / merchant rules (no AI);
+     * pass 1 is one batch AI call, with weaker local guesses attached as hints;
+     * pass 2 runs the full SMS parser on up to [DEEP_LIMIT] rows still unresolved.
      */
     suspend fun classifyAndSave(txns: List<Transaction>, categories: List<Category>): Outcome<String> {
-        val texts = txns.mapNotNull { t -> describe(t)?.let { t.id to it } }.toMap()
+        val matches = mutableMapOf<String, Category>()
+        val hints = mutableMapOf<String, String>()
+        for (t in txns) {
+            val g = localClassifier.guess(t.counterparty, t.rawDescription ?: t.note, t.type, categories) ?: continue
+            if (g.confident) {
+                val cat = categories.firstOrNull { it.id == g.categoryId } ?: continue
+                transactionRepository.classify(t.id, cat.id, null, null)
+                matches[t.id] = cat
+            } else {
+                hints[t.id] = g.categoryName
+            }
+        }
+        val rest = txns.filter { it.id !in matches }
+        if (rest.isEmpty()) return Outcome(matches)
+        if (!llmClient.isConfigured()) return Outcome(matches, LlmError.NotConfigured)
+
+        val texts = rest.mapNotNull { t ->
+            describe(t)?.let { d -> t.id to (hints[t.id]?.let { "$d [local guess: $it]" } ?: d) }
+        }.toMap()
         val batch = classify(texts, categories)
         batch.matches.forEach { (id, cat) -> transactionRepository.classify(id, cat.id, null, null) }
-        if (batch.error != null) return batch
+        matches.putAll(batch.matches)
+        if (batch.error != null) return Outcome(matches, batch.error)
 
-        val matches = batch.matches.toMutableMap()
         val deep = txns
             .filter { it.id !in matches && !it.rawDescription.isNullOrBlank() }
             .take(DEEP_LIMIT)
@@ -150,6 +172,7 @@ For each transaction id:
 1. Identify the merchant, counterparty or purpose (e.g. 'UPI/DR/Swiggy/ICICI' -> Swiggy -> food).
 2. Choose EXACTLY ONE category name copied verbatim from ALLOWED CATEGORIES.
 3. If unsure, or it is an ambiguous person-to-person transfer, use null.
+Some items end with [local guess: X] from the user's own history or a keyword rule: use it when the text supports it, override it when it does not.
 Respond with a JSON object: {"results": [{"id": 1, "category": "<allowed category or null>"}]} with one entry per id."""
 
         /**
