@@ -25,7 +25,7 @@ class LocalParseTest {
         coEvery { activeBankNames() } returns listOf("SBI", "Kotak", "OneCard")
         coEvery { getByName(any()) } returns null
     }
-    private val parser = TransactionParser(llm, categories, prefs, accounts)
+    private val parser = TransactionParser(llm, categories, prefs, accounts, mockk(relaxed = true))
 
     private suspend fun parse(sender: String, body: String) =
         parser.parseSms(sender, body, receivedAt = 1_760_000_000_000L, useLlm = false).transaction

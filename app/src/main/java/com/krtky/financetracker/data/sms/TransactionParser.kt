@@ -1,5 +1,6 @@
 package com.krtky.financetracker.data.sms
 
+import com.krtky.financetracker.data.classify.LocalClassifier
 import com.krtky.financetracker.data.llm.ExtractedTransaction
 import com.krtky.financetracker.data.llm.LlmClient
 import com.krtky.financetracker.data.llm.LlmError
@@ -45,6 +46,7 @@ class TransactionParser @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val userPreferences: UserPreferences,
     private val accountRepository: AccountRepository,
+    private val localClassifier: LocalClassifier,
 ) {
     private val debited = Regex(
         """\b(debited|spent|paid|sent|payment of|withdrawn|deducted|purchase of|txn of|has been paid)\b""",
@@ -214,6 +216,7 @@ class TransactionParser @Inject constructor(
                 categories = categories.map { it.name },
                 banks = banks,
                 hints = hints,
+                guide = localClassifier.categoryGuide(categories),
             )
         } else {
             null
@@ -276,6 +279,7 @@ class TransactionParser @Inject constructor(
                 sender = txn.source.name.lowercase(Locale.US),
                 categories = categories.map { it.name },
                 banks = banks,
+                guide = localClassifier.categoryGuide(categories),
             )
         ) {
             is LlmResult.Failed -> r

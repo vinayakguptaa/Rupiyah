@@ -152,11 +152,15 @@ class TransactionClassifier @Inject constructor(
         transactionRepository.applyAiSuggestion(txnId, suggestion.categoryId, suggestion.counterparty)
 
     private suspend fun classifyBatch(batch: List<String>, categories: List<Category>): LlmResult<Map<Int, Category>> {
+        val guide = LlmClient.guideLines(localClassifier.categoryGuide(categories, perCategory = 8), perCategory = 8)
         val user = buildString {
-            appendLine("ALLOWED CATEGORIES (one per line):")
-            categories.forEach { appendLine(it.name) }
+            appendLine("CATEGORIES: " + categories.joinToString(" | ") { it.name })
+            if (guide.isNotEmpty()) {
+                appendLine("HOW THIS USER CATEGORISES (payee examples per category):")
+                guide.forEach { appendLine(it) }
+            }
             appendLine()
-            appendLine("TRANSACTIONS (id: text):")
+            appendLine("TRANSACTIONS:")
             batch.forEachIndexed { i, d -> appendLine("${i + 1}: $d") }
         }
         var attempt = 0
@@ -199,14 +203,23 @@ class TransactionClassifier @Inject constructor(
         private const val DEEP_CONCURRENCY = 3
         private const val TAG = "TransactionClassifier"
 
-        private val SYSTEM = """You are an expert personal finance transaction classifier for India.
-You receive ALLOWED CATEGORIES and a numbered list of transactions (merchant / counterparty and bank narration such as UPI, POS, card, NEFT, IMPS, salary).
-For each transaction id:
-1. Identify the merchant, counterparty or purpose (e.g. 'UPI/DR/Swiggy/ICICI' -> Swiggy -> food).
-2. Choose EXACTLY ONE category name copied verbatim from ALLOWED CATEGORIES.
-3. If unsure, or it is an ambiguous person-to-person transfer, use null.
-Some items end with [local guess: X] from the user's own history or a keyword rule: use it when the text supports it, override it when it does not.
-Respond with a JSON object: {"results": [{"id": 1, "category": "<allowed category or null>"}]} with one entry per id."""
+        private val SYSTEM = """You file the user's bank transactions into THEIR categories. Each item is "id: payee — bank narration", sometimes with [local guess: X] from the user's own history or a keyword rule.
+
+For each id choose exactly one category, copied verbatim from CATEGORIES:
+1. If the payee (or its UPI id) appears under HOW THIS USER CATEGORISES, use that category. The user's own habits beat general knowledge (e.g. a person they always file as Family stays Family).
+2. Otherwise infer from the merchant or purpose: food delivery/restaurants, groceries, cabs/metro/fuel, subscriptions, brokers/mutual funds, salary, dividends, interest, card-bill payments (Transfer), bank charges, etc.
+3. A [local guess] is usually right; override it only when the text clearly says otherwise.
+4. Use null when you cannot tell, e.g. a person-to-person UPI with no history.
+
+Common Indian patterns (map onto the closest name in CATEGORIES; skip any that has no match there):
+- Credit-card bill payments: CRED / "cred.club", BBPS, "payment received against your card", "bill payment" -> Transfer (moving money to your own card, not a spend or subscription).
+- ACH / NACH / "CEMTEX DEP" credits from a listed company, "FnlDiv", "IntDiv" -> Dividend.
+- Interest credits, FD interest, SGB / RBI bond coupons -> Interest.
+- Broker or fund payments (Zerodha, Groww, "Indian Clearing Corp", BSE / NSE clearing, mutual funds, PPF) -> Investment, in either direction.
+- Food delivery (Swiggy, Zomato, Eternal), restaurants, cafes -> Food; quick-commerce groceries (Blinkit, Zepto, Instamart) -> Groceries unless the user's examples say otherwise.
+- Depository (CDSL / NSDL) messages about units are not money movements.
+SBI narrations look like "UPI/DR/<ref>/<first 8 letters of name>/<bank>/<upi id>"; "Indian C" + zerodha.ic is Indian Clearing Corp (Zerodha mutual funds).
+Reply with JSON only: {"results":[{"id":1,"category":"<category or null>"}]} — one entry per id, in order."""
 
         /**
          * Short, single-line, redacted text for one transaction: counterparty first,

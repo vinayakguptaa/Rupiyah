@@ -69,41 +69,26 @@ class LlmClient @Inject constructor(
         banks: List<String> = emptyList(),
         /** Local parser / classifier guesses to confirm or correct. */
         hints: String? = null,
+        /** "How this user categorises": category → payees they filed there. */
+        guide: Map<String, List<String>> = emptyMap(),
     ): LlmResult<ExtractedTransaction> {
         val system = secureStore.llmSystemPrompt.ifBlank { SecureStore.DEFAULT_LLM_SYSTEM }
 
+        // Layout matches the examples in the system prompt; rules live there, data lives here.
         val user = buildString {
-            appendLine("From: $sender")
-            if (!subject.isNullOrBlank()) appendLine("Subject: $subject")
-            appendLine()
-            // Explicit closed lists so the model maps onto the user's labels, not free-form names
-            if (categories.isNotEmpty()) {
-                appendLine("ALLOWED CATEGORIES (pick exactly one of these strings for \"category\", or null):")
-                appendLine(categories.joinToString(" | "))
-            } else {
-                appendLine("ALLOWED CATEGORIES: (none configured — set category to null)")
+            appendLine("ACCOUNTS: " + banks.ifEmpty { listOf("(none — use null)") }.joinToString(" | "))
+            appendLine("CATEGORIES: " + categories.ifEmpty { listOf("(none — use null)") }.joinToString(" | "))
+            guideLines(guide).takeIf { it.isNotEmpty() }?.let { lines ->
+                appendLine("HOW THIS USER CATEGORISES (payee examples per category):")
+                lines.forEach { appendLine(it) }
             }
-            if (banks.isNotEmpty()) {
-                appendLine("ALLOWED DIGITAL ACCOUNTS (pick exactly one of these strings for \"bank\" / paymentMethod when digital, or null):")
-                appendLine(banks.joinToString(" | "))
-                appendLine("Match the closest account from this list only. Prefer the list label over synonyms.")
-                appendLine("If money moved between two of those accounts (not a spend), set isSelfTransfer=true, bank=source, toBank=destination, type=DEBIT for the source leg semantics.")
-            } else {
-                appendLine("ALLOWED DIGITAL ACCOUNTS: (none configured — use paymentMethod Digital if not cash)")
-            }
-            appendLine("Use type \"DEBIT\" or \"CREDIT\". Use \"none\" for bills/dues/reminders/non-completed — do not invent a txn.")
-            appendLine("Put the Name in \"counterparty\". For occurredAt prefer ISO-8601 with +05:30 when a date/time is in the message; else null.")
-            appendLine("Masked values like ****ACCT**** are redacted: never copy them into referenceId (use null).")
-            appendLine("Extract only one completed movement from this message. Respond with a single JSON object.")
             if (!hints.isNullOrBlank()) {
-                appendLine()
-                appendLine("LOCAL GUESSES (from a regex parser and the user's own past categories).")
-                appendLine("Check each against the message: keep it when the message supports it, correct it when it is wrong, never copy it blindly.")
+                appendLine("LOCAL GUESSES (regex parser + the user's history; keep them when the message agrees, correct them when it does not):")
                 appendLine(hints.trim())
             }
             appendLine()
-            appendLine("Message body:")
-            append(messageBody.take(6000))
+            appendLine("SMS from $sender:" + (subject?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""))
+            append(messageBody.take(3000))
         }
 
         return when (val r = completeJson(system = system, user = user)) {
@@ -296,6 +281,10 @@ class LlmClient @Inject constructor(
                 else -> null
             }
         }
+
+        /** "- Category: payee, payee, …" lines for prompts. */
+        fun guideLines(guide: Map<String, List<String>>, perCategory: Int = 6): List<String> =
+            guide.filterValues { it.isNotEmpty() }.map { (cat, names) -> "- $cat: " + names.take(perCategory).joinToString(", ") }
 
         /** Accepts `…/v1`, `…/v1/` or a full `…/chat/completions` URL. */
         fun chatCompletionsUrl(base: String): String {

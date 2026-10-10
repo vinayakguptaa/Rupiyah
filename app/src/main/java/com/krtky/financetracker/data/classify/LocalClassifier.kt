@@ -21,6 +21,7 @@ class LocalClassifier @Inject constructor(
     private val learningDao = db.learningDao()
     private val mutex = Mutex()
     private var index: Map<String, Map<Long, Int>> = emptyMap()
+    private var guideById: Map<Long, List<String>> = emptyMap()
     private var builtAt = 0L
 
     data class Guess(
@@ -31,6 +32,19 @@ class LocalClassifier @Inject constructor(
         val reason: String,
     ) {
         val confident: Boolean get() = confidence >= CONFIDENT
+    }
+
+    /**
+     * "How this user categorises": per category, the payees they filed there most often.
+     * Sent to the AI so it follows the user's habits (e.g. a brother under Family).
+     */
+    suspend fun categoryGuide(categories: List<Category>, perCategory: Int = 6): Map<String, List<String>> {
+        history()
+        val byId = guideById
+        return categories
+            .mapNotNull { c -> byId[c.id]?.take(perCategory)?.takeIf { it.isNotEmpty() }?.let { c.name to it } }
+            .toMap()
+            .toSortedMap()
     }
 
     /** Call after the user classifies something so the next guess sees it. */
@@ -55,6 +69,7 @@ class LocalClassifier @Inject constructor(
         if (now - builtAt > CACHE_MS) {
             val rows = learningDao.recentClassified(HISTORY_LIMIT)
             index = buildIndex(rows)
+            guideById = buildGuide(rows)
             builtAt = now
         }
         index
@@ -75,6 +90,14 @@ class LocalClassifier @Inject constructor(
             }
             return out
         }
+
+        /** categoryId → payee display names, most frequent first. */
+        fun buildGuide(rows: List<LearningRow>): Map<Long, List<String>> =
+            rows.mapNotNull { r -> PayeeKeys.displayName(r.counterparty, r.rawDescription)?.let { r.categoryId to it } }
+                .groupBy({ it.first }, { it.second })
+                .mapValues { (_, names) ->
+                    names.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }.take(12)
+                }
 
         fun fromHistory(keys: Set<String>, index: Map<String, Map<Long, Int>>, categories: List<Category>): Guess? {
             if (keys.isEmpty()) return null
@@ -136,6 +159,22 @@ object PayeeKeys {
         }
         name(counterparty)?.let { out += "cp:$it" }
         return out
+    }
+
+    /** Readable payee for prompts: counterparty, else the UPI name in a narration; title case, no noise. */
+    fun displayName(counterparty: String?, text: String?): String? {
+        val raw = counterparty?.takeIf { it.isNotBlank() }
+            ?: UPI_NARRATION.find((text ?: "").replace(Regex("\\s+"), ""))?.groupValues?.get(1)
+            ?: return null
+        val cleaned = raw
+            .replace(Regex("""(?i)\s+on\s+\d.*$"""), "")
+            .replace(Regex("""(?i)\b(pvt|private|ltd|limited|llp)\b\.?"""), "")
+            .replace(Regex("\\s+"), " ")
+            .trim(' ', '.', ',', '-')
+        if (cleaned.length < 3 || cleaned.count(Char::isDigit) > 4) return null
+        return cleaned.split(' ').joinToString(" ") { w ->
+            if ('@' in w || '.' in w) w.lowercase() else w.lowercase().replaceFirstChar(Char::uppercase)
+        }.take(28)
     }
 
     /** Lower-case alphanumerics without company suffixes; SBI truncates names to 8 chars. */
